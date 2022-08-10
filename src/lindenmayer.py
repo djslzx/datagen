@@ -1,11 +1,13 @@
 import turtle
-from random import choice
+from random import choices
 from typing import Dict, List, Generator
 
+turtle.mode('logo')
 turtle.hideturtle()
 turtle.speed(0)
 turtle.tracer(0, 0)
-turtle.screensize(5000, 5000)
+turtle.setheading(0)
+# turtle.screensize(5000, 5000)
 
 class LSystem:
 
@@ -15,27 +17,38 @@ class LSystem:
     def expand(self, s: str) -> str:
         assert False, f"Should be implemented in child {type(self).__name__}"
 
-    def expansions(self, cap: int) -> Generator[str, None, None]:
+    def expansions(self, iters: int) -> Generator[str, None, None]:
         word = self.axiom()
-        for _ in range(cap + 1):
+        for _ in range(iters):
             yield word
             word = self.expand(word)
 
     def render(s: str, length: float, angle: float, filename: str):
+        stack = []
         for c in s:
-            assert c in ['F', 'f', '+', '-'], \
+            assert c in ['F', 'f', '+', '-', '[', ']'], \
                 f'Expected the render string to be a turtle command, but found {c}'
             if c == 'F':
-                turtle.Turtle
+                # move forward and draw a line
                 turtle.pendown()
                 turtle.forward(length)
                 turtle.penup()
             elif c == 'f':
+                # move forward without drawing
                 turtle.forward(length)
             elif c == '+':
                 turtle.left(angle)
             elif c == '-':
                 turtle.right(angle)
+            elif c == '[':
+                # push turtle state onto stack
+                stack.append((turtle.pos(), turtle.heading()))
+            elif c == ']':
+                # pop turtle state off of stack
+                pos, heading = stack.pop()
+                turtle.setpos(*pos)
+                turtle.setheading(heading)
+
         turtle.update()
         turtle.getcanvas().postscript(
             file=f'{filename}.ps',
@@ -44,6 +57,11 @@ class LSystem:
         )
         turtle.clear()
         turtle.setpos(0, 0)
+        turtle.setheading(0)
+
+    def render_expansions(self, iters: int, length: float, angle: float, filename: str):
+        for i, w in enumerate(self.expansions(iters)):
+            LSystem.render(w, length=length, angle=angle, filename=f'{filename}-{i}')
 
 
 class DOLSystem(LSystem):
@@ -61,47 +79,38 @@ class DOLSystem(LSystem):
         return ''.join(self.productions.get(c, c) for c in s)
 
 
-class OLSystem(LSystem):
+class SOLSystem(LSystem):
     """
-    A nondeterministic context-free Lindenmayer system
+    A stochastic context-free Lindenmayer system
     where the alphabet is the collection of ASCII characters
     """
 
-    def __init__(self, axiom: str, productions: Dict[str, List[str]]):
+    def __init__(self,
+                 axiom: str,
+                 productions: Dict[str, List[str]],
+                 distribution: Dict[str, List[float]]):
         self.axiom = lambda: axiom
         self.productions = productions
+        
+        # distribution
+        assert all(sum(weights) == 1 for rule, weights in distribution.items()), \
+            "All rules with the same predecessor should have probabilities summing to 1"
+        
+        self.distribution = distribution
 
     def expand(self, s: str) -> str:
-        # Choose one of the predecessor's productions uniformly at random
-        return ''.join(choice(self.productions.get(c, [c])) for c in s)
+        return ''.join(choices(population=self.productions.get(c, [c]),
+                               weights=self.distribution.get(c, [1]))
+                       for c in s)
 
 
 if __name__ == '__main__':
     RENDER_DIR = '../imgs'
-    systems = {
-        'filament': DOLSystem(
-            axiom='b',
-            productions={
-                'a': 'ab',
-                'b': 'a',
-            },
-        ),
+    systems: List[LSystem] = {
         'koch': DOLSystem(
             axiom='F-F-F-F',
             productions={
                 'F': 'F-F+F+FF-F-F+F'
-            },
-        ),
-        'quad_koch': DOLSystem(
-            axiom='F-F-F-F',
-            productions={
-                'F': 'F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F'
-            },
-        ),
-        'quad_snowflake': DOLSystem(
-            axiom='-F',
-            productions={
-                'F': 'F+F-F-F+F'
             },
         ),
         'islands': DOLSystem(
@@ -111,22 +120,30 @@ if __name__ == '__main__':
                 'f': 'ffffff',
             },
         ),
-        'dragon': DOLSystem(
-            axiom='F-F-F-F',
+        'branch': DOLSystem(
+            axiom='F',
             productions={
-                'F': 'F-FF--F-F'
+                'F': 'F[+F]F[-F]F'
             },
         ),
+        'wavy-branch': DOLSystem(
+            axiom='F',
+            productions={
+                'F': 'FF-[-F+F+F]+[+F-F-F]'
+            },
+        )
     }
 
-    for system, n in [
-        # ('koch', 4),
-        # ('quad_koch', 4),
-        # ('quad_snowflake', 4),
-        # ('islands', 2),
-        ('dragon', 5),
+    for name, angle, iters in [
+        # ('koch', 90, 3),
+        # ('islands', 90, 3),
+        ('branch', 25.7, 5),
+        ('branch', 73, 5),
+        ('wavy-branch', 22.5, 5),
     ]:
-        for i, w in enumerate(systems[system].expansions(n)):
-            print(w)
-            LSystem.render(w, length=5, angle=90, filename=f'{RENDER_DIR}/{system}-{i}')
-        
+        systems[name].render_expansions(
+            iters=iters,
+            length=5,
+            angle=angle,
+            filename=f'{RENDER_DIR}/{name}-{angle}'
+        )
