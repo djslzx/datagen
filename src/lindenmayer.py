@@ -100,13 +100,13 @@ class SOLSystem(LSystem):
 
     def expand(self, s: str) -> str:
         return ''.join(choices(population=self.productions.get(c, [c]),
-                               weights=self.distribution.get(c, [1]))
+                               weights=self.distribution.get(c, [1]))[0]
                        for c in s)
 
 
 if __name__ == '__main__':
     RENDER_DIR = '../imgs'
-    systems: List[LSystem] = {
+    systems: Dict[str, LSystem] = {
         'koch': DOLSystem(
             axiom='F-F-F-F',
             productions={
@@ -131,19 +131,37 @@ if __name__ == '__main__':
             productions={
                 'F': 'FF-[-F+F+F]+[+F-F-F]'
             },
+        ),
+        'stochastic-branch': SOLSystem(
+            axiom='F',
+            productions={
+                'F': ['F[+F]F[-F]F',
+                      'F[+F]F',
+                      'F[-F]F']
+            },
+            distribution={
+                'F': [0.33,
+                      0.33,
+                      0.34]
+            },
         )
     }
 
-    for name, angle, iters in [
+    for name, id, angle, iters in [
         # ('koch', 90, 3),
         # ('islands', 90, 3),
-        ('branch', 25.7, 5),
-        ('branch', 73, 5),
-        ('wavy-branch', 22.5, 5),
+        # ('branch', 25.7, 5),
+        # ('branch', 73, 5),
+        # ('wavy-branch', 22.5, 5),
+        ('stochastic-branch', 1, 22.5, 5),
+        ('stochastic-branch', 2, 22.5, 5),
+        ('stochastic-branch', 3, 22.5, 5),
+        ('stochastic-branch', 4, 22.5, 5),
+        ('stochastic-branch', 5, 22.5, 5),
     ]:
         systems[name].render_expansions(
             iters=iters,
             length=5,
             angle=angle,
-            filename=f'{RENDER_DIR}/{name}-{angle}'
+            filename=f'{RENDER_DIR}/{name}[{id}]-{angle}'
         )
