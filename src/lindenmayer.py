@@ -26,8 +26,6 @@ class LSystem:
     def render(s: str, length: float, angle: float, filename: str):
         stack = []
         for c in s:
-            assert c in ['F', 'f', '+', '-', '[', ']'], \
-                f'Expected the render string to be a turtle command, but found {c}'
             if c == 'F':
                 # move forward and draw a line
                 turtle.pendown()
@@ -59,10 +57,6 @@ class LSystem:
         turtle.setpos(0, 0)
         turtle.setheading(0)
 
-    def render_expansions(self, iters: int, length: float, angle: float, filename: str):
-        for i, w in enumerate(self.expansions(iters)):
-            LSystem.render(w, length=length, angle=angle, filename=f'{filename}-{i}')
-
 
 class DOLSystem(LSystem):
     """
@@ -92,10 +86,10 @@ class SOLSystem(LSystem):
         self.axiom = lambda: axiom
         self.productions = productions
         
-        # distribution
-        assert all(sum(weights) == 1 for rule, weights in distribution.items()), \
+        # check that distribution sums to 1 for any predecessor
+        assert all(abs(sum(weights) - 1) < 0.01
+                   for _, weights in distribution.items()), \
             "All rules with the same predecessor should have probabilities summing to 1"
-        
         self.distribution = distribution
 
     def expand(self, s: str) -> str:
@@ -144,6 +138,19 @@ if __name__ == '__main__':
                       0.33,
                       0.34]
             },
+        ),
+        'random-walk': SOLSystem(
+            axiom='A',
+            productions={
+                'A': ['dFA'],
+                'd': ['+', '++', '+++', '++++'],
+                'F': ['F'],
+            },
+            distribution={
+                'A': [1],
+                'd': [0.25, 0.25, 0.25, 0.25],
+                'F': [1],
+            },
         )
     }
 
@@ -158,10 +165,15 @@ if __name__ == '__main__':
         ('stochastic-branch', 3, 22.5, 5),
         ('stochastic-branch', 4, 22.5, 5),
         ('stochastic-branch', 5, 22.5, 5),
+        # ('random-walk', 0, 90, 999),
     ]:
-        systems[name].render_expansions(
-            iters=iters,
-            length=5,
-            angle=angle,
-            filename=f'{RENDER_DIR}/{name}[{id}]-{angle}'
-        )
+        system = systems[name]
+        for i, w in enumerate(system.expansions(iters)):
+            print(w)
+            LSystem.render(
+                w,
+                length=5,
+                angle=angle,
+                filename=f'{RENDER_DIR}/{name}[{id}]-{angle}-{i:03d}'
+            )
+        print()
