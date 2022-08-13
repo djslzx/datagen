@@ -1,2 +1,2 @@
-# pprog-repl
+# prob-repl
 Probabilistic program synthesis with a REPL
