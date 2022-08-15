@@ -120,7 +120,7 @@ class SOLSystem(LSystem):
                     f'{pred} -[{weight:.3f}]-> {succ}'
                 )
         return f'axiom: {self.axiom()}\n' + \
-            'rules: [\n  ' + '\n  '.join(rules) + ']\n'
+            'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
 
 
 if __name__ == '__main__':
