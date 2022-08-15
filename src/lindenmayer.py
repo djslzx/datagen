@@ -1,15 +1,21 @@
 import turtle
 from random import choices
-from typing import Dict, List, Generator
+from typing import Dict, List, Generator, Union
+from os import mkdir
 
-turtle.mode('logo')
-turtle.hideturtle()
-turtle.speed(0)
-turtle.tracer(0, 0)
-turtle.setheading(0)
-# turtle.screensize(5000, 5000)
+def setup_turtle():
+    if turtle.isvisible():
+        # turtle.screensize(5000, 5000)
+        turtle.mode('logo')
+        turtle.hideturtle()
+        turtle.speed(0)
+        turtle.tracer(0, 0)
+        turtle.setheading(0)
 
 class LSystem:
+
+    def __init__(self):
+        setup_turtle()
 
     def axiom(self) -> str:
         assert False, f"Should be implemented in child {type(self).__name__}"
@@ -51,7 +57,6 @@ class LSystem:
         turtle.getcanvas().postscript(
             file=f'{filename}.ps',
             colormode='color',
-            
         )
         turtle.clear()
         turtle.setpos(0, 0)
@@ -65,6 +70,7 @@ class DOLSystem(LSystem):
     """
 
     def __init__(self, axiom: str, productions: Dict[str, str]):
+        super().__init__()
         self.axiom = lambda: axiom
         self.productions = productions
         
@@ -82,10 +88,18 @@ class SOLSystem(LSystem):
     def __init__(self,
                  axiom: str,
                  productions: Dict[str, List[str]],
-                 distribution: Dict[str, List[float]]):
+                 distribution: Union[str, Dict[str, List[float]]]):
+        super().__init__()
         self.axiom = lambda: axiom
         self.productions = productions
         
+        # check if distribution is a string
+        if distribution == "uniform":
+            distribution = {
+                pred: [1 / len(succs)] * len(succs)
+                for pred, succs in productions.items()
+            }
+
         # check that distribution sums to 1 for any predecessor
         assert all(abs(sum(weights) - 1) < 0.01
                    for _, weights in distribution.items()), \
@@ -96,6 +110,17 @@ class SOLSystem(LSystem):
         return ''.join(choices(population=self.productions.get(c, [c]),
                                weights=self.distribution.get(c, [1]))[0]
                        for c in s)
+
+    def __str__(self) -> str:
+        rules = []
+        for pred, succs in self.productions.items():
+            for i, succ in enumerate(succs):
+                weight = self.distribution[pred][i]
+                rules.append(
+                    f'{pred} -[{weight:.3f}]-> {succ}'
+                )
+        return f'axiom: {self.axiom()}\n' + \
+            'rules: [\n  ' + '\n  '.join(rules) + ']\n'
 
 
 if __name__ == '__main__':
@@ -151,29 +176,43 @@ if __name__ == '__main__':
                 'd': [0.25, 0.25, 0.25, 0.25],
                 'F': [1],
             },
+        ),
+        'triplet': SOLSystem(
+            axiom='F',
+            productions={
+                'F': ['FF',
+                      '[-F]F',
+                      '[+F]F'],
+            },
+            distribution='uniform'
         )
     }
 
-    for name, id, angle, iters in [
-        # ('koch', 90, 3),
-        # ('islands', 90, 3),
-        # ('branch', 25.7, 5),
-        # ('branch', 73, 5),
-        # ('wavy-branch', 22.5, 5),
-        ('stochastic-branch', 1, 22.5, 5),
-        ('stochastic-branch', 2, 22.5, 5),
-        ('stochastic-branch', 3, 22.5, 5),
-        ('stochastic-branch', 4, 22.5, 5),
-        ('stochastic-branch', 5, 22.5, 5),
-        # ('random-walk', 0, 90, 999),
+    for name, angle, levels, samples in [
+        ('koch', 90, 4, 1),
+        ('islands', 90, 3, 1),
+        ('branch', 25.7, 5, 1),
+        ('branch', 73, 5, 1),
+        ('wavy-branch', 22.5, 5, 1),
+        ('stochastic-branch', 22.5, 5, 5),
+        # ('random-walk', 90, 99, 1),
+        ('triplet', 35, 5, 6),
     ]:
-        system = systems[name]
-        for i, w in enumerate(system.expansions(iters)):
-            print(w)
-            LSystem.render(
-                w,
-                length=5,
-                angle=angle,
-                filename=f'{RENDER_DIR}/{name}[{id}]-{angle}-{i:03d}'
-            )
-        print()
+        for sample in range(samples):
+            dirpath = f'{RENDER_DIR}/{name}-{angle}'
+            try:
+                mkdir(dirpath)
+            except FileExistsError:
+                pass
+
+            system = systems[name]
+            print(system)
+            for level, word in enumerate(system.expansions(levels)):
+                print(word)
+                LSystem.render(
+                    word,
+                    length=5,
+                    angle=angle,
+                    filename=f'{dirpath}/{name}[{sample}]-{level:02d}'
+                )
+            print()
