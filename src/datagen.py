@@ -82,77 +82,93 @@ def meta_SOL_SOLSystem(n_rules: int, n_expands: int) -> SOLSystem:
     )
 
 
-def meta_CFG_SOLSystem() -> SOLSystem:
+def meta_CFG_SOLSystem(n_rules: int, max_rule_length: int) -> SOLSystem:
     """
-    Yields a random stochastic context-free L-system.
+    Generates a random stochastic context-free L-system, using a CFG.
     """
-    g = CFG(rules={
-        "rules": [["F -> ", "rule", "\n", "rules"],
-                  ["rule"]],
-        "rule": [["NT", "rhs"]],
+    metagrammar = CFG(rules={
+        "T": [["+"], ["-"]],
         "NT": [["F"]],
-        "rhs": [["[", "rhs", "]"],
-                ["rhs", "NT"],
-                ["rhs", "T"]],
-        "T": [["+"], ["-"], ["f"]]
+        "RHS": [["[", "RHS", "]"],
+                ["RHS", "NT"],
+                ["RHS", "T"]],
     })
-    start = ["rules"]
-    fp = g.fixpoint(start, max_iters=100)
-    s = g.to_str(fp)
-    assert util.parens_are_balanced(s), "Expression has unbalanced parentheses"
-    print(s)
+    rules = []
+    for i in range(n_rules):
+        start = ["RHS"]
+        fp = metagrammar.iterate_until(start, length=max_rule_length)
+        s = metagrammar.to_str(fp)
+        rules.append(s)
+    return SOLSystem(
+        axiom="F",
+        productions={
+            "F": rules
+        },
+        distribution={
+            "F": util.uniform_vec(n_rules)
+        }
+    )
 
 
 def save_random_sol(
         name: str,
-        min_letters: int,
-        max_letters: int,
-        n_expands: int,
-        n_samples: int,
-        n_levels: int
+        max_rule_length: int,
+        n_specimens: int,
+        development_depth: int,
+        render_development: bool,
 ):
-    with open(f'../imgs/{name}-grammar.txt', 'w') as f:
-        # make and log random grammar
-        g = meta_SOL_SOLSystem(
-            n_rules=random.randint(1, 5),
-            n_expands=n_expands,
-        )
-        # g = random_system.random_grammar(
-        #     alphabet=['F', '+', '-'],
-        #     n_rules_cap=3,
-        #     n_successors_cap=4,
-        #     letter_range=(min_letters, max_letters),
-        # )
-        # angle = 90 // random.randint(1, 10)
-        angle = random.choice([13, 17, 19, 23, 29,
-                               31, 37, 41, 43, 47,
-                               53, 59, 61, 67, 71,
-                               73, 79, 83, 89])
-        print(angle, g)
+    # make a new grammar
+    g = meta_CFG_SOLSystem(
+        n_rules=random.randint(2, 5),
+        max_rule_length=max_rule_length,
+    )
+
+    # choose a prime angle
+    angle = random.choice([
+        13, 17, 19, 23, 29,
+        31, 37, 41, 43, 47,
+        # 53, 59, 61, 67, 71,
+    ])
+
+    print(angle, g)
+    with open(f'../imgs/{name}-{angle}deg-grammar.txt', 'w') as f:
+        # save random grammar
         f.write(f'Angle: {angle}\n')
         f.write(f'Grammar: {g}')
 
-        # render popn and save grammar
-        for i in range(n_samples):
-            for level, word in enumerate(g.expansions(n_levels)):
-                word = g.nth_expansion(level)
+    # render specimens
+    for i in range(n_specimens):
+        # render entire development sequence
+        if render_development:
+            for level, word in enumerate(g.expansions(development_depth)):
                 print(word)
                 g.render(
                     word,
                     length=10,
                     angle=angle,
-                    filename=f'../imgs/{name}-{angle}deg-{i}-lvl{level:02d}'
+                    filename=f'../imgs/{name}-{angle}deg' +
+                    f'-{i}-lvl{level:02d}'
                 )
+        else:
+            # take a snapshot of the last development stage
+            word = g.nth_expansion(development_depth)
+            print(word)
+            g.render(
+                word,
+                length=10,
+                angle=angle,
+                filename=f'../imgs/{name}-{angle}deg' +
+                f'-{i}-lvl{development_depth:02d}'
+            )
 
 
 if __name__ == '__main__':
-    n_grammars = 10
+    n_grammars = 20
     for i in range(n_grammars):
         save_random_sol(
             name=f'grammar{i}',
-            min_letters=1,
-            max_letters=6,
-            n_samples=10,
-            n_levels=4,
-            n_expands=7,
+            n_specimens=3,
+            development_depth=4,
+            max_rule_length=20,
+            render_development=False,
         )
