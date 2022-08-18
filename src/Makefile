@@ -1,15 +1,19 @@
 lindenmayer:
 	python3 lindenmayer.py
-	./convert-ps.sh		# Convert ps -> png
+	./scripts/convert-ps.sh	# Convert ps -> png
 	rm ../imgs/*.ps		# Remove leftover ps
 
 datagen:
 	python3 datagen.py
-	./convert-ps.sh
+	./scripts/convert-ps.sh
 	rm ../imgs/*.ps
 
 clean:
-	rm -rf ../imgs/*
+	rm ../imgs/*.png
+	rm ../imgs/*grammar.txt
 
-show:
+view:
 	sxiv ../imgs
+
+grammars:
+	./scripts/show_grammars.sh
