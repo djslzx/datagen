@@ -1,7 +1,7 @@
 import random
 import numpy as np
 from os import mkdir
-from typing import List
+from typing import List, Tuple
 
 
 def coinflip(p: float):
@@ -32,7 +32,11 @@ def uniform_vec(n_elements: int) -> np.array:
 
 
 def gaussian_vec(n_elements: int) -> np.array:
-    vec = np.random.normal(loc=1/n_elements, scale=1, size=n_elements)
+    vec = np.abs(np.random.normal(
+        loc=1/n_elements,
+        scale=1/4,
+        size=n_elements
+    ))
     return vec / vec.sum()
 
 
@@ -46,3 +50,26 @@ def parens_are_balanced(s: str) -> bool:
                 return False
             n_open -= 1
     return n_open == 0
+
+
+def parse_braces(s: str) -> List[Tuple[int, int]]:
+    pairs = []
+    stack = []
+    for i, c in enumerate(s):
+        if c == '[':
+            stack.append(i)
+        elif c == ']':
+            assert stack, "Unbalanced parentheses"
+            # add the pair to the stack
+            pairs.append((stack.pop(), i))
+    assert not stack, "Found nonempty stack"
+    return sorted(pairs)
+
+
+if __name__ == '__main__':
+    for i in range(10):
+        print(gaussian_vec(5))
+
+    s = '[asdf[ddd]s[df]sdf][dsdf]'
+    for a, b in parse_braces(s):
+        print(s[a:b+1])
