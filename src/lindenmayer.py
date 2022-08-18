@@ -1,7 +1,8 @@
 import turtle
-from random import choices
+from random import choice, choices
 from typing import Dict, List, Generator, Union
-from os import mkdir
+import util
+
 
 def setup_turtle():
     if turtle.isvisible():
@@ -12,10 +13,11 @@ def setup_turtle():
         turtle.tracer(0, 0)
         turtle.setheading(0)
 
+
 class LSystem:
 
     def __init__(self):
-        setup_turtle()
+        self.render_is_setup = False
 
     def axiom(self) -> str:
         assert False, f"Should be implemented in child {type(self).__name__}"
@@ -24,12 +26,26 @@ class LSystem:
         assert False, f"Should be implemented in child {type(self).__name__}"
 
     def expansions(self, iters: int) -> Generator[str, None, None]:
+        """Returns a generator over `iters` expansions."""
         word = self.axiom()
+        yield word
         for _ in range(iters):
-            yield word
             word = self.expand(word)
+            yield word
 
-    def render(s: str, length: float, angle: float, filename: str):
+    def nth_expansion(self, n: int) -> str:
+        """Returns the n-th expansion."""
+        word = self.axiom()
+        for _ in range(n):
+            word = self.expand(word)
+        return word
+
+    def render(self, s: str, length: float, angle: float, filename: str):
+        """Renders the L-System using Turtle graphics."""
+        if not self.render_is_setup:
+            setup_turtle()
+            self.render_is_setup = True
+
         stack = []
         for c in s:
             if c == 'F':
@@ -73,9 +89,9 @@ class DOLSystem(LSystem):
         super().__init__()
         self.axiom = lambda: axiom
         self.productions = productions
-        
+
     def expand(self, s: str) -> str:
-        # Assume identity production if predecessor is not in `self.productions`
+        # Assume identity production if predecessor is not in self.productions
         return ''.join(self.productions.get(c, c) for c in s)
 
 
@@ -92,9 +108,9 @@ class SOLSystem(LSystem):
         super().__init__()
         self.axiom = lambda: axiom
         self.productions = productions
-        
+
         # check if distribution is a string
-        if distribution == "uniform":
+        if isinstance(distribution, str) and distribution == "uniform":
             distribution = {
                 pred: [1 / len(succs)] * len(succs)
                 for pred, succs in productions.items()
@@ -103,7 +119,8 @@ class SOLSystem(LSystem):
         # check that distribution sums to 1 for any predecessor
         assert all(abs(sum(weights) - 1) < 0.01
                    for _, weights in distribution.items()), \
-            "All rules with the same predecessor should have probabilities summing to 1"
+            "All rules with the same predecessor should have" \
+            " probabilities summing to 1"
         self.distribution = distribution
 
     def expand(self, s: str) -> str:
@@ -121,6 +138,51 @@ class SOLSystem(LSystem):
                 )
         return f'axiom: {self.axiom()}\n' + \
             'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
+
+
+class CFG:
+    """
+    A context-free grammar.  Terminals and nonterminals are represented as
+    strings. The rule A ::= B C | D | ... is represented as the mapping
+    A -> [[B, C], [D]].
+
+    Terminals and nonterminals are not input explicitly -- they are inferred
+    from the given rules. If a word is a predecessor in the rule list, then
+    it is a nonterminal.  Otherwise, it is a terminal.
+    """
+
+    def __init__(self, rules: Dict[str, List[List[str]]]):
+        assert all(succ and all(succ) for pred, succ in rules.items()), \
+            "All rule RHS should be nonempty; " \
+            "each element should also be nonempty"
+        self.rules = rules
+
+    def __str__(self):
+        rules = "\n  ".join(
+            f"{pred} -> {succ}"
+            for pred, succ in self.rules.items())
+        return "Rules: {  " + rules + "\n}"
+
+    def apply(self, word: List[str]) -> List[str]:
+        # choose one of the productions nondeterministically
+        return [letter
+                for letter in word
+                for letter in choice(self.rules.get(letter, [letter]))]
+
+    def fixpoint(self, word: List[str], max_iters: int) -> List[str]:
+        if max_iters == 0:
+            return word
+        s = word
+        for i in range(max_iters):
+            s = self.apply(s)
+        return s
+
+    def to_str(self, word: List[str]) -> str:
+        # remove artefacts of grammar
+        # filtered = [letter
+        #             for letter in word
+        #             if letter not in self.rules.keys()]
+        return "".join(word)
 
 
 if __name__ == '__main__':
@@ -185,31 +247,29 @@ if __name__ == '__main__':
                       '[+F]F'],
             },
             distribution='uniform'
-        )
+        ),
+        # 'random': meta_SOLSystem(),
     }
 
     for name, angle, levels, samples in [
-        ('koch', 90, 4, 1),
-        ('islands', 90, 3, 1),
-        ('branch', 25.7, 5, 1),
-        ('branch', 73, 5, 1),
-        ('wavy-branch', 22.5, 5, 1),
-        ('stochastic-branch', 22.5, 5, 5),
+        # ('koch', 90, 4, 1),
+        # ('islands', 90, 3, 1),
+        # ('branch', 25.7, 5, 1),
+        # ('branch', 73, 5, 1),
+        # ('wavy-branch', 22.5, 5, 1),
+        # ('stochastic-branch', 22.5, 5, 5),
         # ('random-walk', 90, 99, 1),
-        ('triplet', 35, 5, 6),
+        # ('triplet', 35, 5, 6),
+        # ('random', 45, 6, 3),
     ]:
         for sample in range(samples):
             dirpath = f'{RENDER_DIR}/{name}-{angle}'
-            try:
-                mkdir(dirpath)
-            except FileExistsError:
-                pass
-
+            util.try_mkdir(dirpath)
             system = systems[name]
             print(system)
             for level, word in enumerate(system.expansions(levels)):
                 print(word)
-                LSystem.render(
+                system.render(
                     word,
                     length=5,
                     angle=angle,
