@@ -1,5 +1,5 @@
 import turtle
-from random import choice, choices
+from random import choice, choices, randint
 from typing import Dict, List, Generator, Union
 import util
 
@@ -164,25 +164,44 @@ class CFG:
         return "Rules: {  " + rules + "\n}"
 
     def apply(self, word: List[str]) -> List[str]:
-        # choose one of the productions nondeterministically
-        return [letter
-                for letter in word
-                for letter in choice(self.rules.get(letter, [letter]))]
+        """
+        Nondeterministically apply one of the production rules to
+        a letter in the word.
+        """
+        index = randint(0, len(word) - 1)
+        letter = word[index]
+        repl = choice(self.rules.get(letter, [[letter]]))
+        return word[:index] + repl + word[index+1:]
 
-    def fixpoint(self, word: List[str], max_iters: int) -> List[str]:
-        if max_iters == 0:
-            return word
+    def fixpoint(self, word: List[str]) -> List[str]:
+        """Keep applying rules to the word until it stops changing."""
+        prev = word
+        current = self.apply(word)
+        while current != prev:
+            prev = current
+            current = self.apply(current)
+        return current
+
+    def iterate(self, word: List[str], n: int) -> List[str]:
+        """Apply rules to the word `n` times."""
         s = word
-        for i in range(max_iters):
+        for _ in range(n):
+            s = self.apply(s)
+        return s
+
+    def iterate_until(self, word: List[str], length: int) -> List[str]:
+        """Apply rules to the word until its length is >= `length`."""
+        s = word
+        while len(s) < length:
             s = self.apply(s)
         return s
 
     def to_str(self, word: List[str]) -> str:
-        # remove artefacts of grammar
-        # filtered = [letter
-        #             for letter in word
-        #             if letter not in self.rules.keys()]
-        return "".join(word)
+        """Turn the word representation into a single Turtle string."""
+        filtered = [letter
+                    for letter in word
+                    if letter not in self.rules.keys()]
+        return "".join(filtered)
 
 
 if __name__ == '__main__':
