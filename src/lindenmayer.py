@@ -163,15 +163,19 @@ class CFG:
             for pred, succ in self.rules.items())
         return "Rules: {  " + rules + "\n}"
 
+    def is_nt(self, letter: str) -> bool:
+        return letter in self.rules
+
     def apply(self, word: List[str]) -> List[str]:
         """
         Nondeterministically apply one of the production rules to
         a letter in the word.
         """
-        index = randint(0, len(word) - 1)
+        # Only choose nonterminals to expand
+        index = choice([i for i, letter in enumerate(word) if self.is_nt(letter)])
         letter = word[index]
         repl = choice(self.rules.get(letter, [[letter]]))
-        return word[:index] + repl + word[index+1:]
+        return word[:index] + repl + word[index + 1:]
 
     def fixpoint(self, word: List[str]) -> List[str]:
         """Keep applying rules to the word until it stops changing."""
@@ -193,7 +197,10 @@ class CFG:
         """Apply rules to the word until its length is >= `length`."""
         s = word
         while len(s) < length:
+            cache = s
             s = self.apply(s)
+            if s == cache:
+                break
         return s
 
     def to_str(self, word: List[str]) -> str:

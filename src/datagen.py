@@ -1,5 +1,6 @@
 import random
 from typing import List, Tuple
+import itertools as it
 from lindenmayer import SOLSystem, CFG
 import util
 
@@ -86,19 +87,33 @@ def meta_CFG_SOLSystem(n_rules: int, max_rule_length: int) -> SOLSystem:
     """
     Generates a random stochastic context-free L-system, using a CFG.
     """
+    # TODO: rollout to multiple levels and add probabilities
+    # by learning from a preliminary dataset (or just hard-code for now)
     metagrammar = CFG(rules={
-        "T": [["+"], ["-"]],
-        "NT": [["F"]],
-        "RHS": [["[", "RHS", "]"],
-                ["RHS", "NT"],
-                ["RHS", "T"]],
+        "T": [
+            ["+"],
+            ["-"],
+        ],
+        "NT": [
+            ["F"]
+        ],
+        "RHS": [
+            ["[", "B", "]"],
+            ["RHS", "NT"],
+            ["RHS", "T"],
+        ],
+        "B": [
+            ["B", "NT"],
+            ["B", "T"],
+        ],
     })
+
     rules = []
-    for i in range(n_rules):
+    for _ in range(n_rules):
         start = ["RHS"]
-        fp = metagrammar.iterate_until(start, length=max_rule_length)
-        s = metagrammar.to_str(fp)
-        rules.append(s)
+        fixpt = metagrammar.iterate_until(start, length=max_rule_length)
+        rules.append(metagrammar.to_str(fixpt))
+
     return SOLSystem(
         axiom="F",
         productions={
@@ -111,64 +126,63 @@ def meta_CFG_SOLSystem(n_rules: int, max_rule_length: int) -> SOLSystem:
 
 
 def save_random_sol(
+        grammar: SOLSystem,
         name: str,
-        max_rule_length: int,
         n_specimens: int,
-        development_depth: int,
+        devel_length: int,
         render_development: bool,
 ):
-    # make a new grammar
-    g = meta_CFG_SOLSystem(
-        n_rules=random.randint(2, 5),
-        max_rule_length=max_rule_length,
-    )
-
-    # choose a prime angle
-    angle = random.choice([
-        13, 17, 19, 23, 29,
-        31, 37, 41, 43, 47,
+    angles = [
+        15, 30, 45, 60, 75, 90,
+        # 13, 17, 19, 23, 29,
+        # 31, 37, 41, 43, 47,
         # 53, 59, 61, 67, 71,
-    ])
+    ]
 
-    print(angle, g)
-    with open(f'../imgs/{name}-{angle}deg-grammar.txt', 'w') as f:
-        # save random grammar
-        f.write(f'Angle: {angle}\n')
-        f.write(f'Grammar: {g}')
+    # save random grammar
+    print(grammar)
+    with open(f'../imgs/{name}-grammar.txt', 'w') as f:
+        f.write(f'Grammar: {grammar}')
 
     # render specimens
-    for i in range(n_specimens):
-        # render entire development sequence
+    for specimen, angle in it.product(range(n_specimens), angles):
+
         if render_development:
-            for level, word in enumerate(g.expansions(development_depth)):
+            # render entire development sequence
+            for level, word in enumerate(grammar.expansions(devel_length)):
                 print(word)
-                g.render(
+                grammar.render(
                     word,
                     length=10,
                     angle=angle,
                     filename=f'../imgs/{name}-{angle}deg' +
-                    f'-{i}-lvl{level:02d}'
+                    f'-{specimen}-lvl{level:02d}'
                 )
         else:
             # take a snapshot of the last development stage
-            word = g.nth_expansion(development_depth)
+            word = grammar.nth_expansion(devel_length)
             print(word)
-            g.render(
+            grammar.render(
                 word,
                 length=10,
                 angle=angle,
                 filename=f'../imgs/{name}-{angle}deg' +
-                f'-{i}-lvl{development_depth:02d}'
+                f'-{specimen}-lvl{devel_length:02d}'
             )
 
 
 if __name__ == '__main__':
-    n_grammars = 20
-    for i in range(n_grammars):
+    N_GRAMMARS = 10
+    for i in range(N_GRAMMARS):
+        g = meta_CFG_SOLSystem(
+            n_rules=random.randint(2, 5),
+            max_rule_length=10,
+        )
+        print(g)
         save_random_sol(
+            grammar=g,
             name=f'grammar{i}',
             n_specimens=3,
-            development_depth=4,
-            max_rule_length=20,
+            devel_length=5,
             render_development=False,
         )
