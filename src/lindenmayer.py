@@ -1,7 +1,6 @@
 import turtle
-from random import choice, choices, randint
+from random import choice, choices
 from typing import Dict, List, Generator, Union
-import util
 
 
 def setup_turtle():
@@ -172,7 +171,8 @@ class CFG:
         a letter in the word.
         """
         # Only choose nonterminals to expand
-        index = choice([i for i, letter in enumerate(word) if self.is_nt(letter)])
+        index = choice([i for i, letter in enumerate(word)
+                        if self.is_nt(letter)])
         letter = word[index]
         repl = choice(self.rules.get(letter, [[letter]]))
         return word[:index] + repl + word[index + 1:]
@@ -278,19 +278,17 @@ if __name__ == '__main__':
     }
 
     for name, angle, levels, samples in [
-        # ('koch', 90, 4, 1),
-        # ('islands', 90, 3, 1),
-        # ('branch', 25.7, 5, 1),
-        # ('branch', 73, 5, 1),
-        # ('wavy-branch', 22.5, 5, 1),
-        # ('stochastic-branch', 22.5, 5, 5),
+        ('koch', 90, 4, 1),
+        ('islands', 90, 3, 1),
+        ('branch', 25.7, 5, 1),
+        ('branch', 73, 5, 1),
+        ('wavy-branch', 22.5, 5, 1),
+        ('stochastic-branch', 22.5, 5, 5),
         # ('random-walk', 90, 99, 1),
         # ('triplet', 35, 5, 6),
         # ('random', 45, 6, 3),
     ]:
         for sample in range(samples):
-            dirpath = f'{RENDER_DIR}/{name}-{angle}'
-            util.try_mkdir(dirpath)
             system = systems[name]
             print(system)
             for level, word in enumerate(system.expansions(levels)):
@@ -299,6 +297,7 @@ if __name__ == '__main__':
                     word,
                     length=5,
                     angle=angle,
-                    filename=f'{dirpath}/{name}[{sample}]-{level:02d}'
+                    filename=f'{RENDER_DIR}/{name}-{angle}'
+                    f'[{sample}]-{level:02d}'
                 )
             print()

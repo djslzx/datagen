@@ -1,3 +1,4 @@
+import sys
 import random
 from typing import List, Tuple
 import itertools as it
@@ -14,7 +15,7 @@ def random_grammar(alphabet: List[str],
     # generate production rules
     n_productions = random.randint(1, n_rules_cap)
     productions = {}
-    for i in range(n_productions):
+    for _ in range(n_productions):
         # choose predecessor
         # TODO: don't hard-code, allow intermediate vars
         predecessor = "F"
@@ -41,6 +42,10 @@ def random_grammar(alphabet: List[str],
 
 def random_successor(alphabet: List[str],
                      letter_range: Tuple[int, int]) -> str:
+    """
+    Generate a random successor by making a random balanced bracket
+    permutation, then inserting letters from the alphabet
+    """
     n_letters = int(random.randint(*letter_range))  # not including brackets
     max_bracket_pairs = int(n_letters * 0.2)
     n_bracket_pairs = \
@@ -51,7 +56,7 @@ def random_successor(alphabet: List[str],
     succ = util.random_balanced_brackets(n_bracket_pairs)
 
     # randomly insert other letters
-    for i in range(n_letters):
+    for _ in range(n_letters):
         pos = random.randint(0, len(succ) - 1)
         letter = random.choice(alphabet)
         succ.insert(pos, letter)
@@ -60,7 +65,7 @@ def random_successor(alphabet: List[str],
     return "".join(succ).replace('[]', '')
 
 
-def meta_SOL_SOLSystem(n_rules: int, n_expands: int) -> SOLSystem:
+def SOLSystem_from_SOLSystem(n_rules: int, n_expands: int) -> SOLSystem:
     """
     Generates the rules of a stochastic OL-System using a stochastic OL-system.
     """
@@ -83,7 +88,7 @@ def meta_SOL_SOLSystem(n_rules: int, n_expands: int) -> SOLSystem:
     )
 
 
-def meta_CFG_SOLSystem(n_rules: int, max_rule_length: int) -> SOLSystem:
+def SOLSystem_from_CFG(n_rules: int, max_rule_length: int) -> SOLSystem:
     """
     Generates a random stochastic context-free L-system, using a CFG.
     """
@@ -131,6 +136,7 @@ def save_random_sol(
         n_specimens: int,
         devel_length: int,
         render_development: bool,
+        save_path: str,
 ):
     angles = [
         15, 30, 45, 60, 75, 90,
@@ -141,7 +147,7 @@ def save_random_sol(
 
     # save random grammar
     print(grammar)
-    with open(f'../imgs/{name}-grammar.txt', 'w') as f:
+    with open(f'{save_path}/{name}-grammar.txt', 'w') as f:
         f.write(f'Grammar: {grammar}')
 
     # render specimens
@@ -155,7 +161,7 @@ def save_random_sol(
                     word,
                     length=10,
                     angle=angle,
-                    filename=f'../imgs/{name}-{angle}deg' +
+                    filename=f'{save_path}/{name}-{angle}deg' +
                     f'-{specimen}-lvl{level:02d}'
                 )
         else:
@@ -166,15 +172,21 @@ def save_random_sol(
                 word,
                 length=10,
                 angle=angle,
-                filename=f'../imgs/{name}-{angle}deg' +
+                filename=f'{save_path}/{name}-{angle}deg' +
                 f'-{specimen}-lvl{devel_length:02d}'
             )
 
 
 if __name__ == '__main__':
+    args = sys.argv
+    if len(args) != 2:
+        print("Usage: datagen.py PROJECT_DIR")
+        sys.exit(1)
+
+    out_dir = sys.argv[1]
     N_GRAMMARS = 10
     for i in range(N_GRAMMARS):
-        g = meta_CFG_SOLSystem(
+        g = SOLSystem_from_CFG(
             n_rules=random.randint(2, 5),
             max_rule_length=10,
         )
@@ -185,4 +197,5 @@ if __name__ == '__main__':
             n_specimens=3,
             devel_length=5,
             render_development=False,
+            save_path=out_dir,
         )

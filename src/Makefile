@@ -1,12 +1,14 @@
 lindenmayer:
 	python3 lindenmayer.py
-	./scripts/convert-ps.sh	# Convert ps -> png
-	rm ../imgs/*.ps		# Remove leftover ps
+	$(MAKE) convert
 
 datagen:
-	python3 datagen.py
-	./scripts/convert-ps.sh
-	rm ../imgs/*.ps
+	python3 datagen.py "../imgs/"
+	$(MAKE) convert
+
+convert:
+	./scripts/convert-ps.sh	# Convert ps -> png
+	rm ../imgs/*.ps		# Remove leftover ps
 
 clean:
 	rm ../imgs/*.png
