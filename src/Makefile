@@ -3,11 +3,12 @@ lindenmayer:
 	$(MAKE) convert
 
 datagen:
-	python3 datagen.py ../imgs/
+# n_grammars, min_n_rules, max_n_rules, max_rule_len, n_specimens, devel_length
+	python3 datagen.py 10 2 5 15 3 5
 	$(MAKE) convert
 
 datagen_remote:
-	xvfb-run python3 datagen.py ../imgs/
+	xvfb-run python3 datagen.py 100_000 1 5 20 5 7
 	$(MAKE) convert
 
 # datagen_g2:

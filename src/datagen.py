@@ -130,7 +130,7 @@ def SOLSystem_from_CFG(n_rules: int, max_rule_length: int) -> SOLSystem:
     )
 
 
-def save_random_sol(
+def save_renders(
         grammar: SOLSystem,
         name: str,
         n_specimens: int,
@@ -144,12 +144,6 @@ def save_random_sol(
         # 31, 37, 41, 43, 47,
         # 53, 59, 61, 67, 71,
     ]
-
-    # save random grammar
-    print(grammar)
-    with open(f'{save_path}/{name}-grammar.txt', 'w') as f:
-        f.write(f'Grammar: {grammar}')
-
     # render specimens
     for specimen, angle in it.product(range(n_specimens), angles):
 
@@ -178,24 +172,40 @@ def save_random_sol(
 
 
 if __name__ == '__main__':
-    args = sys.argv
-    if len(args) != 2:
-        print("Usage: datagen.py PROJECT_DIR")
+    ARGS = [
+        "N_GRAMMARS",
+        "MIN_N_RULES",
+        "MAX_N_RULES",
+        "MAX_RULE_LENGTH",
+        "N_SPECIMENS",
+        "DEVEL_LENGTH",
+    ]
+    if len(sys.argv) - 1 != len(ARGS):
+        print("Usage: datagen.py " + " ".join(ARGS))
         sys.exit(1)
 
-    out_dir = sys.argv[1]
-    N_GRAMMARS = 10
-    for i in range(N_GRAMMARS):
+    (n_grammars, min_n_rules, max_n_rules,
+     max_rule_length, n_specimens, devel_length) = [int(x)
+                                                    for x in sys.argv[1:]]
+
+    for i in range(n_grammars):
+        name = f'grammar{i}'
         g = SOLSystem_from_CFG(
-            n_rules=random.randint(2, 5),
-            max_rule_length=10,
+            n_rules=random.randint(min_n_rules, max_n_rules),
+            max_rule_length=max_rule_length,
         )
         print(g)
-        save_random_sol(
+
+        # save grammar
+        with open(f'../imgs/{name}-grammar.txt', 'w') as f:
+            f.write(f'Grammar: {g}')
+
+        # save renders
+        save_renders(
             grammar=g,
-            name=f'grammar{i}',
-            n_specimens=3,
-            devel_length=5,
+            name=name,
+            n_specimens=n_specimens,
+            devel_length=devel_length,
             render_development=False,
-            save_path=out_dir,
+            save_path='../imgs/'
         )
