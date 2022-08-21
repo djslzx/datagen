@@ -3,7 +3,8 @@ lindenmayer:
 	$(MAKE) convert
 
 datagen:
-	python3 datagen.py "../imgs/"
+# n_grammars, min_n_rules, max_n_rules, max_rule_len, n_specimens, devel_length
+	python3 datagen.py 10 2 5 15 3 5
 	$(MAKE) convert
 
 convert:
