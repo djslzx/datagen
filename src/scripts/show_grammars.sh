@@ -1,5 +1,5 @@
 #!/bin/bash 
-for grammar in ../imgs/*grammar.txt
+for grammar in ../imgs/*.grammar
 do 
   echo "grammar $grammar"
   cat $grammar

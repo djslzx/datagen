@@ -3,8 +3,7 @@ lindenmayer:
 	$(MAKE) convert
 
 datagen:
-# n_grammars, min_n_rules, max_n_rules, max_rule_len, n_specimens, devel_length
-	python3 datagen.py 10 2 5 15 3 5
+	python3 datagen.py 1 1 1 10 10 3 5 True '../out/'
 	$(MAKE) convert
 
 convert:
@@ -19,4 +18,4 @@ view:
 	sxiv ../imgs
 
 grammars:
-	./scripts/show_grammars.sh
+	./scripts/show_;grammars.sh

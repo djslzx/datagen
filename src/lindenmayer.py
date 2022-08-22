@@ -10,13 +10,15 @@ def setup_turtle():
         turtle.hideturtle()
         turtle.speed(0)
         turtle.tracer(0, 0)
+        turtle.clear()
+        turtle.setpos(0, 0)
         turtle.setheading(0)
 
 
 class LSystem:
 
     def __init__(self):
-        self.render_is_setup = False
+        pass
 
     def axiom(self) -> str:
         assert False, f"Should be implemented in child {type(self).__name__}"
@@ -39,12 +41,9 @@ class LSystem:
             word = self.expand(word)
         return word
 
-    def render(self, s: str, length: float, angle: float, filename: str):
+    def render(s: str, length: float, angle: float, filename: str):
         """Renders the L-System using Turtle graphics."""
-        if not self.render_is_setup:
-            setup_turtle()
-            self.render_is_setup = True
-
+        setup_turtle()
         stack = []
         for c in s:
             if c == 'F':
