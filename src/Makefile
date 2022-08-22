@@ -1,11 +1,11 @@
-DIR='../out/'
+DIR='../out'
 
 lindenmayer:
 	python3 lindenmayer.py
 	$(MAKE) convert
 
 datagen:
-	python3 datagen.py 1 1 1 10 10 3 5 True $(DIR)
+	python3 datagen.py 1 1 1 10 10 3 5 False $(DIR)
 	$(MAKE) convert
 
 datagen_remote:
@@ -15,13 +15,13 @@ datagen_remote:
 
 convert:
 	@echo "Converting .ps files..."
-	@./scripts/convert-ps.sh $(DIR)
+	./scripts/convert-ps.sh $(DIR)
 	@echo "Removing leftover .ps files..."
 	@rm $(DIR)/*.ps	
 
 clean:
+	@rm $(DIR)/*.grammar
 	@rm $(DIR)/*.png
-	@rm $(DIR)/*grammar.txt
 
 view:
 	sxiv $(DIR)
