@@ -7,7 +7,7 @@ datagen:
 	$(MAKE) convert
 
 datagen_remote:
-	xvfb-run python3 datagen.py 100_000 1 5 20 5 7
+	xvfb-run python3 datagen.py 100_000 1 5 5 10 5 6 False '../out/'
 	$(MAKE) convert
 
 # datagen_g2:
