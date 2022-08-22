@@ -79,7 +79,6 @@ if __name__ == '__main__':
         "MAX_RULE_LENGTH",      # max successor length
         "N_SPECIMENS",          # number of renders of each grammar
         "DEVEL_DEPTH",         # rendering iteration depth
-        "RENDER_DEVEL",         # render whole seq or only endpoint
         "OUT_DIR",              # directory to store outputs
     ]
     if len(sys.argv) - 1 != len(ARGS):
@@ -93,8 +92,7 @@ if __name__ == '__main__':
      min_rule_length,
      max_rule_length,
      n_specimens,
-     devel_depth) = [int(x) for x in sys.argv[1:-2]]
-    render_devel = bool(sys.argv[-2])
+     devel_depth) = [int(x) for x in sys.argv[1:-1]]
     out_dir = sys.argv[-1]
     angles = [15, 30, 45, 60, 90]
 
@@ -115,46 +113,24 @@ if __name__ == '__main__':
         print("Making grammars...")
         grammars = pool.imap(make_grammar, range(n_grammars))
 
-        if render_devel:
-            # render full developmental sequence
-            print("Making word sequences...")
-            word_seqs = pool.imap(lambda g: list(g.expansions(devel_depth)),
-                                  grammars)
+        # render endpoint
+        print("Making endpoint words...")
+        words = pool.imap(lambda x: (x[1], x[2], x[0].nth_expansion(devel_depth)),
+                          [(g, i, j)
+                           for i, g in enumerate(grammars)
+                           for j in range(n_specimens)])
 
-            print("Rendering word sequences...")
-            pool.starmap(
-                lambda grammar, specimen, word, angle: SOLSystem.render(
-                    word,
-                    length=10,
-                    angle=angle,
-                    filename=(f'{out_dir}/'
-                              f'specimen[{grammar},{specimen}]'
-                              f'{angle}deg')
-                ),
-                [(grammar, specimen, word, angle)
-                 for word_seq in word_seqs
-                 for grammar, word in enumerate(word_seq)
-                 for specimen in range(n_specimens)
-                 for angle in angles]
-            )
-        else:
-            # render endpoint
-            print("Making endpoint words...")
-            words = pool.imap(lambda g: g.nth_expansion(devel_depth),
-                              grammars)
-
-            print("Rendering endpoint words...")
-            pool.starmap(
-                lambda grammar, specimen, word, angle: SOLSystem.render(
-                    word,
-                    length=10,
-                    angle=angle,
-                    filename=(f'{out_dir}/'
-                              f'specimen[{grammar},{specimen}]'
-                              f'{angle}deg')
-                ),
-                ((grammar, specimen, word, angle)
-                 for grammar, word in enumerate(words)
-                 for specimen in range(n_specimens)
-                 for angle in angles)
-            )
+        print("Rendering endpoint words...")
+        pool.starmap(
+            lambda grammar, specimen, word, angle: SOLSystem.render(
+                word,
+                length=10,
+                angle=angle,
+                filename=(f'{out_dir}/'
+                          f'endpoint[{grammar},{specimen}]'
+                          f'{angle}deg')
+            ),
+            ((grammar, specimen, word, angle)
+             for grammar, specimen, word in words
+             for angle in angles)
+        )
