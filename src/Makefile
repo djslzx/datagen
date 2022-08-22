@@ -1,32 +1,30 @@
+DIR='../out/'
+
 lindenmayer:
 	python3 lindenmayer.py
 	$(MAKE) convert
 
 datagen:
-	python3 datagen.py 1 1 1 10 10 3 5 True '../out/'
+	python3 datagen.py 1 1 1 10 10 3 5 True $(DIR)
 	$(MAKE) convert
 
 datagen_remote:
-	xvfb-run python3 datagen.py 100_000 1 5 5 10 5 6 False '../out/'
+	./scripts/conda-activate.sh
+	xvfb-run python3 datagen.py 100_000 1 5 5 10 5 6 False $(DIR)
 	$(MAKE) convert
-
-# datagen_g2:
-# 	python3 /home/djl328/prob-repl/src/datagen.py /home/djl328/prob-repl/imgs/
-# 	/home/djl328/prob-repl/src/scripts/convert-ps.sh
-# 	rm /home/djl328/prob-repl/imgs/*.ps
 
 convert:
 	@echo "Converting .ps files..."
-	@./scripts/convert-ps.sh
+	@./scripts/convert-ps.sh $(DIR)
 	@echo "Removing leftover .ps files..."
-	@rm ../imgs/*.ps	
+	@rm $(DIR)/*.ps	
 
 clean:
-	@rm ../imgs/*.png
-	@rm ../imgs/*grammar.txt
+	@rm $(DIR)/*.png
+	@rm $(DIR)/*grammar.txt
 
 view:
-	sxiv ../imgs
+	sxiv $(DIR)
 
 grammars:
-	./scripts/show_;grammars.sh
+	./scripts/show_grammars.sh $(DIR)

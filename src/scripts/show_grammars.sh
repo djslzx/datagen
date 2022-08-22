@@ -1,5 +1,6 @@
 #!/bin/bash 
-for grammar in ../imgs/*.grammar
+DIR="$1"
+for grammar in "${DIR}/*.grammar"
 do 
   echo "grammar $grammar"
   cat $grammar
