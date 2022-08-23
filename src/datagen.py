@@ -1,7 +1,7 @@
 import sys
 import random
+import pickle
 import multiprocess as mp
-import itertools as it
 from lindenmayer import SOLSystem, CFG
 import util
 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     out_dir = sys.argv[-1]
     angles = [15, 30, 45, 60, 90]
 
-    def make_grammar(index: int) -> SOLSystem:
+    def make_grammar(index: int, log=True) -> SOLSystem:
         g = SOLSystem_from_CFG(
             n_rules=random.randint(min_n_rules,
                                    max_n_rules),
@@ -105,13 +105,40 @@ if __name__ == '__main__':
                                            max_rule_length),
         )
         print(f"[{index}] {g}")
-        # append to file
-        with open(f'{out_dir}/grammars.txt', 'a') as f:
-            f.write(f'Grammar {index}: {g}')
+
+        if log:
+            # save grammar text representation to text file for debug
+            with open(f'{out_dir}/grammars.log', 'a') as f:
+                f.write(f'Grammar {index}: {g}')
+
+        # save grammar object for model training
+        with open(f'{out_dir}/grammars.dat', 'ab') as f:
+            pickle.dump((index, g), f)
+
         return g
 
+    def make_word(grammar: SOLSystem, grammar_i: int, specimen_i: int,
+                  verbose=False, log=True) -> str:
+        word = grammar.nth_expansion(devel_depth)
+
+        if verbose:
+            word_preview = word[:20] + ("..." if len(word) > 20 else "")
+            print(f"[{grammar_i}, {specimen_i}] "
+                  f"Generated word {word_preview} of length {len(word)}")
+
+        if log:
+            # write debug text
+            with open(f'{out_dir}/words.log', 'a') as f:
+                f.write(f'[{grammar_i}, {specimen_i}]: {word}')
+
+        # write object
+        with open(f'{out_dir}/words.dat', 'ab') as f:
+            pickle.dump((grammar_i, specimen_i, word), f)
+
+        return grammar_i, specimen_i, word
+
     def make_render(grammar: int, specimen: int, word: str, angle: float,
-                    verbose: bool = False):
+                    verbose=False):
         SOLSystem.render(
             word,
             length=10,
@@ -123,7 +150,7 @@ if __name__ == '__main__':
         if verbose:
             word_preview = word[:20] + ("..." if len(word) > 20 else "")
             print(f"[{grammar}, {specimen}] "
-                  f"Rendering complete for string {word_preview}, saving...")
+                  f"Rendering complete for string {word_preview}")
 
     with mp.Pool() as pool:
         print("Making grammars...")
@@ -131,11 +158,11 @@ if __name__ == '__main__':
 
         # render endpoint
         print("Making endpoint words...")
-        words = pool.imap(lambda x: (x[1], x[2],
-                                     x[0].nth_expansion(devel_depth)),
-                          [(g, i, j)
-                           for i, g in enumerate(grammars)
-                           for j in range(n_specimens)])
+        words = pool.starmap(lambda grammar, i, j:
+                             make_word(grammar, i, j, verbose=True),
+                             ((grammar, i, j)
+                              for i, grammar in enumerate(grammars)
+                              for j in range(n_specimens)))
 
         print("Rendering endpoint words...")
         pool.starmap(

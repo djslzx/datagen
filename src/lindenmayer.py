@@ -20,15 +20,12 @@ class LSystem:
     def __init__(self):
         pass
 
-    def axiom(self) -> str:
-        assert False, f"Should be implemented in child {type(self).__name__}"
-
     def expand(self, s: str) -> str:
         assert False, f"Should be implemented in child {type(self).__name__}"
 
     def expansions(self, iters: int) -> Generator[str, None, None]:
         """Returns a generator over `iters` expansions."""
-        word = self.axiom()
+        word = self.axiom
         yield word
         for _ in range(iters):
             word = self.expand(word)
@@ -36,7 +33,7 @@ class LSystem:
 
     def nth_expansion(self, n: int) -> str:
         """Returns the n-th expansion."""
-        word = self.axiom()
+        word = self.axiom
         for _ in range(n):
             word = self.expand(word)
         return word
@@ -85,7 +82,7 @@ class DOLSystem(LSystem):
 
     def __init__(self, axiom: str, productions: Dict[str, str]):
         super().__init__()
-        self.axiom = lambda: axiom
+        self.axiom = axiom
         self.productions = productions
 
     def expand(self, s: str) -> str:
@@ -104,7 +101,7 @@ class SOLSystem(LSystem):
                  productions: Dict[str, List[str]],
                  distribution: Union[str, Dict[str, List[float]]]):
         super().__init__()
-        self.axiom = lambda: axiom
+        self.axiom = axiom
         self.productions = productions
 
         # check if distribution is a string
@@ -134,7 +131,7 @@ class SOLSystem(LSystem):
                 rules.append(
                     f'{pred} -[{weight:.3f}]-> {succ}'
                 )
-        return f'axiom: {self.axiom()}\n' + \
+        return f'axiom: {self.axiom}\n' + \
             'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
 
 
