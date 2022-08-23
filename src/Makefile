@@ -1,4 +1,4 @@
-DIR := '../out/aug23_0-31'
+DIR := '../out/aug23_12-10'
 
 lindenmayer:
 	python3 -u lindenmayer.py
@@ -22,8 +22,9 @@ convert:
 	@rm $(DIR)/*.ps	
 
 clean:
+	@rm $(DIR)/*.dat
+	@rm $(DIR)/*.log
 	@rm $(DIR)/*.png
-	@rm $(DIR)/grammars.txt
 
 view:
 	sxiv $(DIR)

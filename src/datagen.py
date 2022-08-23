@@ -139,6 +139,11 @@ if __name__ == '__main__':
 
     def make_render(grammar: int, specimen: int, word: str, angle: float,
                     verbose=False):
+        if verbose:
+            word_preview = word[:20] + ("..." if len(word) > 20 else "")
+            print(f"[{grammar}, {specimen}] "
+                  f"Rendering {word_preview} of length {len(word)}")
+
         SOLSystem.render(
             word,
             length=10,
@@ -147,10 +152,6 @@ if __name__ == '__main__':
                       f'endpoint[{grammar},{specimen}]'
                       f'{angle}deg'),
         )
-        if verbose:
-            word_preview = word[:20] + ("..." if len(word) > 20 else "")
-            print(f"[{grammar}, {specimen}] "
-                  f"Rendering complete for string {word_preview}")
 
     with mp.Pool() as pool:
         print("Making grammars...")
