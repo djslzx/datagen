@@ -1,6 +1,7 @@
 import sys
 import random
 import multiprocess as mp
+import itertools as it
 from lindenmayer import SOLSystem, CFG
 import util
 
@@ -103,10 +104,10 @@ if __name__ == '__main__':
             max_rule_length=random.randint(min_rule_length,
                                            max_rule_length),
         )
-        # log and save grammar
-        print(f"[{index}] Grammar: {g}")
-        with open(f'{out_dir}/{index}.grammar', 'w') as f:
-            f.write(f'Grammar: {g}')
+        print(f"[{index}] {g}")
+        # append to file
+        with open(f'{out_dir}/grammars.txt', 'a') as f:
+            f.write(f'Grammar {index}: {g}')
         return g
 
     with mp.Pool() as pool:
