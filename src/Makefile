@@ -1,4 +1,4 @@
-DIR := '../out'
+DIR := '../out/aug23_0-31'
 
 lindenmayer:
 	python3 -u lindenmayer.py
@@ -11,6 +11,7 @@ datagen:
 
 datagen_remote:
 	./scripts/conda-activate.sh
+	mkdir -p $(DIR)
 	xvfb-run python3 -u datagen.py 100_000 2 5 5 15 5 6 $(DIR)
 	$(MAKE) convert
 
