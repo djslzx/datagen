@@ -110,27 +110,37 @@ if __name__ == '__main__':
             f.write(f'Grammar {index}: {g}')
         return g
 
+    def make_render(grammar: int, specimen: int, word: str, angle: float,
+                    verbose: bool = False):
+        SOLSystem.render(
+            word,
+            length=10,
+            angle=angle,
+            filename=(f'{out_dir}/'
+                      f'endpoint[{grammar},{specimen}]'
+                      f'{angle}deg'),
+        )
+        if verbose:
+            word_preview = word[:20] + ("..." if len(word) > 20 else "")
+            print(f"[{grammar}, {specimen}] "
+                  f"Rendering complete for string {word_preview}, saving...")
+
     with mp.Pool() as pool:
         print("Making grammars...")
         grammars = pool.imap(make_grammar, range(n_grammars))
 
         # render endpoint
         print("Making endpoint words...")
-        words = pool.imap(lambda x: (x[1], x[2], x[0].nth_expansion(devel_depth)),
+        words = pool.imap(lambda x: (x[1], x[2],
+                                     x[0].nth_expansion(devel_depth)),
                           [(g, i, j)
                            for i, g in enumerate(grammars)
                            for j in range(n_specimens)])
 
         print("Rendering endpoint words...")
         pool.starmap(
-            lambda grammar, specimen, word, angle: SOLSystem.render(
-                word,
-                length=10,
-                angle=angle,
-                filename=(f'{out_dir}/'
-                          f'endpoint[{grammar},{specimen}]'
-                          f'{angle}deg')
-            ),
+            lambda grammar, specimen, word, angle:
+            make_render(grammar, specimen, word, angle, verbose=True),
             ((grammar, specimen, word, angle)
              for grammar, specimen, word in words
              for angle in angles)
