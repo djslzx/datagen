@@ -1,6 +1,7 @@
 import sys
 import random
 import multiprocess as mp
+import itertools as it
 from lindenmayer import SOLSystem, CFG
 import util
 
@@ -103,17 +104,15 @@ if __name__ == '__main__':
             max_rule_length=random.randint(min_rule_length,
                                            max_rule_length),
         )
-        print(f"[{index}] Grammar: {g}")
+        print(f"[{index}] {g}")
+        # append to file
+        with open(f'{out_dir}/grammars.txt', 'a') as f:
+            f.write(f'Grammar {index}: {g}')
         return g
 
     with mp.Pool() as pool:
         print("Making grammars...")
         grammars = pool.imap(make_grammar, range(n_grammars))
-
-        # save grammars
-        with open(f'{out_dir}/grammars.txt', 'w') as f:
-            for i, grammar in enumerate(grammars):
-                f.write(f'Grammar {i}: {grammar}')
 
         # render endpoint
         print("Making endpoint words...")
