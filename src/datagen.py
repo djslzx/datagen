@@ -129,7 +129,7 @@ if __name__ == '__main__':
         if log:
             # write debug text
             with open(f'{out_dir}/words.log', 'a') as f:
-                f.write(f'[{grammar_i}, {specimen_i}]: {word}')
+                f.write(f'[{grammar_i}, {specimen_i}]: {word}\n')
 
         # write object
         with open(f'{out_dir}/words.dat', 'ab') as f:
