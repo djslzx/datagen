@@ -1,4 +1,4 @@
-DIR = '../out'
+DIR := '../out'
 
 lindenmayer:
 	python3 lindenmayer.py
