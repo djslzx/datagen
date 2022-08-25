@@ -52,9 +52,7 @@ def S0LSystem_from_CFG(metagrammar: CFG,
         productions={
             "F": rules,
         },
-        distribution={
-            "F": util.uniform_vec(n_rules),
-        }
+        distribution="uniform",
     )
 
 
@@ -63,9 +61,8 @@ def constrained_random_S0LSystem(n_rules: int,
                                  max_rule_length: int) -> S0LSystem:
     metagrammar = CFG(rules={
         "AXIOM": [
-            ["F"],
-            ["AXIOM", "+F"],
-            ["AXIOM", "-F"],
+            ["AXIOM", "NT"],
+            ["AXIOM", "T"],
         ],
         "T": [
             ["+F"],
@@ -73,10 +70,10 @@ def constrained_random_S0LSystem(n_rules: int,
         ],
         "NT": [
             ["F"],
-            # ["f"],
         ],
         "RHS": [
-            ["[", "T", "B", "]"],
+            ["[", "B", "NT", "]"],
+            ["[", "B", "T", "]"],
             ["RHS", "NT"],
             ["RHS", "T"],
         ],
@@ -123,11 +120,18 @@ def general_random_S0LSystem(n_rules: int,
 
 
 def make_grammar(args, index: int, log=True) -> S0LSystem:
+    # g = general_random_S0LSystem(
+    #     n_rules=random.randint(2, 5),
+    #     max_axiom_length=6,
+    #     max_rule_length=10,
+    # )
+
     g = constrained_random_S0LSystem(
         n_rules=random.randint(*args.n_rules),
         max_axiom_length=random.randint(*args.axiom_length),
         max_rule_length=random.randint(*args.rule_length),
     )
+
     print(f"[{index}] {g}")
 
     if log:
@@ -145,6 +149,7 @@ def make_grammar(args, index: int, log=True) -> S0LSystem:
 def make_word(args, grammar: S0LSystem, grammar_i: int, specimen_i: int,
               angle: float, verbose=False, log=True) -> str:
     word = grammar.nth_expansion(args.devel_depth)
+    # depth, word = grammar.expand_until(1000)
 
     if verbose:
         word_preview = word[:20] + ("..." if len(word) > 20 else "")
@@ -184,22 +189,22 @@ def make_sticks(args, grammar: int, specimen: int, word: str, angle: float,
     with open(f'{args.out_dir}/sticks.dat', 'ab') as f:
         pickle.dump((grammar, specimen, angle, sticks), f)
 
-    LSystem.to_svg(
-        sticks,
-        f'{args.out_dir}/render[{grammar},{specimen}]@{angle}deg.svg'
-    )
+    # LSystem.to_svg(
+    #     sticks,
+    #     f'{args.out_dir}/render[{grammar},{specimen}]@{angle}deg.svg'
+    # )
 
 
 def make_render(args, id: str, word: str, angle: float, verbose=False):
     if verbose:
         word_preview = word[:20] + ("..." if len(word) > 20 else "")
-        print(f"[{id}] Rendering {word_preview} of length {len(word)}")
+        print(f"{id} Rendering {word_preview} of length {len(word)}")
 
-    S0LSystem.render_with_turtle(
+    LSystem.render_with_turtle(
         word,
         d=10,
         theta=angle,
-        filename=f'{args.out_dir}/render[{id}]{angle}deg.dat'
+        filename=f'{args.out_dir}/render{id}{angle}deg'
     )
 
 
@@ -220,14 +225,15 @@ if __name__ == '__main__':
     p.add_argument('out_dir', type=str,
                    help="Where output files should be stored")
     args = p.parse_args()
-    angles = [random.randint(10, 90) for _ in range(5)]
+    angles = [random.randint(10, 40),
+              random.randint(40, 60),
+              random.randint(60, 90)]
 
     with mp.Pool() as pool:
         print("Making grammars...")
         grammars = pool.imap(lambda n: make_grammar(args, n),
                              range(args.n_grammars))
 
-        # render endpoint
         print("Making endpoint words...")
         words = pool.starmap(
             lambda grammar, i, j, theta:
@@ -245,9 +251,10 @@ if __name__ == '__main__':
             words
         )
 
-        # print("Rendering endpoint words to images...")
-        # pool.starmap(
-        #     lambda grammar, specimen, word, angle:
-        #     make_render(args, (grammar, specimen), word, angle, verbose=True),
-        #     words
-        # )
+        print("Rendering endpoint words to images...")
+        pool.starmap(
+            lambda grammar, specimen, word, angle:
+            make_render(args, f'[{grammar},{specimen}]', word, angle,
+                        verbose=True),
+            words
+        )

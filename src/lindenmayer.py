@@ -1,5 +1,6 @@
 import turtle
 import svgwrite
+import sys
 from random import choice, choices
 from typing import Dict, List, Generator, Union, Tuple
 from math import sin, cos, radians, sqrt
@@ -74,6 +75,20 @@ class LSystem:
         for _ in range(n):
             word = self.expand(word)
         return word
+
+    def expand_until(self, length: int) -> Tuple[int, str]:
+        """
+        Apply rules to the word until the number of `F` tokens is >= length
+        """
+        word = self.axiom
+        depth = 0
+        while word.count('F') < length:
+            cache = word
+            word = self.expand(word)
+            if word == cache:
+                break
+            depth += 1
+        return depth, word
 
     def to_sticks(s: str, d: float, theta: float) -> List[Stick]:
         """
@@ -150,7 +165,7 @@ class LSystem:
     def render(s: str, d: float, theta: float, filename: str):
         LSystem.to_svg(
             sticks=LSystem.to_sticks(s=s, d=d, theta=theta),
-            filename=filename,
+            filename=f'{filename}.svg',
         )
 
     def render_with_turtle(s: str, d: float, theta: float, filename: str):
@@ -165,12 +180,7 @@ class LSystem:
                 turtle.penup()
             elif c == 'f':
                 # move forward without drawing
-                # turtle.forward(length)
-                turtle.pencolor('gray')
-                turtle.pendown()
                 turtle.forward(d)
-                turtle.penup()
-                turtle.color('black')
             elif c == '+':
                 turtle.left(theta)
             elif c == '-':
@@ -456,16 +466,20 @@ def draw_systems(out_dir: str):
             print(system)
             for level, word in enumerate(system.expansions(levels)):
                 print(word)
-                LSystem.render(
+                LSystem.render_with_turtle(
                     word,
                     d=5,
                     theta=angle,
                     filename=f'{out_dir}/{name}-{angle}'
-                    f'[{sample}]-{level:02d}.svg'
+                    f'[{sample}]-{level:02d}'
                 )
             print()
 
 
 if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print("Usage: lindenmayer.py DIR")
+        sys.exit(1)
+
     # test_to_sticks()
-    draw_systems(out_dir='../out/')
+    draw_systems(out_dir=sys.argv[1])
