@@ -1,11 +1,13 @@
 import turtle
 from random import choice, choices
 from typing import Dict, List, Generator, Union
+from math import sin, cos, radians, sqrt
 
 
 def setup_turtle():
     if turtle.isvisible():
         # turtle.screensize(5000, 5000)
+        turtle.pensize(1)
         turtle.mode('logo')
         turtle.hideturtle()
         turtle.speed(0)
@@ -13,6 +15,33 @@ def setup_turtle():
         turtle.clear()
         turtle.setpos(0, 0)
         turtle.setheading(0)
+
+
+class Stick:
+
+    def __init__(self, x: float, y: float, d: float,
+                 cos_theta: float, sin_theta: float):
+        self.x = x
+        self.y = y
+        self.d = d
+        self.cos_theta = cos_theta
+        self.sin_theta = sin_theta
+
+    def _approx_eq(a: float, b: float, threshold=10 ** -4) -> bool:
+        return abs(a - b) < threshold
+
+    def __eq__(self, other) -> bool:
+        return isinstance(other, Stick) and \
+            all(Stick._approx_eq(self.__dict__[key],
+                                 other.__dict__[key])
+                for key in self.__dict__.keys())
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __str__(self) -> str:
+        return f"Stick(x={self.x}, y={self.y}, d={self.d}, " \
+            f"cos_theta={self.cos_theta}, sin_theta={self.sin_theta})"
 
 
 class LSystem:
@@ -38,7 +67,43 @@ class LSystem:
             word = self.expand(word)
         return word
 
-    def render(s: str, length: float, angle: float, filename: str):
+    def to_sticks(s: str, d: float, theta: float) -> List[Stick]:
+        """
+        Converts the string to a collection of sticks.
+        - `d`: the length of each stick
+        - `theta`: the angle of a turn, in degrees
+        """
+        # TODO: should the sticks represent angles directly or as multiples of
+        # the input parameters (d, theta)?
+        x, y = 0, 0
+        heading = 90            # use logo mode: start facing up
+        sticks = []
+        stack = []
+        for c in s:
+            if c == 'F':
+                sticks.append(Stick(
+                    x=x,
+                    y=y,
+                    d=d,
+                    cos_theta=cos(radians(heading)),
+                    sin_theta=sin(radians(heading)),
+                ))
+                x += d * cos(radians(heading))
+                y += d * sin(radians(heading))
+            elif c == 'f':
+                x += d * cos(radians(heading))
+                y += d * sin(radians(heading))
+            elif c == '+':
+                heading += theta
+            elif c == '-':
+                heading -= theta
+            elif c == '[':
+                stack.append((x, y, heading))
+            elif c == ']':
+                x, y, heading = stack.pop()
+        return sticks
+
+    def render(s: str, d: float, theta: float, filename: str):
         """Renders the L-System using Turtle graphics."""
         setup_turtle()
         stack = []
@@ -46,15 +111,20 @@ class LSystem:
             if c == 'F':
                 # move forward and draw a line
                 turtle.pendown()
-                turtle.forward(length)
+                turtle.forward(d)
                 turtle.penup()
             elif c == 'f':
                 # move forward without drawing
-                turtle.forward(length)
+                # turtle.forward(length)
+                turtle.pencolor('gray')
+                turtle.pendown()
+                turtle.forward(d)
+                turtle.penup()
+                turtle.color('black')
             elif c == '+':
-                turtle.left(angle)
+                turtle.left(theta)
             elif c == '-':
-                turtle.right(angle)
+                turtle.right(theta)
             elif c == '[':
                 # push turtle state onto stack
                 stack.append((turtle.pos(), turtle.heading()))
@@ -74,7 +144,7 @@ class LSystem:
         turtle.setheading(0)
 
 
-class DOLSystem(LSystem):
+class D0LSystem(LSystem):
     """
     A deterministic context-free Lindenmayer system
     where the alphabet is the collection of ASCII characters
@@ -90,7 +160,7 @@ class DOLSystem(LSystem):
         return ''.join(self.productions.get(c, c) for c in s)
 
 
-class SOLSystem(LSystem):
+class S0LSystem(LSystem):
     """
     A stochastic context-free Lindenmayer system
     where the alphabet is the collection of ASCII characters
@@ -167,8 +237,11 @@ class CFG:
         a letter in the word.
         """
         # Only choose nonterminals to expand
-        index = choice([i for i, letter in enumerate(word)
-                        if self.is_nt(letter)])
+        nonterminals = [i for i, letter in enumerate(word)
+                        if self.is_nt(letter)]
+        if not nonterminals:
+            return word
+        index = choice(nonterminals)
         letter = word[index]
         repl = choice(self.rules.get(letter, [[letter]]))
         return word[:index] + repl + word[index + 1:]
@@ -189,7 +262,7 @@ class CFG:
             s = self.apply(s)
         return s
 
-    def iterate_until(self, word: List[str], length: int) -> List[str]:
+    def iterate_until(self, word: List[str], length: int) -> str:
         """Apply rules to the word until its length is >= `length`."""
         s = word
         while len(s) < length:
@@ -197,9 +270,9 @@ class CFG:
             s = self.apply(s)
             if s == cache:
                 break
-        return s
+        return self._to_str(s)
 
-    def to_str(self, word: List[str]) -> str:
+    def _to_str(self, word: List[str]) -> str:
         """Turn the word representation into a single Turtle string."""
         filtered = [letter
                     for letter in word
@@ -207,35 +280,80 @@ class CFG:
         return "".join(filtered)
 
 
-if __name__ == '__main__':
+def test_to_sticks():
+    cases = [
+        ("F", 1, 90,
+         [Stick(x=0, y=0, d=1, cos_theta=0, sin_theta=1)]),
+        ("FF", 1, 90,
+         [
+             Stick(x=0, y=0, d=1, cos_theta=0, sin_theta=1),
+             Stick(x=0, y=1, d=1, cos_theta=0, sin_theta=1),
+         ]),
+        ("F+F", 1, 90,
+         [
+             Stick(x=0, y=0, d=1, cos_theta=0, sin_theta=1),
+             Stick(x=0, y=1, d=1, cos_theta=-1, sin_theta=0),
+         ]),
+        ("F+F+F+F", 1, 90,
+         [
+             Stick(0, 0, 1, 0, 1),
+             Stick(0, 1, 1, -1, 0),
+             Stick(-1, 1, 1, 0, -1),
+             Stick(-1, 0, 1, 1, 0),
+         ]),
+        ("F-F-F-F", 1, 90,
+         [
+             Stick(0, 0, 1, 0, 1),
+             Stick(0, 1, 1, 1, 0),
+             Stick(1, 1, 1, 0, -1),
+             Stick(1, 0, 1, -1, 0),
+         ]),
+        ("-F", 1, 30,
+         [
+             Stick(0, 0, 1, 1/2, sqrt(3)/2),
+         ]),
+        ("+FF", 1, 30,
+         [
+             Stick(0, 0, 1, -1/2, sqrt(3)/2),
+             Stick(-1/2, sqrt(3)/2, 1, -1/2, sqrt(3)/2),
+         ]),
+    ]
+    for s, d, theta, ans in cases:
+        out = LSystem.to_sticks(s, d, theta)
+        assert ans == out, \
+            f"Expected {ans} for input {s, d, theta},\n got {out}"
+    print(" [+] passed test_to_sticks")
+
+
+def draw_systems():
     RENDER_DIR = '../imgs'
     systems: Dict[str, LSystem] = {
-        'koch': DOLSystem(
+        'koch': D0LSystem(
             axiom='F-F-F-F',
             productions={
                 'F': 'F-F+F+FF-F-F+F'
             },
         ),
-        'islands': DOLSystem(
+        'islands': D0LSystem(
             axiom='F+F+F+F',
             productions={
                 'F': 'F+f-FF+F+FF+Ff+FF-f+FF-F-FF-Ff-FFF',
                 'f': 'ffffff',
             },
         ),
-        'branch': DOLSystem(
+        'branch': D0LSystem(
             axiom='F',
             productions={
                 'F': 'F[+F]F[-F]F'
             },
         ),
-        'wavy-branch': DOLSystem(
+        'wavy-branch': D0LSystem(
             axiom='F',
             productions={
                 'F': 'FF-[-F+F+F]+[+F-F-F]'
             },
         ),
-        'stochastic-branch': SOLSystem(
+        'stochastic-branch': S0LSystem(
             axiom='F',
             productions={
                 'F': ['F[+F]F[-F]F',
@@ -248,7 +366,7 @@ if __name__ == '__main__':
                       0.34]
             },
         ),
-        'random-walk': SOLSystem(
+        'random-walk': S0LSystem(
             axiom='A',
             productions={
                 'A': ['dFA'],
@@ -261,7 +379,7 @@ if __name__ == '__main__':
                 'F': [1],
             },
         ),
-        'triplet': SOLSystem(
+        'triplet': S0LSystem(
             axiom='F',
             productions={
                 'F': ['FF',
@@ -270,7 +388,7 @@ if __name__ == '__main__':
             },
             distribution='uniform'
         ),
-        # 'random': meta_SOLSystem(),
+        # 'random': meta_S0LSystem(),
     }
 
     for name, angle, levels, samples in [
@@ -291,9 +409,13 @@ if __name__ == '__main__':
                 print(word)
                 system.render(
                     word,
-                    length=5,
-                    angle=angle,
+                    d=5,
+                    theta=angle,
                     filename=f'{RENDER_DIR}/{name}-{angle}'
                     f'[{sample}]-{level:02d}'
                 )
             print()
+
+
+if __name__ == '__main__':
+    test_to_sticks()

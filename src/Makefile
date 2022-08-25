@@ -5,14 +5,16 @@ lindenmayer:
 	$(MAKE) convert
 
 datagen:
+	$(MAKE) clean
 	mkdir -p $(DIR)
-	python3 -u datagen.py 4 2 4 5 10 3 5 $(DIR)
+	python3 -u datagen.py 4 1 4 2 4 2 6 3 5 $(DIR)
 	$(MAKE) convert
 
 datagen_remote:
+	$(MAKE) clean
 	./scripts/conda-activate.sh
 	mkdir -p $(DIR)
-	xvfb-run python3 -u datagen.py 100_000 2 5 5 15 5 6 $(DIR)
+	xvfb-run python3 -u datagen.py 100_000 1 5 2 5 5 15 5 6 $(DIR)
 	$(MAKE) convert
 
 convert:
@@ -22,12 +24,12 @@ convert:
 	@rm $(DIR)/*.ps	
 
 clean:
-	@rm $(DIR)/*.dat
-	@rm $(DIR)/*.log
-	@rm $(DIR)/*.png
+	@rm -f $(DIR)/*.dat
+	@rm -f $(DIR)/*.log
+	@rm -f $(DIR)/*.png
 
 view:
 	sxiv $(DIR)
 
 grammars:
-	./scripts/show_grammars.sh $(DIR)
+	less $(DIR)/grammars.log
