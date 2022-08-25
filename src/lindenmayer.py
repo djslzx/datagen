@@ -1,6 +1,7 @@
 import turtle
+import svgwrite
 from random import choice, choices
-from typing import Dict, List, Generator, Union
+from typing import Dict, List, Generator, Union, Tuple
 from math import sin, cos, radians, sqrt
 
 
@@ -41,7 +42,14 @@ class Stick:
 
     def __str__(self) -> str:
         return f"Stick(x={self.x}, y={self.y}, d={self.d}, " \
-            f"cos_theta={self.cos_theta}, sin_theta={self.sin_theta})"
+            f"cos_theta={self.cos_theta:.3f}, sin_theta={self.sin_theta:.3f})"
+
+    def endpoints(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        return (
+            (self.x, self.y),
+            (self.x + self.d * self.cos_theta,
+             self.y + self.d * self.sin_theta),
+        )
 
 
 class LSystem:
@@ -69,7 +77,7 @@ class LSystem:
 
     def to_sticks(s: str, d: float, theta: float) -> List[Stick]:
         """
-        Converts the string to a collection of sticks.
+        Converts the string `s` to a collection of sticks.
         - `d`: the length of each stick
         - `theta`: the angle of a turn, in degrees
         """
@@ -103,7 +111,49 @@ class LSystem:
                 x, y, heading = stack.pop()
         return sticks
 
+    def to_svg(sticks: List[Stick], filename: str):
+        if not sticks:
+            return
+
+        points = [stick.endpoints() for stick in sticks]
+
+        # translate negative points in image over to positive values
+        min_x = int(min(x
+                        for (ax, ay), (bx, by) in points
+                        for x in [ax, bx]))
+        min_y = int(min(y
+                        for (ax, ay), (bx, by) in points
+                        for y in [ay, by]))
+        max_y = int(max(y
+                        for (ax, ay), (bx, by) in points
+                        for y in [ay, by]))
+
+        # flip and translate points
+        points = [((ax - min_x + 1,
+                    max_y - ay - min_y + 1),
+                   (bx - min_x + 1,
+                    max_y - by - min_y + 1))
+                  for (ax, ay), (bx, by) in points]
+
+        assert all(v >= 0
+                   for (ax, ay), (bx, by) in points
+                   for v in [ax, ay, bx, by])
+
+        # create SVG drawing
+        dwg = svgwrite.Drawing(filename=filename)
+        dwg.add(dwg.rect(size=('100%', '100%'), fill="white", class_='bkg'))
+        lines = dwg.add(dwg.g(id='sticks', stroke='black', stroke_width=1))
+        for a, b in points:
+            lines.add(dwg.line(start=a, end=b))
+        dwg.save()
+
     def render(s: str, d: float, theta: float, filename: str):
+        LSystem.to_svg(
+            sticks=LSystem.to_sticks(s=s, d=d, theta=theta),
+            filename=filename,
+        )
+
+    def render_with_turtle(s: str, d: float, theta: float, filename: str):
         """Renders the L-System using Turtle graphics."""
         setup_turtle()
         stack = []
@@ -325,8 +375,7 @@ def test_to_sticks():
     print(" [+] passed test_to_sticks")
 
 
-def draw_systems():
-    RENDER_DIR = '../imgs'
+def draw_systems(out_dir: str):
     systems: Dict[str, LSystem] = {
         'koch': D0LSystem(
             axiom='F-F-F-F',
@@ -407,15 +456,16 @@ def draw_systems():
             print(system)
             for level, word in enumerate(system.expansions(levels)):
                 print(word)
-                system.render(
+                LSystem.render(
                     word,
                     d=5,
                     theta=angle,
-                    filename=f'{RENDER_DIR}/{name}-{angle}'
-                    f'[{sample}]-{level:02d}'
+                    filename=f'{out_dir}/{name}-{angle}'
+                    f'[{sample}]-{level:02d}.svg'
                 )
             print()
 
 
 if __name__ == '__main__':
-    test_to_sticks()
+    # test_to_sticks()
+    draw_systems(out_dir='../out/')
