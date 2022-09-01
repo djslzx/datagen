@@ -1,5 +1,5 @@
 ROOT := '../out/'
-DIR := '../out/aug25'
+DIR := '../out/sep1'
 
 lindenmayer:
 	python3 -u lindenmayer.py $(DIR)
@@ -8,7 +8,7 @@ lindenmayer:
 datagen:
 	$(MAKE) clean
 	mkdir -p $(DIR)
-	python3 -u datagen.py 5 1 5 2 4 5 10 3 5 $(DIR)
+	python3 -u datagen.py 5 1 6 1 4 5 10 3 5 $(DIR)
 	$(MAKE) convert
 
 datagen_remote:
@@ -21,11 +21,12 @@ convert:
 	@echo "Converting .ps files..."
 	./scripts/convert-ps.sh $(DIR)
 	@echo "Removing leftover .ps files..."
-	@rm $(DIR)/*.ps	
+	@rm -f $(DIR)/*.ps	
 
 clean:
 	@rm -f $(DIR)/*.svg
 	@rm -f $(DIR)/*.png
+	@rm -f $(DIR)/*.ps
 	@rm -f $(DIR)/*.dat
 	@rm -f $(DIR)/*.log
 
