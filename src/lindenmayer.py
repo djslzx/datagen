@@ -1,14 +1,15 @@
 import turtle
 import svgwrite
 import sys
-from random import choice, choices
+import random
 from typing import Dict, List, Generator, Union, Tuple
 from math import sin, cos, radians, sqrt
+import util
 
 
 def setup_turtle():
     if turtle.isvisible():
-        # turtle.screensize(5000, 5000)
+        turtle.screensize(1000, 1000)
         turtle.pensize(1)
         turtle.mode('logo')
         turtle.hideturtle()
@@ -29,13 +30,9 @@ class Stick:
         self.cos_theta = cos_theta
         self.sin_theta = sin_theta
 
-    def _approx_eq(a: float, b: float, threshold=10 ** -4) -> bool:
-        return abs(a - b) < threshold
-
     def __eq__(self, other) -> bool:
         return isinstance(other, Stick) and \
-            all(Stick._approx_eq(self.__dict__[key],
-                                 other.__dict__[key])
+            all(util.approx_eq(self.__dict__[key], other.__dict__[key])
                 for key in self.__dict__.keys())
 
     def __repr__(self) -> str:
@@ -85,6 +82,7 @@ class LSystem:
         while word.count('F') < length:
             cache = word
             word = self.expand(word)
+            print(word, cache)
             if word == cache:
                 break
             depth += 1
@@ -156,7 +154,7 @@ class LSystem:
 
         # create SVG drawing
         dwg = svgwrite.Drawing(filename=filename)
-        dwg.add(dwg.rect(size=('100%', '100%'), fill="white", class_='bkg'))
+        dwg.add(dwg.rect(size=('100%', '100%'), fill='white', class_='bkg'))
         lines = dwg.add(dwg.g(id='sticks', stroke='black', stroke_width=1))
         for a, b in points:
             lines.add(dwg.line(start=a, end=b))
@@ -198,6 +196,8 @@ class LSystem:
         turtle.getcanvas().postscript(
             file=f'{filename}.ps',
             colormode='color',
+            height=1500,
+            width=1500,
         )
         turtle.clear()
         turtle.setpos(0, 0)
@@ -240,6 +240,8 @@ class S0LSystem(LSystem):
                 pred: [1 / len(succs)] * len(succs)
                 for pred, succs in productions.items()
             }
+        else:
+            distribution = S0LSystem.normalize(distribution)
 
         # check that distribution sums to 1 for any predecessor
         assert all(abs(sum(weights) - 1) < 0.01
@@ -248,9 +250,15 @@ class S0LSystem(LSystem):
             " probabilities summing to 1"
         self.distribution = distribution
 
+    def normalize(distribution: Dict[str, List[float]]) -> Dict[str, List[float]]:
+        return {
+            pred: [w / sum(weights) for w in weights]
+            for pred, weights in distribution.items()
+        }
+
     def expand(self, s: str) -> str:
-        return ''.join(choices(population=self.productions.get(c, [c]),
-                               weights=self.distribution.get(c, [1]))[0]
+        return ''.join(random.choices(population=self.productions.get(c, [c]),
+                                      weights=self.distribution.get(c, [1]))[0]
                        for c in s)
 
     def __str__(self) -> str:
@@ -263,81 +271,6 @@ class S0LSystem(LSystem):
                 )
         return f'axiom: {self.axiom}\n' + \
             'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
-
-
-class CFG:
-    """
-    A context-free grammar.  Terminals and nonterminals are represented as
-    strings. The rule A ::= B C | D | ... is represented as the mapping
-    A -> [[B, C], [D]].
-
-    Terminals and nonterminals are not input explicitly -- they are inferred
-    from the given rules. If a word is a predecessor in the rule list, then
-    it is a nonterminal.  Otherwise, it is a terminal.
-    """
-
-    def __init__(self, rules: Dict[str, List[List[str]]]):
-        assert all(succ and all(succ) for pred, succ in rules.items()), \
-            "All rule RHS should be nonempty; " \
-            "each element should also be nonempty"
-        self.rules = rules
-
-    def __str__(self):
-        rules = "\n  ".join(
-            f"{pred} -> {succ}"
-            for pred, succ in self.rules.items())
-        return "Rules: {  " + rules + "\n}"
-
-    def is_nt(self, letter: str) -> bool:
-        return letter in self.rules
-
-    def apply(self, word: List[str]) -> List[str]:
-        """
-        Nondeterministically apply one of the production rules to
-        a letter in the word.
-        """
-        # Only choose nonterminals to expand
-        nonterminals = [i for i, letter in enumerate(word)
-                        if self.is_nt(letter)]
-        if not nonterminals:
-            return word
-        index = choice(nonterminals)
-        letter = word[index]
-        repl = choice(self.rules.get(letter, [[letter]]))
-        return word[:index] + repl + word[index + 1:]
-
-    def fixpoint(self, word: List[str]) -> List[str]:
-        """Keep applying rules to the word until it stops changing."""
-        prev = word
-        current = self.apply(word)
-        while current != prev:
-            prev = current
-            current = self.apply(current)
-        return current
-
-    def iterate(self, word: List[str], n: int) -> List[str]:
-        """Apply rules to the word `n` times."""
-        s = word
-        for _ in range(n):
-            s = self.apply(s)
-        return s
-
-    def iterate_until(self, word: List[str], length: int) -> str:
-        """Apply rules to the word until its length is >= `length`."""
-        s = word
-        while len(s) < length:
-            cache = s
-            s = self.apply(s)
-            if s == cache:
-                break
-        return self._to_str(s)
-
-    def _to_str(self, word: List[str]) -> str:
-        """Turn the word representation into a single Turtle string."""
-        filtered = [letter
-                    for letter in word
-                    if letter not in self.rules.keys()]
-        return "".join(filtered)
 
 
 def test_to_sticks():
@@ -447,7 +380,6 @@ def draw_systems(out_dir: str):
             },
             distribution='uniform'
         ),
-        # 'random': meta_S0LSystem(),
     }
 
     for name, angle, levels, samples in [

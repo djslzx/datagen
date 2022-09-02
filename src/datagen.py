@@ -2,7 +2,8 @@ import random
 import pickle
 import argparse
 import multiprocess as mp
-from lindenmayer import S0LSystem, CFG, LSystem
+from lindenmayer import LSystem, S0LSystem
+from cfg import CFG, PCFG
 import util
 
 
@@ -29,10 +30,10 @@ def S0LSystem_from_S0LSystem(n_rules: int, n_expands: int) -> S0LSystem:
     )
 
 
-def S0LSystem_from_CFG(metagrammar: CFG,
-                       n_rules: int,
-                       max_axiom_length: int,
-                       max_rule_length: int) -> S0LSystem:
+def S0LSystem_from_PCFG(metagrammar: PCFG,
+                        n_rules: int,
+                        max_axiom_length: int,
+                        max_rule_length: int) -> S0LSystem:
     """
     Generates a random stochastic context-free L-system, using a CFG.
     """
@@ -59,33 +60,42 @@ def S0LSystem_from_CFG(metagrammar: CFG,
 def constrained_random_S0LSystem(n_rules: int,
                                  max_axiom_length: int,
                                  max_rule_length: int) -> S0LSystem:
-    metagrammar = CFG(rules={
+    metagrammar = PCFG(rules={
         "AXIOM": [
-            ["AXIOM", "NT"],
-            ["AXIOM", "T"],
+            (["M", "F"], 1),
         ],
-        "T": [
-            ["+F"],
-            ["-F"],
-        ],
-        "NT": [
-            ["F"],
+        "M": [
+            (["M", "F+"], 1),
+            (["M", "F-"], 1),
+            ([""], 1),
         ],
         "RHS": [
-            ["[", "B", "NT", "]"],
-            ["[", "B", "T", "]"],
-            ["RHS", "NT"],
-            ["RHS", "T"],
+            # (["[", "PLUSES", "F", "INNER", "]"], 1),
+            # (["[", "MINUSES", "F", "INNER", "]"], 1),
+            (["F", "INNER"], 5),
         ],
-        "B": [
-            ["B", "NT"],
-            ["B", "T"],
+        "INNER": [
+            (["INNER", "PLUSES", "FS"], 2),
+            (["INNER", "MINUSES", "FS"], 2),
+            (["INNER", "FS"], 1),
+        ],
+        "PLUSES": [
+            (["+", "PLUSES"], 1),
+            ([""], 1),
+        ],
+        "MINUSES": [
+            (["-", "MINUSES"], 1),
+            ([""], 1),
+        ],
+        "FS": [
+            (["FS", "F"], 3),
+            ([""], 2),
         ],
     })
-    return S0LSystem_from_CFG(metagrammar,
-                              n_rules,
-                              max_axiom_length,
-                              max_rule_length)
+    return S0LSystem_from_PCFG(metagrammar,
+                               n_rules,
+                               max_axiom_length,
+                               max_rule_length)
 
 
 def general_random_S0LSystem(n_rules: int,
@@ -93,51 +103,54 @@ def general_random_S0LSystem(n_rules: int,
                              max_rule_length: int) -> S0LSystem:
     metagrammar = CFG(rules={
         "AXIOM": [
+            ["F"],
             ["AXIOM", "NT"],
             ["AXIOM", "T"],
-        ],
-        "T": [
-            ["+"],
-            ["-"],
-        ],
-        "NT": [
-            ["F"]
         ],
         "RHS": [
             ["[", "B", "]"],
             ["RHS", "NT"],
             ["RHS", "T"],
         ],
+        "NT": [
+            ["F"],
+        ],
+        "T": [
+            ["+"],
+            ["-"],
+        ],
         "B": [
             ["B", "NT"],
             ["B", "T"],
         ],
     })
-    return S0LSystem_from_CFG(metagrammar,
-                              n_rules,
-                              max_axiom_length,
-                              max_rule_length)
+    return S0LSystem_from_PCFG(metagrammar,
+                               n_rules,
+                               max_axiom_length,
+                               max_rule_length)
 
 
 def make_grammar(args, index: int, log=True) -> S0LSystem:
-    # g = general_random_S0LSystem(
-    #     n_rules=random.randint(2, 5),
-    #     max_axiom_length=6,
-    #     max_rule_length=10,
-    # )
-
-    g = constrained_random_S0LSystem(
-        n_rules=random.randint(*args.n_rules),
-        max_axiom_length=random.randint(*args.axiom_length),
-        max_rule_length=random.randint(*args.rule_length),
-    )
-
+    if args.generator == 'general':
+        g = general_random_S0LSystem(
+            n_rules=random.randint(*args.n_rules),
+            max_axiom_length=random.randint(*args.axiom_length),
+            max_rule_length=random.randint(*args.rule_length),
+        )
+    elif args.generator == 'constrained':
+        g = constrained_random_S0LSystem(
+            n_rules=random.randint(*args.n_rules),
+            max_axiom_length=random.randint(*args.axiom_length),
+            max_rule_length=random.randint(*args.rule_length),
+        )
+    else:
+        raise ValueError(f"Unexpected generator type: {args.generator}")
     print(f"[{index}] {g}")
 
     if log:
         # save grammar text representation to text file for debug
         with open(f'{args.out_dir}/grammars.log', 'a') as f:
-            f.write(f'Grammar {index}: {g}\n')
+            f.write(f'Grammar {index}:\n{g}\n')
 
     # save grammar object for model training
     with open(f'{args.out_dir}/grammars.dat', 'ab') as f:
@@ -148,8 +161,8 @@ def make_grammar(args, index: int, log=True) -> S0LSystem:
 
 def make_word(args, grammar: S0LSystem, grammar_i: int, specimen_i: int,
               angle: float, verbose=False, log=True) -> str:
-    word = grammar.nth_expansion(args.devel_depth)
-    # depth, word = grammar.expand_until(1000)
+    word = grammar.nth_expansion(args.devel_length)
+    # _, word = grammar.expand_until(args.devel_length)
 
     if verbose:
         word_preview = word[:20] + ("..." if len(word) > 20 else "")
@@ -169,7 +182,7 @@ def make_word(args, grammar: S0LSystem, grammar_i: int, specimen_i: int,
 
 
 def make_sticks(args, grammar: int, specimen: int, word: str, angle: float,
-                verbose=False, log=True):
+                verbose=False, log=True, render_to_svg=False):
     if verbose:
         word_preview = word[:20] + ("..." if len(word) > 20 else "")
         print(f"[{grammar}, {specimen}] "
@@ -189,10 +202,11 @@ def make_sticks(args, grammar: int, specimen: int, word: str, angle: float,
     with open(f'{args.out_dir}/sticks.dat', 'ab') as f:
         pickle.dump((grammar, specimen, angle, sticks), f)
 
-    # LSystem.to_svg(
-    #     sticks,
-    #     f'{args.out_dir}/render[{grammar},{specimen}]@{angle}deg.svg'
-    # )
+    if render_to_svg:
+        LSystem.to_svg(
+            sticks,
+            f'{args.out_dir}/render[{grammar},{specimen}]@{angle}deg.svg'
+        )
 
 
 def make_render(args, id: str, word: str, angle: float, verbose=False):
@@ -204,24 +218,26 @@ def make_render(args, id: str, word: str, angle: float, verbose=False):
         word,
         d=10,
         theta=angle,
-        filename=f'{args.out_dir}/render{id}{angle}deg'
+        filename=f'{args.out_dir}/render{id}{angle}deg{args.devel_length}depth'
     )
 
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description="Generate L-systems.")
+    p.add_argument('generator', type=str, choices=['general', 'constrained'],
+                   help="Which L-system metagrammar should be used")
     p.add_argument('n_grammars', type=int,
                    help='The number of grammars to make')
     p.add_argument('axiom_length', type=int, nargs=2,
                    help="The min and max length of a grammar's axiom")
     p.add_argument('n_rules', type=int, nargs=2,
-                   help='The min and max number of rules per grammars')
+                   help='The min and max number of rules per grammar')
     p.add_argument('rule_length', type=int, nargs=2,
                    help="The min and max length of a rule's successor")
     p.add_argument('n_specimens', type=int,
                    help='The number of samples to take from each grammar')
-    p.add_argument('devel_depth', type=int,
-                   help="The length of each specimen's development sequence")
+    p.add_argument('devel_length', type=int,
+                   help="The max size of a specimen's output string")
     p.add_argument('out_dir', type=str,
                    help="Where output files should be stored")
     args = p.parse_args()
@@ -247,14 +263,16 @@ if __name__ == '__main__':
         print("Rendering endpoint words to sticks...")
         pool.starmap(
             lambda grammar, specimen, word, angle:
-            make_sticks(args, grammar, specimen, word, angle, verbose=True),
+            make_sticks(args, grammar, specimen, word, angle,
+                        verbose=True,
+                        render_to_svg=True),
             words
         )
 
-        print("Rendering endpoint words to images...")
-        pool.starmap(
-            lambda grammar, specimen, word, angle:
-            make_render(args, f'[{grammar},{specimen}]', word, angle,
-                        verbose=True),
-            words
-        )
+        # print("Rendering endpoint words to images...")
+        # pool.starmap(
+        #     lambda grammar, specimen, word, angle:
+        #     make_render(args, f'[{grammar},{specimen}]', word, angle,
+        #                 verbose=True),
+        #     words
+        # )

@@ -4,6 +4,10 @@ from os import mkdir
 from typing import List, Tuple
 
 
+def approx_eq(a: float, b: float, threshold=10 ** -4) -> bool:
+    return abs(a - b) < threshold
+
+
 def coinflip(p: float):
     assert 0 <= p <= 1, f"p is not a probability, p={p}"
     return random.random() < p
