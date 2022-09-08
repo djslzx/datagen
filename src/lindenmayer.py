@@ -241,7 +241,7 @@ class S0LSystem(LSystem):
                 for pred, succs in productions.items()
             }
         else:
-            distribution = S0LSystem.normalize(distribution)
+            distribution = util.normalize_weights(distribution)
 
         # check that distribution sums to 1 for any predecessor
         assert all(abs(sum(weights) - 1) < 0.01
@@ -250,15 +250,10 @@ class S0LSystem(LSystem):
             " probabilities summing to 1"
         self.distribution = distribution
 
-    def normalize(distribution: Dict[str, List[float]]) -> Dict[str, List[float]]:
-        return {
-            pred: [w / sum(weights) for w in weights]
-            for pred, weights in distribution.items()
-        }
-
     def expand(self, s: str) -> str:
         return ''.join(random.choices(population=self.productions.get(c, [c]),
-                                      weights=self.distribution.get(c, [1]))[0]
+                                      weights=self.distribution.get(c, [1]),
+                                      k=1)[0]
                        for c in s)
 
     def __str__(self) -> str:

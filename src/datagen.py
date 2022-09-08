@@ -30,10 +30,10 @@ def S0LSystem_from_S0LSystem(n_rules: int, n_expands: int) -> S0LSystem:
     )
 
 
-def S0LSystem_from_PCFG(metagrammar: PCFG,
-                        n_rules: int,
-                        max_axiom_length: int,
-                        max_rule_length: int) -> S0LSystem:
+def S0LSystem_from_CFG(metagrammar: CFG,
+                       n_rules: int,
+                       max_axiom_length: int,
+                       max_rule_length: int) -> S0LSystem:
     """
     Generates a random stochastic context-free L-system, using a CFG.
     """
@@ -60,42 +60,45 @@ def S0LSystem_from_PCFG(metagrammar: PCFG,
 def constrained_random_S0LSystem(n_rules: int,
                                  max_axiom_length: int,
                                  max_rule_length: int) -> S0LSystem:
-    metagrammar = PCFG(rules={
-        "AXIOM": [
-            (["M", "F"], 1),
-        ],
-        "M": [
-            (["M", "F+"], 1),
-            (["M", "F-"], 1),
-            ([""], 1),
-        ],
-        "RHS": [
-            # (["[", "PLUSES", "F", "INNER", "]"], 1),
-            # (["[", "MINUSES", "F", "INNER", "]"], 1),
-            (["F", "INNER"], 5),
-        ],
-        "INNER": [
-            (["INNER", "PLUSES", "FS"], 2),
-            (["INNER", "MINUSES", "FS"], 2),
-            (["INNER", "FS"], 1),
-        ],
-        "PLUSES": [
-            (["+", "PLUSES"], 1),
-            ([""], 1),
-        ],
-        "MINUSES": [
-            (["-", "MINUSES"], 1),
-            ([""], 1),
-        ],
-        "FS": [
-            (["FS", "F"], 3),
-            ([""], 2),
-        ],
-    })
-    return S0LSystem_from_PCFG(metagrammar,
-                               n_rules,
-                               max_axiom_length,
-                               max_rule_length)
+    metagrammar = PCFG(
+        rules={
+            "AXIOM": [
+                ["M", "F"],
+            ],
+            "M": [
+                ["M", "F+"],
+                ["M", "F-"],
+                [""],
+            ],
+            "RHS": [
+                ["F", "[", "PLUSES", "+F", "INNER", "]", "RHS", "F"],
+                ["F", "[", "MINUSES", "-F", "INNER", "]", "RHS", "F"],
+                ["F", "INNER"],
+            ],
+            "INNER": [
+                ["INNER", "PLUSES", "FS"],
+                ["INNER", "MINUSES", "FS"],
+                ["INNER", "FS"],
+            ],
+            "PLUSES": [
+                ["+", "PLUSES"],
+                [""],
+            ],
+            "MINUSES": [
+                ["-", "MINUSES"],
+                [""],
+            ],
+            "FS": [
+                ["FS", "F"],
+                [""],
+            ],
+        },
+        weights="uniform",
+    )
+    return S0LSystem_from_CFG(metagrammar,
+                              n_rules,
+                              max_axiom_length,
+                              max_rule_length)
 
 
 def general_random_S0LSystem(n_rules: int,
@@ -111,6 +114,7 @@ def general_random_S0LSystem(n_rules: int,
             ["[", "B", "]"],
             ["RHS", "NT"],
             ["RHS", "T"],
+            [""],
         ],
         "NT": [
             ["F"],
@@ -122,12 +126,13 @@ def general_random_S0LSystem(n_rules: int,
         "B": [
             ["B", "NT"],
             ["B", "T"],
+            [""],
         ],
     })
-    return S0LSystem_from_PCFG(metagrammar,
-                               n_rules,
-                               max_axiom_length,
-                               max_rule_length)
+    return S0LSystem_from_CFG(metagrammar,
+                              n_rules,
+                              max_axiom_length,
+                              max_rule_length)
 
 
 def make_grammar(args, index: int, log=True) -> S0LSystem:
@@ -161,8 +166,7 @@ def make_grammar(args, index: int, log=True) -> S0LSystem:
 
 def make_word(args, grammar: S0LSystem, grammar_i: int, specimen_i: int,
               angle: float, verbose=False, log=True) -> str:
-    word = grammar.nth_expansion(args.devel_length)
-    # _, word = grammar.expand_until(args.devel_length)
+    word = grammar.nth_expansion(args.devel_depth)
 
     if verbose:
         word_preview = word[:20] + ("..." if len(word) > 20 else "")
@@ -218,7 +222,7 @@ def make_render(args, id: str, word: str, angle: float, verbose=False):
         word,
         d=10,
         theta=angle,
-        filename=f'{args.out_dir}/render{id}{angle}deg{args.devel_length}depth'
+        filename=f'{args.out_dir}/render{id}{angle}deg{args.devel_depth}depth'
     )
 
 
@@ -236,7 +240,7 @@ if __name__ == '__main__':
                    help="The min and max length of a rule's successor")
     p.add_argument('n_specimens', type=int,
                    help='The number of samples to take from each grammar')
-    p.add_argument('devel_length', type=int,
+    p.add_argument('devel_depth', type=int,
                    help="The max size of a specimen's output string")
     p.add_argument('out_dir', type=str,
                    help="Where output files should be stored")

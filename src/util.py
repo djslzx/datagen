@@ -1,7 +1,43 @@
 import random
 import numpy as np
 from os import mkdir
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
+
+
+def unique(vec: List) -> bool:
+    for i in range(len(vec)):
+        for j in range(i+1, len(vec)):
+            if vec[i] == vec[j]:
+                return False
+    return True
+
+
+def test_unique():
+    cases = [
+        ([1, 2, 3], True),
+        ([1, 2, 3, 1], False),
+        ([[1], [2], [3]], True),
+        ([[1], [2], [1]], False),
+    ]
+    for x, y in cases:
+        out = unique(x)
+        assert out == y, f"Expected {y}, got {out}"
+    print(" [+] test_unique() passed")
+
+
+def normalize(vec: List[float]) -> List[float]:
+    assert all(x >= 0 for x in vec), "All entries should be nonnegative"
+    norm = sum(vec)
+    if norm == 0:
+        return vec
+    return [x / norm for x in vec]
+
+
+def normalize_weights(distro: Dict[Any, List[float]]) -> Dict[Any, List[float]]:
+    return {
+        pred: normalize(weights)
+        for pred, weights in distro.items()
+    }
 
 
 def approx_eq(a: float, b: float, threshold=10 ** -4) -> bool:
@@ -71,9 +107,10 @@ def parse_braces(s: str) -> List[Tuple[int, int]]:
 
 
 if __name__ == '__main__':
-    for i in range(10):
-        print(gaussian_vec(5))
+    # for i in range(10):
+    #     print(gaussian_vec(5))
 
-    s = '[asdf[ddd]s[df]sdf][dsdf]'
-    for a, b in parse_braces(s):
-        print(s[a:b+1])
+    # s = '[asdf[ddd]s[df]sdf][dsdf]'
+    # for a, b in parse_braces(s):
+        # print(s[a:b+1])
+    test_unique()
