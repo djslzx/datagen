@@ -211,6 +211,25 @@ ZOO: List[Tuple[S0LSystem, float]] = [
         },
         distribution="uniform",
     ), 20),
+    # moss
+    (S0LSystem(
+        axiom="F",
+        productions={
+            "F": ["F[+F]F[-F]F",
+                  "F[+F]F",
+                  "F[-F]F"],
+        },
+        distribution="uniform",
+    ), 20),
+    (S0LSystem(
+        axiom="F",
+        productions={
+            "F": ["F[+F]F[-F]F",
+                  "F[+F]F",
+                  "F[-F]F"],
+        },
+        distribution="uniform",
+    ), 70),
     # (S0LSystem(
     #     axiom="",
     #     productions={
@@ -267,11 +286,7 @@ def mate(a: S0LSystem, b: S0LSystem) -> S0LSystem:
     
     # randomly merge/split rules
     
-
-
     print("rules:", rules)
-    
-
     pass
 
 
@@ -294,7 +309,5 @@ if __name__ == '__main__':
         print("Usage: zoo.py DIR")
         sys.exit(1)
     OUTDIR = sys.argv[1]
-    # view_zoo(zoo=ZOO, n_specimens=1, expand_length=1000, outdir=OUTDIR)
-    
-    # add to zoo
-    
+    view_zoo(zoo=ZOO, n_specimens=1, expand_length=1000, outdir=OUTDIR)
+
