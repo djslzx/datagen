@@ -118,16 +118,19 @@ class PCFG(CFG):
         self.start = start
         self.rules = rules
         if weights == "uniform":
-            self.weights = {
-                pred: [1] * len(succs)
-                for pred, succs in rules.items()
-            }
+            self.set_uniform_weights()
         else:
             self.weights = weights
 
     def __eq__(self, other):
         return isinstance(other, PCFG) and \
             (self.rules, self.weights) == (other.rules, other.weights)
+
+    def set_uniform_weights(self):
+        self.weights = {
+            pred: [1 / len(succs)] * len(succs)
+            for pred, succs in self.rules.items()
+        }
 
     def from_rule_list(start: Letter,
                        rs: List[Tuple[Letter, Word, float]]) -> 'PCFG':
@@ -173,7 +176,7 @@ class PCFG(CFG):
 
     def to_CNF(self) -> 'PCFG':
         """Convert to Chomsky normal form; immutable"""
-        pass
+        return self._start()._term()._bin()._del()._unit()
 
     def _start(self) -> 'PCFG':
         """Eliminate the start symbol from any RHS"""
@@ -210,7 +213,7 @@ class PCFG(CFG):
         """
         Eliminate rules whose rhs has more than 2 nonterminals.
         Assumes that _term() has been run, so any rules containing terminals
-        should only contain a single terminal
+        should only contain a single terminal.
         """
         def nt(pred, i, j) -> str:
             return f"_BIN_{pred}_{i}_{j}_"
@@ -236,8 +239,9 @@ class PCFG(CFG):
 
     def nullables(self) -> Set[Letter]:
         """
-        Returns the set of nullable nonterminals in the grammar, paired with the sets of nonterminals
-        that, when nulled, null the initial nonterminal.
+        Returns the set of nullable nonterminals in the grammar, paired
+        with the sets of nonterminals that, when nulled, null the initial
+        nonterminal.
         """
         # find all rules that produce the empty string
         srcs = [
@@ -250,10 +254,7 @@ class PCFG(CFG):
 
         # recursively set nonterminals as nullable or not
         # using dynamic programming
-        cache = {
-            nt: True
-            for nt in srcs
-        }
+        cache = {nt: True for nt in srcs}
         cache[self.start] = False
 
         def is_nullable(letter) -> bool:
@@ -271,18 +272,15 @@ class PCFG(CFG):
             cache[letter] = out
             return out
 
-        out = {
-            nt for nt in self.rules if is_nullable(nt)
-        }
-        return out
+        return {nt for nt in self.rules if is_nullable(nt)}
 
     def _del(self) -> 'PCFG':
         """
         Eliminate rules of the form A -> eps, where A != S.
         """
+        # FIXME: assumes that all nulling patterns are equally likely
         nullable_nts = self.nullables()
         rules = []
-        # FIXME: assumes that all nulling patterns are equally likely
 
         for pred, succ, weight in self.as_rule_list():
             # if a nonterminal in the successor is nullable, then
@@ -314,9 +312,35 @@ class PCFG(CFG):
 
     def _unit(self) -> 'PCFG':
         """
-        Eliminate rules of the form A -> B, where A and B are both nonterminals.
+        Eliminate rules of the form A -> B, where A and B
+        are both nonterminals.
         """
-        pass
+        cache = {}
+        contracted = set()
+
+        def contract(nt) -> List:
+            if nt in cache:
+                return cache[nt]
+
+            rules = []
+            for s, w in zip(self.rules[nt], self.weights[nt]):
+                if len(s) > 1 or self.is_terminal(s[0]):
+                    rules.append((s, w))
+                else:
+                    contracted.add(s[0])
+                    for ss, sw in contract(s[0]):
+                        rules.append((ss, w * sw))
+
+            cache[nt] = rules
+            return rules
+
+        return PCFG.from_rule_list(
+            self.start,
+            [(p, s, w)
+             for p in self.rules
+             if p not in contracted
+             for s, w in contract(p)]
+        )
 
     def __str__(self) -> str:
         rules = "\n  ".join(
@@ -328,6 +352,12 @@ class PCFG(CFG):
         )
         return ("PCFG: {\n  start=" + self.start +
                 "\n  rules=\n  " + rules + "\n}")
+
+    def rule_eq(self, other: 'PCFG') -> bool:
+        if self.rules.keys() != other.rules.keys():
+            return False
+        return all(sorted(self.rules[k]) == sorted(other.rules[k])
+                   for k in self.rules)
 
     def _choose_successor(self, letter: str) -> List[str]:
         if letter not in self.rules:
@@ -420,7 +450,7 @@ def test_bin():
     ]
     for x, y in cases:
         out = x._bin()
-        assert out == y, f"Failed test_bin: Expected\n{y},\ngot\n{out}"
+        assert out.rule_eq(y), f"Failed test_bin: Expected\n{y},\ngot\n{out}"
     print(" [+] passed test_bin")
 
 
@@ -519,21 +549,71 @@ def test_del():
         )),
     ]
     # FIXME: account for weights
-
-    def eq(g1: PCFG, g2: PCFG) -> bool:
-        if g1.rules.keys() != g2.rules.keys():
-            return False
-        return all(sorted(g1.rules[k]) == sorted(g2.rules[k])
-                   for k in g1.rules.keys())
-
     for x, y in cases:
         out = x._del()
-        assert eq(out, y), f"Failed test_del: Expected\n{y},\ngot\n{out}"
+        assert out.rule_eq(y), f"Failed test_del: Expected\n{y},\ngot\n{out}"
     print(" [+] passed test_del")
 
 
 def test_unit():
-    pass
+    cases = [
+        (PCFG(
+            start="S",
+            rules={
+                "S": [["A"], ["s", "s", "s"]],
+                "A": [["a", "b", "c"], ["e", "f"]],
+            },
+            weights="uniform",
+         ),
+         PCFG(
+            start="S",
+            rules={
+                "S": [["a", "b", "c"], ["e", "f"], ["s", "s", "s"]]
+            },
+            weights="uniform",
+         )),
+        (PCFG(
+            start="S",
+            rules={
+                "S": [["A", "B"], ["C"]],
+                "A": [["a"]],
+                "B": [["b"]],
+                "C": [["c"]],
+            },
+            weights="uniform",
+         ),
+         PCFG(
+            start="S",
+            rules={
+                "S": [["A", "B"], ["c"]],
+                "A": [["a"]],
+                "B": [["b"]],
+            },
+            weights="uniform",
+         )),
+        (PCFG(
+            start="S",
+            rules={
+                "S": [["A"]],
+                "A": [["B"]],
+                "B": [["C"]],
+                "C": [["c"]],
+            },
+            weights="uniform",
+         ),
+         PCFG(
+            start="S",
+            rules={
+                "S": [["c"]],
+            },
+            weights="uniform",
+         )),
+    ]
+    for x, y in cases:
+        out = x._unit()
+        assert out.rule_eq(y), \
+            f"Failed test_unit: Expected\n{y},\ngot\n{out}"
+    print(" [+] passed test_unit")
 
 
 def test_to_CNF():
@@ -541,6 +621,7 @@ def test_to_CNF():
     test_bin()
     test_nullable()
     test_del()
+    test_unit()
 
 
 if __name__ == '__main__':
