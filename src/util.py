@@ -1,7 +1,28 @@
 import random
 import numpy as np
 from os import mkdir
-from typing import List, Tuple, Dict, Any
+import itertools as it
+from typing import List, Tuple, Dict, Any, Iterable
+
+
+def language(iterable: Iterable[Any]) -> Iterable[Iterable[Any]]:
+    """
+    Return all the words in the language induced by the alphabet `iterable`
+    """
+    return it.chain.from_iterable(it.combinations(iterable, r=i+1)
+                                  for i in range(len(iterable)))
+
+
+def language_plus(iterable: Iterable[Any]) -> Iterable[Iterable[Any]]:
+    return [word for word in language(iterable) if word]
+
+
+def remove_from_string(s: str, indices: List[int]) -> str:
+    """Remove the first occurrence of each letter in `letters` from `s`"""
+    out = s
+    for i in sorted(indices, reverse=True):
+        out = out[:i] + out[i + 1:]
+    return out
 
 
 def unique(vec: List) -> bool:
