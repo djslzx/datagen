@@ -113,8 +113,12 @@ class PCFG(CFG):
         assert start in rules, f"Starting word {start} not found in rules"
         assert all(succs and all(succs) for pred, succs in rules.items()), \
             "All RHS should be nonempty"
-        assert all(util.unique(succs) for pred, succs in rules.items()), \
-            "All successors should be unique wrt a predecessor"
+        for pred, succs in rules.items():
+            ok, pair = util.unique(succs)
+            assert ok, \
+                "All successors should be unique wrt a predecessor, " \
+                f"but got duplicate {pair} in {pred} -> {succs}"
+
         self.start = start
         self.rules = rules
         if weights == "uniform":
@@ -176,13 +180,24 @@ class PCFG(CFG):
 
     def to_CNF(self) -> 'PCFG':
         """Convert to Chomsky normal form; immutable"""
-        return self._start()._term()._bin()._del()._unit()
+        # return self._start()._term()._bin()._del()._unit()
+        ops = {
+            'start': lambda x: x._start(),
+            'term': lambda x: x._term(),
+            'bin': lambda x: x._bin(),
+            'del': lambda x: x._del(),
+            'unit': lambda x: x._unit(),
+        }
+        g = self
+        for name, op in ops.items():
+            g = op(g)
+        return g
 
     def _start(self) -> 'PCFG':
         """Eliminate the start symbol from any RHS"""
         return PCFG.from_rule_list(
             "_START_",
-            self.as_rule_list() + [("_START_", self.start, 1)]
+            self.as_rule_list() + [("_START_", [self.start], 1)]
         )
 
     def _term(self) -> 'PCFG':
@@ -193,6 +208,7 @@ class PCFG(CFG):
         rules = []
         for pred in self.rules:
             succs, weights = self.rules[pred], self.weights[pred]
+            # print("term:", pred, succs, weights)
             for i, (succ, weight) in enumerate(zip(succs, weights)):
                 if len(succ) == 1:
                     rules.append((pred, succ, weight))
@@ -201,7 +217,9 @@ class PCFG(CFG):
                     new_succ = []
                     for c in succ:
                         if self.is_terminal(c):
-                            rules.append((nt(c), [c], 1))
+                            nt_rule = (nt(c), [c], 1)
+                            if nt_rule not in rules:
+                                rules.append(nt_rule)
                             new_succ.append(nt(c))
                         else:
                             new_succ.append(c)
@@ -221,6 +239,7 @@ class PCFG(CFG):
         rules = []
         for pred in self.rules:
             succs, weights = self.rules[pred], self.weights[pred]
+            # print("bin:", pred, succs, weights)
             for i, (succ, weight) in enumerate(zip(succs, weights)):
                 if len(succ) > 2:
                     rules.append((pred, [succ[0], nt(pred, i, 1)], 1))
@@ -263,7 +282,7 @@ class PCFG(CFG):
                 return cache[letter]
             elif self.is_terminal(letter):
                 out = False
-            elif any(all(is_nullable(c) for c in rule)
+            elif any(all(is_nullable(c) for c in rule if c != letter)
                      for rule in self.rules[letter]):
                 out = True
             else:
@@ -321,31 +340,42 @@ class PCFG(CFG):
         def contract(nt) -> List:
             if nt in cache:
                 return cache[nt]
-
             rules = []
             for s, w in zip(self.rules[nt], self.weights[nt]):
-                if len(s) > 1 or self.is_terminal(s[0]):
+                # remove identity productions
+                if s == [nt]:
+                    continue
+                h = s[0]
+                if len(s) > 1 or self.is_terminal(h):
                     rules.append((s, w))
                 else:
-                    contracted.add(s[0])
-                    for ss, sw in contract(s[0]):
+                    contracted.add(h)
+                    for ss, sw in contract(h):
                         rules.append((ss, w * sw))
-
             cache[nt] = rules
-            return rules
+            return cache[nt]
 
-        return PCFG.from_rule_list(
-            self.start,
-            [(p, s, w)
-             for p in self.rules
-             if p not in contracted
-             for s, w in contract(p)]
-        )
+        def used(nt, rules) -> bool:
+            return any(nt != p and nt in s
+                       for p, s, w in rules)
+
+        rules = [(p, s, w)
+                 for p in self.rules
+                 for s, w in contract(p)]
+
+        # filter out unused nonterminals (disconnected graph components)
+        filtered_rules = []
+        for p, s, w in rules:
+            if p == self.start or used(p, rules) \
+               and (p, s, w) not in filtered_rules:
+                filtered_rules.append((p, s, w))
+
+        return PCFG.from_rule_list(self.start, filtered_rules)
 
     def __str__(self) -> str:
         rules = "\n  ".join(
             f"{pred} ->\n    " +
-            "\n    ".join(f"{succ} @ {weight:.2f}"
+            "\n    ".join(f"{' '.join(succ)} @ {weight:.2f}"
                           for succ, weight in zip(self.rules[pred],
                                                   self.weights[pred]))
             for pred in self.rules
@@ -500,8 +530,8 @@ def test_del():
                 "C": [["b"], ["c"]],
             },
             weights="uniform",
-        ),
-            PCFG(
+         ),
+         PCFG(
             start="S",
             rules={
                 "S": [["A", "b", "B"], ["C"], ["b", "B"], ["A", "b"], ["b"]],
@@ -564,14 +594,14 @@ def test_unit():
                 "A": [["a", "b", "c"], ["e", "f"]],
             },
             weights="uniform",
-         ),
-         PCFG(
+        ),
+            PCFG(
             start="S",
             rules={
-                "S": [["a", "b", "c"], ["e", "f"], ["s", "s", "s"]]
+                "S": [["a", "b", "c"], ["e", "f"], ["s", "s", "s"]],
             },
             weights="uniform",
-         )),
+        )),
         (PCFG(
             start="S",
             rules={
@@ -581,8 +611,8 @@ def test_unit():
                 "C": [["c"]],
             },
             weights="uniform",
-         ),
-         PCFG(
+        ),
+            PCFG(
             start="S",
             rules={
                 "S": [["A", "B"], ["c"]],
@@ -590,7 +620,7 @@ def test_unit():
                 "B": [["b"]],
             },
             weights="uniform",
-         )),
+        )),
         (PCFG(
             start="S",
             rules={
@@ -600,14 +630,33 @@ def test_unit():
                 "C": [["c"]],
             },
             weights="uniform",
-         ),
-         PCFG(
+        ),
+            PCFG(
             start="S",
             rules={
                 "S": [["c"]],
             },
             weights="uniform",
-         )),
+        )),
+        (PCFG(
+            start='S0',
+            rules={
+                'S0': [['S']],
+                'S': [['A'], ['A', 'B']],
+                'A': [['A', 'A']],
+                'B': [['B', 'A']],
+            },
+            weights="uniform",
+         ),
+         PCFG(
+             start='S0',
+             rules={
+                 'S0': [['A', 'A'], ['A', 'B']],
+                 'A': [['A', 'A']],
+                 'B': [['B', 'A']],
+             },
+             weights='uniform',
+        )),
     ]
     for x, y in cases:
         out = x._unit()
@@ -622,6 +671,59 @@ def test_to_CNF():
     test_nullable()
     test_del()
     test_unit()
+
+
+def demo_to_CNF():
+    pcfgs = [
+        # PCFG(
+        #     start="S",
+        #     rules={
+        #         "S": [["A", "B"], ["A"]],
+        #         "A": [["A", "A"]],
+        #         "B": [["B", "A"]],
+        #     },
+        #     weights="uniform",
+        # ),
+        PCFG(
+            start="AXIOM",
+            rules={
+                "AXIOM": [
+                    ["M", "F"],
+                ],
+                "M": [
+                    ["M", "F", "+"],
+                    ["M", "F", "-"],
+                    ["F"],
+                ],
+                "RHS": [
+                    ["F", "[", "PLUSES", "+", "F", "INNER", "]", "RHS", "F"],
+                    ["F", "[", "MINUSES", "-", "F", "INNER", "]", "RHS", "F"],
+                    ["F", "INNER"],
+                ],
+                "INNER": [
+                    ["INNER", "PLUSES", "FS"],
+                    ["INNER", "MINUSES", "FS"],
+                    ["INNER", "FS"],
+                ],
+                "PLUSES": [
+                    ["+", "PLUSES"],
+                    ["+"],
+                ],
+                "MINUSES": [
+                    ["-", "MINUSES"],
+                    ["-"],
+                ],
+                "FS": [
+                    ["FS", "F"],
+                    ["F"],
+                ],
+            },
+            weights="uniform",
+        ),
+    ]
+    for pcfg in pcfgs:
+        print(pcfg)
+        print(pcfg.to_CNF())
 
 
 if __name__ == '__main__':
@@ -644,3 +746,4 @@ if __name__ == '__main__':
     #     pcfg.iterate(["a"], 10)
     # )
     test_to_CNF()
+    demo_to_CNF()
