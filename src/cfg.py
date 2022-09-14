@@ -196,14 +196,14 @@ class PCFG(CFG):
     def _start(self) -> 'PCFG':
         """Eliminate the start symbol from any RHS"""
         return PCFG.from_rule_list(
-            "_START_",
-            self.as_rule_list() + [("_START_", [self.start], 1)]
+            "_start_",
+            self.as_rule_list() + [("_start_", [self.start], 1)]
         )
 
     def _term(self) -> 'PCFG':
         """Eliminate rules with nonsolitary terminals"""
         def nt(c) -> str:
-            return f"_TERM_{c}_"
+            return f"_term_{c}_"
 
         rules = []
         for pred in self.rules:
@@ -234,7 +234,7 @@ class PCFG(CFG):
         should only contain a single terminal.
         """
         def nt(pred, i, j) -> str:
-            return f"_BIN_{pred}_{i}_{j}_"
+            return f"_bin_{pred}_{i}_{j}_"
 
         rules = []
         for pred in self.rules:
@@ -424,16 +424,16 @@ def test_term():
                       ["D", "E", "F"],
                       [""]],
                 "B": [["b"]],
-                "C": [["_TERM_c1_", "_TERM_c2_", "_TERM_c3_"],
+                "C": [["_term_c1_", "_term_c2_", "_term_c3_"],
                       ["c4"],
                       [""]],
-                "D": [["D", "_TERM_d_", "D"]],
+                "D": [["D", "_term_d_", "D"]],
                 "E": [["e"]],
                 "F": [["f"]],
-                "_TERM_c1_": [["c1"]],
-                "_TERM_c2_": [["c2"]],
-                "_TERM_c3_": [["c3"]],
-                "_TERM_d_": [["d"]],
+                "_term_c1_": [["c1"]],
+                "_term_c2_": [["c2"]],
+                "_term_c3_": [["c3"]],
+                "_term_d_": [["d"]],
             },
             weights="uniform")),
     ]
@@ -463,12 +463,12 @@ def test_bin():
             start="S",
             rules={
                 "S": [["A"]],
-                "A": [["B", "_BIN_A_0_1_"],
-                      ["D", "_BIN_A_1_1_"]],
-                "_BIN_A_0_1_": [["C", "_BIN_A_0_2_"]],
-                "_BIN_A_0_2_": [["D", "_BIN_A_0_3_"]],
-                "_BIN_A_0_3_": [["E", "F"]],
-                "_BIN_A_1_1_": [["E", "F"]],
+                "A": [["B", "_bin_A_0_1_"],
+                      ["D", "_bin_A_1_1_"]],
+                "_bin_A_0_1_": [["C", "_bin_A_0_2_"]],
+                "_bin_A_0_2_": [["D", "_bin_A_0_3_"]],
+                "_bin_A_0_3_": [["E", "F"]],
+                "_bin_A_1_1_": [["E", "F"]],
                 "B": [["b"]],
                 "C": [["c"]],
                 "D": [["d"]],

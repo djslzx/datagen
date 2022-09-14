@@ -66,13 +66,13 @@ def constrained_random_S0LSystem(n_rules: int,
                 ["M", "F"],
             ],
             "M": [
-                ["M", "F+"],
-                ["M", "F-"],
+                ["M", "F", "+"],
+                ["M", "F", "-"],
                 [""],
             ],
             "RHS": [
-                ["F", "[", "PLUSES", "+F", "INNER", "]", "RHS", "F"],
-                ["F", "[", "MINUSES", "-F", "INNER", "]", "RHS", "F"],
+                ["F", "[", "PLUSES", "+", "F", "INNER", "]", "RHS", "F"],
+                ["F", "[", "MINUSES", "-", "F", "INNER", "]", "RHS", "F"],
                 ["F", "INNER"],
             ],
             "INNER": [

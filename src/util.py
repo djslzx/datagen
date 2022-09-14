@@ -2,7 +2,7 @@ import random
 import numpy as np
 from os import mkdir
 import itertools as it
-from typing import List, Tuple, Dict, Any, Iterable
+from typing import List, Tuple, Dict, Any, Iterable, Optional
 
 
 def language(iterable: Iterable[Any]) -> Iterable[Iterable[Any]]:
@@ -25,12 +25,13 @@ def remove_from_string(s: str, indices: List[int]) -> str:
     return out
 
 
-def unique(vec: List) -> bool:
+def unique(vec: List) -> Tuple[bool, Optional[Tuple]]:
     for i in range(len(vec)):
         for j in range(i+1, len(vec)):
-            if vec[i] == vec[j]:
-                return False
-    return True
+            a, b = vec[i], vec[j]
+            if a == b:
+                return False, (a, b)
+    return True, None
 
 
 def test_unique():
@@ -41,7 +42,7 @@ def test_unique():
         ([[1], [2], [1]], False),
     ]
     for x, y in cases:
-        out = unique(x)
+        out, _ = unique(x)
         assert out == y, f"Expected {y}, got {out}"
     print(" [+] test_unique() passed")
 
