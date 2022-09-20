@@ -103,13 +103,13 @@ class PCFG(CFG):
     This represents a grammar where A expands to B or CD with equal
     probability.
     """
-    Word = List[str]
-    Letter = str
+    Word = str
+    Sentence = List[Word]
 
     def __init__(self,
-                 start: Letter,
-                 rules: Dict[Letter, List[Word]],
-                 weights: Union[str, Dict[Letter, List[float]]]):
+                 start: Word,
+                 rules: Dict[Word, List[Sentence]],
+                 weights: Union[str, Dict[Word, List[float]]]):
         assert start in rules, f"Starting word {start} not found in rules"
         assert all(succs and all(succs) for pred, succs in rules.items()), \
             "All RHS should be nonempty"
@@ -118,7 +118,6 @@ class PCFG(CFG):
             assert ok, \
                 "All successors should be unique wrt a predecessor, " \
                 f"but got duplicate {pair} in {pred} -> {succs}"
-
         self.start = start
         self.rules = rules
         if weights == "uniform":
@@ -136,21 +135,32 @@ class PCFG(CFG):
             for pred, succs in self.rules.items()
         }
 
-    def from_rule_list(start: Letter,
-                       rs: List[Tuple[Letter, Word, float]]) -> 'PCFG':
+    def weight(self, pred: Word, succ: Sentence) -> float:
+        if pred in self.rules:
+            for s, w in zip(self.rules[pred], self.weights[pred]):
+                if s == succ:
+                    return w
+        return 0
+
+    @property
+    def nonterminals(self) -> List[Word]:
+        return self.rules.keys()
+
+    def from_rule_list(start: Word,
+                       rules: List[Tuple[Word, Sentence, float]]) -> 'PCFG':
         """Construct a PCFG from a list of rules with weights"""
-        rules = {}
+        words = {}
         weights = {}
-        for letter, word, weight in sorted(rs, key=lambda x: x[0]):
-            if letter not in rules:
-                rules[letter] = [word]
+        for letter, word, weight in sorted(rules, key=lambda x: x[0]):
+            if letter not in words:
+                words[letter] = [word]
                 weights[letter] = [weight]
             else:
-                rules[letter].append(word)
+                words[letter].append(word)
                 weights[letter].append(weight)
-        return PCFG(start, rules, weights)
+        return PCFG(start, words, weights)
 
-    def as_rule_list(self) -> List[Tuple[Letter, Word, float]]:
+    def as_rule_list(self) -> List[Tuple[Word, Sentence, float]]:
         """View a PCFG as a list of rules with weights"""
         return [
             (letter, word, weight)
@@ -158,7 +168,7 @@ class PCFG(CFG):
             for word, weight in zip(self.rules[letter], self.weights[letter])
         ]
 
-    def add_rule(self, pred: Letter, succ: Word, weight: float) -> 'PCFG':
+    def add_rule(self, pred: Word, succ: Sentence, weight: float) -> 'PCFG':
         """Construct a PCFG by adding a rule to the current PCFG; immutable"""
         return PCFG.from_rule_list(self.start,
                                    self.as_rule_list() + (pred, succ, weight))
@@ -256,7 +266,7 @@ class PCFG(CFG):
                     rules.append((pred, succ, weight))
         return PCFG.from_rule_list(self.start, rules)
 
-    def nullables(self) -> Set[Letter]:
+    def nullables(self) -> Set[Word]:
         """
         Returns the set of nullable nonterminals in the grammar, paired
         with the sets of nonterminals that, when nulled, null the initial
@@ -356,9 +366,14 @@ class PCFG(CFG):
             return cache[nt]
 
         def used(nt, rules) -> bool:
+            """
+            Determines whether a nonterminal is used in the
+            productions of other nonterminals in `rules`.
+            """
             return any(nt != p and nt in s
-                       for p, s, w in rules)
+                       for p, s, _ in rules)
 
+        # run contract()
         rules = [(p, s, w)
                  for p in self.rules
                  for s, w in contract(p)]
