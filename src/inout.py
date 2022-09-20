@@ -173,6 +173,9 @@ def counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False):
 
 
 def inside_outside(G: PCFG, corpus: List[PCFG.Sentence]) -> PCFG:
+    """
+    Perform one step of inside-outside.
+    """
     count = counts(G, corpus)
     sum_counts = {A: sum(count[A, tuple(succ)] for succ in succs)
                   for A, succs in G.rules.items()}
