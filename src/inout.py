@@ -8,10 +8,11 @@ from typing import Dict, Iterable, Tuple
 from cfg import PCFG
 
 
-def print_alpha(alpha: Dict):
+def print_map(alpha: Dict):
     for k, v in alpha.items():
         if v > 0:
             print(k, f'{v:.5f}')
+    print()
 
 
 def inward_diag(n: int, start=0) -> Iterable[Tuple[int, int]]:
@@ -120,32 +121,52 @@ def inside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
 
 
 def outside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
-    alpha = inside(G, s, debug=debug)
+    alpha = inside(G, s, debug=False)
+    if debug:
+        print("outside alpha:")
+        print_map(alpha)
+
     beta = {}
     n = len(s)
 
     # start with inner diagonal (singleton)
-    beta[n-1, n-1, G.start] = 1
     for A in G.rules:
-        beta[n-1, n-1, A] = 0
+        beta[0, n-1, A] = int(A == G.start)
 
     # recurse on other diagonals, proceeding outwards
-    for i, j in inward_diag(n, end=n-2, rev=True):
-        print(i, j)
+    for i, j in outward_diag(n, start=n-1):
 
         # initialize all betas to 0
         for A in G.rules:
             beta[i, j, A] = 0
 
-        for A, succ, w in G.as_rule_list():
+        for B, succ, w in G.as_rule_list():
             if len(succ) != 2:
                 continue
-            B, C = succ
-            for k in range(i):
-                pass
 
+            # A is right child
+            C, A = succ
+            for k in range(i):
+                b = w * alpha[k, i-1, C] * beta[k, j, B]
+                beta[i, j, A] += b
+                if debug:
+                    print(f"beta({i},{j},{A}) = w[{B} -> {C} {A}] * "
+                          f"alpha[{k},{i-1},{C}] * beta[{k},{j},{B}] = "
+                          f"{w} * {alpha[k, i-1, C]} * {beta[k, j, B]} = {b}")
+
+            # A is left child
+            A, C = succ
             for k in range(j+1, n):
-                pass
+                b = w * alpha[j+1, k, C] * beta[i, k, B]
+                beta[i, j, A] += b
+                if debug:
+                    print(f"beta({i},{j},{A}) = w[{B} -> {A} {C}] * "
+                          f"alpha[{j+1},{k},{C}] * beta[{i},{k},{B}] = "
+                          f"{w} * {alpha[j+1, k, C]} * {beta[i, k, B]} = {b}")
+
+    if debug:
+        print_map(beta)
+    return beta
 
 
 def demo_io():
@@ -167,12 +188,15 @@ def demo_io():
     ).to_CNF()
     # g.set_uniform_weights()
     print(g)
-    w1 = ["She", "eats", "pizza", "without", "anchovies"]
-    w2 = ["She", "eats", "pizza", "without", "hesitation"]
-    a1 = inside(g, w1, debug=True)
-    a2 = inside(g, w2, debug=True)
-    print_alpha(a1)
-    print_alpha(a2)
+    s1 = ["She", "eats", "pizza", "without", "anchovies"]
+    s2 = ["She", "eats", "pizza", "without", "hesitation"]
+
+    # a1 = inside(g, s1, debug=True)
+    # a2 = inside(g, s2, debug=True)
+    # print_map(a1)
+    # print_map(a2)
+
+    outside(g, s1, debug=True)
 
 
 if __name__ == '__main__':
