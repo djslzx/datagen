@@ -4,6 +4,7 @@ import sys
 import random
 from typing import Dict, List, Generator, Union, Tuple
 from math import sin, cos, radians, sqrt
+import pdb
 import util
 
 
@@ -82,7 +83,6 @@ class LSystem:
         while word.count('F') < length:
             cache = word
             word = self.expand(word)
-            print(word, cache)
             if word == cache:
                 break
             depth += 1
@@ -267,6 +267,57 @@ class S0LSystem(LSystem):
         return f'axiom: {self.axiom}\n' + \
             'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
 
+    def __eq__(self, other) -> bool:
+        return (self.axiom, self.productions, self.distribution) == \
+            (other.axiom, other.productions, other.distribution)
+
+    @staticmethod
+    def from_str(s: str) -> 'S0LSystem':
+        """
+        Accepts a list of strings, or a single string with spaces between
+        distinct tokens, and outputs an L-system. The list should have the
+        form 'AXIOM | RULE; RULE', where RULE has the form 'LHS -> RHS'.
+        """
+        # pdb.set_trace()
+
+        if isinstance(s, list):
+            s = " ".join(s)
+        s_axiom, s_rules = s.strip().split('|')
+        axiom = s_axiom.replace(' ', '')
+
+        rules = {}
+        for s_rule in s_rules.split(';'):
+            if not s_rule.strip():
+                continue
+
+            lhs, rhs = s_rule.split('->')
+            lhs = lhs.strip()
+            rhs = rhs.replace(';', '').strip()
+
+            if lhs in rules:
+                rules[lhs].append(rhs)
+            else:
+                rules[lhs] = [rhs]
+
+        return S0LSystem(axiom, rules, "uniform")
+
+
+def test_from_str():
+    cases = [
+        ('F | F -> fF',
+         S0LSystem('F', {'F': ['fF']}, 'uniform')),
+        ('  F  |  F -> fF  ; ',
+         S0LSystem('F', {'F': ['fF']}, 'uniform')),
+        ('F | F -> A; A -> Ab; A -> bb; A -> AA',
+         S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform')),
+        ('F | F -> A; A -> Ab; A -> bb; A -> AA'.split(' '),
+         S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform')),
+    ]
+    for s, y in cases:
+        out = S0LSystem.from_str(s)
+        assert out == y, f"Expected {y}, but got {out}"
+    print(" [+] passed test_from_str")
+
 
 def test_to_sticks():
     cases = [
@@ -404,9 +455,10 @@ def draw_systems(out_dir: str):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: lindenmayer.py DIR")
-        sys.exit(1)
+    # if len(sys.argv) != 2:
+    #     print("Usage: lindenmayer.py DIR")
+    #     sys.exit(1)
 
     # test_to_sticks()
-    draw_systems(out_dir=sys.argv[1])
+    # draw_systems(out_dir=sys.argv[1])
+    test_from_str()
