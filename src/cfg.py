@@ -58,23 +58,32 @@ class CFG:
 
     def fixpoint(self) -> List[str]:
         """Keep applying rules to the word until it stops changing."""
-        prev = self.start
+        prev = [self.start]
         current = self.apply(self.start)
         while current != prev:
             prev = current
             current = self.apply(current)
         return current
 
+    def iterate_fully(self, debug=False) -> List[str]:
+        s = [self.start]
+        print(s)
+        while any(self.is_nonterminal(w) for w in s):
+            s = self.apply(s)
+            if debug:
+                print(" ".join(s))
+        return s
+
     def iterate(self, n: int) -> List[str]:
         """Apply rules to the starting word `n` times."""
-        s = self.start
+        s = [self.start]
         for _ in range(n):
             s = self.apply(s)
         return s
 
     def iterate_until(self, length: int) -> str:
         """Apply rules to the starting word until its length is >= `length`."""
-        s = self.start
+        s = [self.start]
         while len(s) < length:
             cache = s
             s = self.apply(s)
@@ -111,8 +120,8 @@ class PCFG(CFG):
                  rules: Dict[Word, List[Sentence]],
                  weights: Union[str, Dict[Word, List[float]]]):
         assert start in rules, f"Starting word {start} not found in rules"
-        assert all(succs and all(succs) for pred, succs in rules.items()), \
-            "All RHS should be nonempty"
+        # assert all(succs and all(succs) for pred, succs in rules.items()), \
+        #     "All RHS should be nonempty"
         for pred, succs in rules.items():
             ok, pair = util.unique(succs)
             assert ok, \
@@ -742,23 +751,26 @@ def demo_to_CNF():
 
 
 if __name__ == '__main__':
-    # cfg = CFG(rules={
-    #     "a": [["a", "b"],
-    #           ["a"]],
-    #     "b": [["b", "b"],
-    #           ["b"]],
-    # })
-    # pcfg = PCFG(rules={
-    #     "a": [(["b", "a"], 0.5),
-    #           (["a"], 0.5)],
-    #     "b": [(["b"], 0.5),
-    #           (["c", "b"], 0.5)],
-    # })
-    # print(cfg)
-    # print(pcfg)
-    # print(
-    #     # cfg.iterate(["a"], 10),
-    #     pcfg.iterate(["a"], 10)
-    # )
+    cfg = CFG(
+        start="a",
+        rules={
+            "a": [["a", "b"], ["a"]],
+            "b": [["b", "b"], ["b"]],
+        }
+    )
+    pcfg = PCFG(
+        start="a",
+        rules={
+            "a": [["b", "a"], ["a"]],
+            "b": [["b"], ["c", "b"]],
+        },
+        weights="uniform",
+    )
+    print(cfg)
+    print(cfg.iterate(10))
+
+    print(pcfg)
+    print(pcfg.iterate(10))
+
     test_to_CNF()
-    demo_to_CNF()
+    # demo_to_CNF()
