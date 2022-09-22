@@ -4,117 +4,36 @@ import argparse
 import multiprocess as mp
 from lindenmayer import LSystem, S0LSystem
 from cfg import CFG, PCFG
+from inout import inside_outside
 import util
 
-
-def S0LSystem_from_S0LSystem(n_rules: int, n_expands: int) -> S0LSystem:
-    """
-    Generates the rules of a stochastic OL-System using a stochastic OL-system.
-    """
-    metagrammar = S0LSystem(
-        axiom="F",
-        productions={
-            "F": ['+F', '-F', '[F]', 'FF']
-        },
-        distribution='uniform',
-    )
-    rules = [metagrammar.nth_expansion(n_expands) for i in range(n_rules)]
-    return S0LSystem(
-        axiom="F",
-        productions={
-            "F": rules,
-        },
-        distribution={
-            "F": util.uniform_vec(n_rules)
-        }
-    )
-
-
-def S0LSystem_from_CFG(metagrammar: CFG,
-                       n_rules: int,
-                       max_axiom_length: int,
-                       max_rule_length: int) -> S0LSystem:
-    """
-    Generates a random stochastic context-free L-system, using a CFG.
-    """
-    # TODO: rollout to multiple levels and add probabilities
-    # by learning from a preliminary dataset (or just hard-code for now)
-    rules = []
-    for _ in range(n_rules):
-        fixpt = metagrammar.iterate_until(["RHS"], length=max_rule_length)
-        rules.append(fixpt)
-
-    axiom = metagrammar.iterate_until(["AXIOM"], length=max_axiom_length)
-    if "F" not in axiom:
-        axiom = "F"
-
-    return S0LSystem(
-        axiom=axiom,
-        productions={
-            "F": rules,
-        },
-        distribution="uniform",
-    )
-
-
-def constrained_random_S0LSystem(n_rules: int,
-                                 max_axiom_length: int,
-                                 max_rule_length: int) -> S0LSystem:
-    metagrammar = PCFG(
-        rules={
-            "AXIOM": [
-                ["M", "F"],
-            ],
-            "M": [
-                ["M", "F", "+"],
-                ["M", "F", "-"],
-                [""],
-            ],
-            "RHS": [
-                ["F", "[", "PLUSES", "+", "F", "INNER", "]", "RHS", "F"],
-                ["F", "[", "MINUSES", "-", "F", "INNER", "]", "RHS", "F"],
-                ["F", "INNER"],
-            ],
-            "INNER": [
-                ["INNER", "PLUSES", "FS"],
-                ["INNER", "MINUSES", "FS"],
-                ["INNER", "FS"],
-            ],
-            "PLUSES": [
-                ["+", "PLUSES"],
-                [""],
-            ],
-            "MINUSES": [
-                ["-", "MINUSES"],
-                [""],
-            ],
-            "FS": [
-                ["FS", "F"],
-                [""],
-            ],
-        },
-        weights="uniform",
-    )
-    return S0LSystem_from_CFG(metagrammar,
-                              n_rules,
-                              max_axiom_length,
-                              max_rule_length)
-
-
-def general_random_S0LSystem(n_rules: int,
-                             max_axiom_length: int,
-                             max_rule_length: int) -> S0LSystem:
-    metagrammar = CFG(rules={
+GENERAL_MG = PCFG(
+    start="L-SYSTEM",
+    weights="uniform",
+    rules={
+        "L-SYSTEM": [
+            ["AXIOM", "|", "RULES"],
+        ],
         "AXIOM": [
-            ["F"],
             ["AXIOM", "NT"],
             ["AXIOM", "T"],
+            ["F"],
+        ],
+        "RULES": [
+            ["RULE", ";", "RULES"],
+            ["RULE"],
+        ],
+        "RULE": [
+            ["LHS", "->", "RHS"],
+        ],
+        "LHS": [
+            ["NT"],
         ],
         "RHS": [
             ["[", "B", "]"],
             ["RHS", "NT"],
             ["RHS", "T"],
-            [""],
+            [],
         ],
         "NT": [
             ["F"],
@@ -126,10 +45,88 @@ def general_random_S0LSystem(n_rules: int,
         "B": [
             ["B", "NT"],
             ["B", "T"],
-            [""],
+            [],
         ],
-    })
-    return S0LSystem_from_CFG(metagrammar,
+    },
+)
+
+HANDCODED_MG = PCFG(
+    start="L-SYSTEM",
+    weights="uniform",
+    rules={
+        "L-SYSTEM": [
+            ["AXIOM", "|", "RULES"],
+        ],
+        "AXIOM": [
+            ["M", "F"],
+        ],
+        "M": [
+            ["M", "F", "+"],
+            ["M", "F", "-"],
+            [],
+        ],
+        "RULES": [
+            ["RULE", ";", "RULES"],
+            ["RULE"],
+        ],
+        "RULE": [
+            ["LHS", "->", "RHS"],
+        ],
+        "LHS": [
+            # TODO: add more LHS options
+            ["NT"],
+        ],
+        "RHS": [
+            ["F", "[", "PLUSES", "+", "F", "INNER", "]", "RHS", "F"],
+            ["F", "[", "MINUSES", "-", "F", "INNER", "]", "RHS", "F"],
+            ["F", "INNER"],
+        ],
+        "INNER": [
+            ["INNER", "PLUSES", "FS"],
+            ["INNER", "MINUSES", "FS"],
+            ["INNER", "FS"],
+        ],
+        "PLUSES": [
+            ["+", "PLUSES"],
+            [],
+        ],
+        "MINUSES": [
+            ["-", "MINUSES"],
+            [],
+        ],
+        "FS": [
+            ["FS", "F"],
+            [],
+        ],
+    },
+)
+
+
+def S0LSystem_from_CFG(metagrammar: CFG,
+                       n_rules: int,
+                       max_axiom_length: int,
+                       max_rule_length: int) -> S0LSystem:
+    """
+    Generates a random stochastic context-free L-system, using a CFG.
+    """
+    # TODO: explode CFG to multiple levels
+    grammar_str = metagrammar.iterate_fully()
+    return S0LSystem.from_str(grammar_str)
+
+
+def handcoded_random_S0LSystem(n_rules: int,
+                               max_axiom_length: int,
+                               max_rule_length: int) -> S0LSystem:
+    return S0LSystem_from_CFG(HANDCODED_MG,
+                              n_rules,
+                              max_axiom_length,
+                              max_rule_length)
+
+
+def general_random_S0LSystem(n_rules: int,
+                             max_axiom_length: int,
+                             max_rule_length: int) -> S0LSystem:
+    return S0LSystem_from_CFG(GENERAL_MG,
                               n_rules,
                               max_axiom_length,
                               max_rule_length)
@@ -142,8 +139,8 @@ def make_grammar(args, index: int, log=True) -> S0LSystem:
             max_axiom_length=random.randint(*args.axiom_length),
             max_rule_length=random.randint(*args.rule_length),
         )
-    elif args.generator == 'constrained':
-        g = constrained_random_S0LSystem(
+    elif args.generator == 'handcoded':
+        g = handcoded_random_S0LSystem(
             n_rules=random.randint(*args.n_rules),
             max_axiom_length=random.randint(*args.axiom_length),
             max_rule_length=random.randint(*args.rule_length),
@@ -227,8 +224,12 @@ def make_render(args, id: str, word: str, angle: float, verbose=False):
 
 
 if __name__ == '__main__':
+    grammar_str = HANDCODED_MG.iterate(50)
+    print(" ".join(grammar_str))
+    exit(0)
+
     p = argparse.ArgumentParser(description="Generate L-systems.")
-    p.add_argument('generator', type=str, choices=['general', 'constrained'],
+    p.add_argument('generator', type=str, choices=['general', 'handcoded'],
                    help="Which L-system metagrammar should be used")
     p.add_argument('n_grammars', type=int,
                    help='The number of grammars to make')
