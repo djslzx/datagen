@@ -5,6 +5,34 @@ import itertools as it
 from typing import List, Tuple, Dict, Any, Iterable, Optional
 
 
+def split_list(s: List[str], t: str) -> List[List[str]]:
+    out = []
+    while True:
+        try:
+            i = s.index(t)
+            r, s = s[:i], s[i+1:]
+            if r:
+                out.append(r)
+        except ValueError:
+            if s:
+                out.append(s)
+            return out
+
+
+def test_split_list():
+    cases = [
+        (["aa", "bb", "cc"], "x", [["aa", "bb", "cc"]]),
+        (["aa", "bb", "cc"], "a", [["aa", "bb", "cc"]]),
+        (["aa", "bb", "cc"], "aa", [["bb", "cc"]]),
+        (["aa", "bb", "cc"], "bb", [["aa"], ["cc"]]),
+        (["aa", "bb", "cc"], "cc", [["aa", "bb"]]),
+    ]
+    for s, t, y in cases:
+        out = split_list(s, t)
+        assert out == y, f"Expected {y}, but got {out}"
+    print(" [+] passed test_split_list")
+
+
 def language(iterable: Iterable[Any]) -> Iterable[Iterable[Any]]:
     """
     Return all the words in the language induced by the alphabet `iterable`
@@ -131,8 +159,9 @@ def parse_braces(s: str) -> List[Tuple[int, int]]:
 if __name__ == '__main__':
     # for i in range(10):
     #     print(gaussian_vec(5))
-
     # s = '[asdf[ddd]s[df]sdf][dsdf]'
     # for a, b in parse_braces(s):
-        # print(s[a:b+1])
+    #     print(s[a:b+1])
+
     test_unique()
+    test_split_list()
