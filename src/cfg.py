@@ -1,6 +1,7 @@
 import random
 import itertools as it
 from typing import Dict, List, Tuple, Union, Set
+from pprint import pp
 import util
 
 
@@ -28,6 +29,10 @@ class CFG:
             f"{pred} -> {succs}"
             for pred, succs in self.rules.items())
         return "CFG: {\n  " + rules + "\n}"
+
+    @staticmethod
+    def from_PCFG(g: 'PCFG'):
+        return CFG(g.start, g.rules)
 
     def is_nonterminal(self, letter: str) -> bool:
         return letter in self.rules
@@ -136,7 +141,10 @@ class PCFG(CFG):
 
     def __eq__(self, other):
         return isinstance(other, PCFG) and \
-            (self.rules, self.weights) == (other.rules, other.weights)
+            self.rules == other.rules and \
+            all(util.approx_eq(f1, f2, threshold=10 ** -2)
+                for w in self.rules
+                for f1, f2 in zip(self.weights[w], other.weights[w]))
 
     def set_uniform_weights(self):
         self.weights = {
@@ -196,6 +204,65 @@ class PCFG(CFG):
                     self.as_rule_list()
                 )
             )
+
+    def to_bigram(self) -> 'PCFG':
+        """
+        Expand the PCFG into a bigram model.
+
+        Annotate all RHS appearances of a nonterminal with an index,
+        then duplicate the resulting rules with the LHS being each
+        unique annotated RHS.
+
+        Given an nt X appearing in k RHS's, annotate each X with an index i
+        to yield X_i, which replaces each RHS appearance of X.
+        Then, add rules X_i -> ... for each i.
+        """
+        rules = []
+        nt_counts = {nt: 0 for nt in self.nonterminals}
+        for p, s, w in self.as_rule_list():
+            new_s = []
+            for word in s:
+                if self.is_nonterminal(word):
+                    nt_counts[word] += 1
+                    new_s.append(f"{word}_{nt_counts[word]}")
+                else:
+                    new_s.append(word)
+            rules.append((p, new_s, w))
+        duped_rules = []
+        for p, s, w in rules:
+            for i in range(1, nt_counts[p] + 1):
+                duped_rules.append((f"{p}_{i}", s, w))
+        # add transitions to transformed start symbol
+        n = nt_counts[self.start]
+        for i in range(1, n + 1):
+            duped_rules.append((self.start, [f"{self.start}_{i}"], 1/n))
+
+        # pp(list(self.as_rule_list()))
+        # pp(rules)
+        # pp(duped_rules)
+
+        return PCFG.from_rule_list(self.start, duped_rules)
+
+    def explode(self, n: int) -> 'PCFG':
+        """
+        Explode the grammar into a k-gram grammar.
+        """
+        assert False, "Not implemented"
+        if n == 1:
+            return self
+        rules = []
+        # duplicate all predecessors k times
+        for p, s, w in self.as_rule_list():
+            for i in range(n):
+                rules.append((f"{p}_{i}", s, w))
+        # duplicate all successors
+        for p, s, w in rules:
+            for j, c in s:
+                if self.is_nonterminal(c):
+                    for i in range(n):
+                        succ = s[:j] + f"{c}_{i}" + s[j+1:]
+                        rules.append((p, succ, w/n))
+        # TODO
 
     def to_CNF(self) -> 'PCFG':
         """Convert to Chomsky normal form; immutable"""
@@ -420,6 +487,179 @@ class PCFG(CFG):
             return random.choices(population=self.rules[letter],
                                   weights=self.weights[letter],
                                   k=1)[0]
+
+
+def test_explode():
+    cases = [
+        (PCFG.from_rule_list(
+            start="S",
+            rules=[
+                ("S", ["A"], 1),
+                ("A", ["a"], 1),
+            ],
+        ), 2, PCFG.from_rule_list(
+            start="S",
+            rules=[
+                # 2 ^ 2 + 2
+                ("S_1", ["A_1"], 0.5),
+                ("S_1", ["A_2"], 0.5),
+                ("S_2", ["A_1"], 0.5),
+                ("S_2", ["A_2"], 0.5),
+                ("A_1", ["a"], 1),
+                ("A_2", ["a"], 1),
+            ],
+        )),
+        (PCFG.from_rule_list(
+            start="S",
+            rules=[
+                ("S", ["A"], 1),
+                ("A", ["a"], 1),
+            ],
+        ), 3, PCFG.from_rule_list(
+            start="S",
+            rules=[
+                # 3 ^ 2 + 3
+                ("S_1", ["A_1"], 0.333),
+                ("S_1", ["A_2"], 0.333),
+                ("S_1", ["A_3"], 0.333),
+                ("S_2", ["A_1"], 0.333),
+                ("S_2", ["A_2"], 0.333),
+                ("S_2", ["A_3"], 0.333),
+                ("S_3", ["A_1"], 0.333),
+                ("S_3", ["A_2"], 0.333),
+                ("S_3", ["A_3"], 0.333),
+                ("A_1", ["a"], 1),
+                ("A_2", ["a"], 1),
+                ("A_3", ["a"], 1),
+            ],
+        )),
+        (PCFG.from_rule_list(
+            start="E",
+            rules=[
+                ("E", ["-" "E"], 0.5),
+                ("E", ["E" "+" "E"], 0.5),
+            ],
+        ), 2, PCFG.from_rule_list(
+            start="S",
+            rules=[
+                # 2 ^ 2 + 2 ^ 3
+                ("E_1", ["-" "E_1"], 0.25),
+                ("E_1", ["-" "E_2"], 0.25),
+                ("E_1", ["E_1" "+" "E_1"], 0.125),
+                ("E_1", ["E_1" "+" "E_2"], 0.125),
+                ("E_1", ["E_2" "+" "E_1"], 0.125),
+                ("E_1", ["E_2" "+" "E_2"], 0.125),
+                ("E_2", ["-" "E_1"], 0.25),
+                ("E_2", ["-" "E_2"], 0.25),
+                ("E_2", ["E_1" "+" "E_1"], 0.125),
+                ("E_2", ["E_1" "+" "E_2"], 0.125),
+                ("E_2", ["E_2" "+" "E_1"], 0.125),
+                ("E_2", ["E_2" "+" "E_2"], 0.125),
+            ],
+        )),
+    ]
+    for g, k, y in cases:
+        out = g.explode(k)
+        assert out == y, f"Expected {y}, but got {out}"
+    print(" [+] passed test_explode")
+
+
+def test_to_bigram():
+    # annotate repeated nonterminals with indices, then make
+    # copies of the original rules with however many indices were used
+    cases = [
+        (PCFG.from_rule_list(
+            start="S",
+            rules=[
+                ("S", ["a", "S"], 0.333),
+                ("S", ["b", "S"], 0.333),
+                ("S", ["c", "S"], 0.333),
+            ],
+        ), PCFG.from_rule_list(
+            start="S",
+            rules=[
+                ("S", ["S_1"], 0.333),
+                ("S", ["S_2"], 0.333),
+                ("S", ["S_3"], 0.333),
+
+                # 3 rules ^ 2
+                ("S_1", ["a", "S_1"], 0.333),
+                ("S_1", ["b", "S_2"], 0.333),
+                ("S_1", ["c", "S_3"], 0.333),
+
+                ("S_2", ["a", "S_1"], 0.333),
+                ("S_2", ["b", "S_2"], 0.333),
+                ("S_2", ["c", "S_3"], 0.333),
+
+                ("S_3", ["a", "S_1"], 0.333),
+                ("S_3", ["b", "S_2"], 0.333),
+                ("S_3", ["c", "S_3"], 0.333),
+            ],
+        )),
+        (PCFG.from_rule_list(
+            start="E",
+            rules=[
+                ("E", ["-", "E"], 0.5),
+                ("E", ["E", "+", "E"], 0.5),
+            ],
+        ), PCFG.from_rule_list(
+            start="E",
+            rules=[
+                ("E", ["E_1"], 0.333),
+                ("E", ["E_2"], 0.333),
+                ("E", ["E_3"], 0.333),
+
+                # 2 rules ^ 2
+                ("E_1", ["-", "E_1"], 0.5),
+                ("E_1", ["E_2", "+", "E_3"], 0.5),
+
+                ("E_2", ["-", "E_1"], 0.5),
+                ("E_2", ["E_2", "+", "E_3"], 0.5),
+
+                ("E_3", ["-", "E_1"], 0.5),
+                ("E_3", ["E_2", "+", "E_3"], 0.5),
+            ],
+        )),
+        (PCFG.from_rule_list(
+            start="A",
+            rules=[
+                ("A", ["a"], 0.25),
+                ("A", ["B", "C"], 0.25),
+                ("A", ["B"], 0.25),
+                ("A", ["C"], 0.25),
+                ("B", ["B", "B"], 0.5),
+                ("B", ["C"], 0.5),
+                ("C", ["A"], 1),
+            ],
+        ), PCFG.from_rule_list(
+            start="A",
+            rules=[
+                ("A", ["A_1"], 1),
+
+                ("A_1", ["a"], 0.25),
+                ("A_1", ["B_1", "C_1"], 0.25),
+                ("A_1", ["B_2"], 0.25),
+                ("A_1", ["C_2"], 0.25),
+
+                ("B_1", ["B_3", "B_4"], 0.5),
+                ("B_1", ["C_3"], 0.5),
+                ("B_2", ["B_3", "B_4"], 0.5),
+                ("B_2", ["C_3"], 0.5),
+                ("B_3", ["B_3", "B_4"], 0.5),
+                ("B_3", ["C_3"], 0.5),
+                ("B_4", ["B_3", "B_4"], 0.5),
+                ("B_4", ["C_3"], 0.5),
+
+                ("C_1", ["A_1"], 1),
+                ("C_2", ["A_1"], 1),
+                ("C_3", ["A_1"], 1),
+            ],
+        )),
+    ]
+    for g, y in cases:
+        out = g.to_bigram()
+        assert out == y, f"Expected {y}, but got {out}"
+    print(" [+] passed test_to_bigram")
 
 
 def test_term():
@@ -773,4 +1013,5 @@ if __name__ == '__main__':
     print(pcfg.iterate(10))
 
     test_to_CNF()
+    test_to_bigram()
     # demo_to_CNF()
