@@ -78,7 +78,8 @@ class CFG:
 
     def iterate_fully(self, debug=False) -> List[str]:
         s = [self.start]
-        print(s)
+        if debug:
+            print(s)
         while any(self.is_nonterminal(w) for w in s):
             s = self.apply(s)
             if debug:
@@ -168,6 +169,9 @@ class PCFG(CFG):
                 if s == succ:
                     return w
         return 0
+
+    def __len__(self) -> int:
+        return sum(len(succs) for pred, succs in self.rules.items())
 
     @property
     def nonterminals(self) -> List[Word]:
@@ -279,9 +283,7 @@ class PCFG(CFG):
                 else:
                     factors.append([word])
 
-            print(f'factors: {factors}')
             prod = list(it.product(*factors))
-            print(f'product: {prod}')
             m = len(prod)
             for new_s in prod:
                 annotated_rules.append((p, list(new_s), w/m))
@@ -662,7 +664,6 @@ def test_explode():
         )),
     ]
     for g, y in cases:
-        print("Handling case:", g, y)
         out = g.explode()
         assert out == y, f"Expected {y}, but got {out}"
     print(" [+] passed test_explode")
@@ -1121,26 +1122,26 @@ def demo_to_CNF():
 
 
 if __name__ == '__main__':
-    cfg = CFG(
-        start="a",
-        rules={
-            "a": [["a", "b"], ["a"]],
-            "b": [["b", "b"], ["b"]],
-        }
-    )
-    pcfg = PCFG(
-        start="a",
-        rules={
-            "a": [["b", "a"], ["a"]],
-            "b": [["b"], ["c", "b"]],
-        },
-        weights="uniform",
-    )
-    print(cfg)
-    print(cfg.iterate(10))
+    # cfg = CFG(
+    #     start="a",
+    #     rules={
+    #         "a": [["a", "b"], ["a"]],
+    #         "b": [["b", "b"], ["b"]],
+    #     }
+    # )
+    # pcfg = PCFG(
+    #     start="a",
+    #     rules={
+    #         "a": [["b", "a"], ["a"]],
+    #         "b": [["b"], ["c", "b"]],
+    #     },
+    #     weights="uniform",
+    # )
+    # print(cfg)
+    # print(cfg.iterate(10))
 
-    print(pcfg)
-    print(pcfg.iterate(10))
+    # print(pcfg)
+    # print(pcfg.iterate(10))
 
     test_to_CNF()
     test_to_bigram()
