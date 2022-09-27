@@ -21,6 +21,12 @@ class CFG:
         assert all(succ and all(succ) for pred, succ in rules.items()), \
             "All rule RHS should be nonempty; " \
             "each element should also be nonempty"
+        assert all(succ == start or any(succ in other_succs
+                                        for other_succs in rules.values())
+                   for pred, succs in rules.items()
+                   for succ in succs), \
+            "Each nonterminal should appear in the RHS of a rule, " \
+            "unless the nonterminal is the start symbol"
         self.start = start
         self.rules = rules
 
@@ -125,8 +131,12 @@ class PCFG(CFG):
                  rules: Dict[Word, List[Sentence]],
                  weights: Union[str, Dict[Word, List[float]]]):
         assert start in rules, f"Starting word {start} not found in rules"
-        # assert all(succs and all(succs) for pred, succs in rules.items()), \
-        #     "All RHS should be nonempty"
+        assert all(succ == start or any(succ in other_succs
+                                        for other_succs in rules.values())
+                   for succs in rules.values()
+                   for succ in succs), \
+            "Each nonterminal should appear in the RHS of a rule, " \
+            "unless the nonterminal is the start symbol"
         for pred, succs in rules.items():
             ok, pair = util.unique(succs)
             assert ok, \
@@ -251,16 +261,11 @@ class PCFG(CFG):
         Explode the grammar exponentially.
         """
         # count the number of appearances of each nonterminal
-        assert False, "unfixed"
-
         nt_counts = {nt: 0 for nt in self.nonterminals}
         for p, s, w in self.as_rule_list():
             for word in s:
                 if self.is_nonterminal(word):
                     nt_counts[word] += 1
-
-        print('nt_counts')
-        pp(nt_counts)
 
         # annotate RHS nonterminals with all possible indices
         annotated_rules = []
@@ -268,38 +273,30 @@ class PCFG(CFG):
             factors = []
             for word in s:
                 if self.is_nonterminal(word):
+                    n = max(1, nt_counts[word])
                     factors.append([f"{word}_{i}"
-                                    for i in range(1, nt_counts[word] + 1)])
+                                    for i in range(1, n+1)])
                 else:
                     factors.append([word])
-            prod = list(it.product(factors))
-            n = len(prod)
+
+            print(f'factors: {factors}')
+            prod = list(it.product(*factors))
+            print(f'product: {prod}')
+            m = len(prod)
             for new_s in prod:
-                annotated_rules.append((p, new_s, w / n))
-
-        print('orig rules')
-        pp(list(self.as_rule_list()))
-
-        print('annotated_rules')
-        pp(annotated_rules)
+                annotated_rules.append((p, list(new_s), w/m))
 
         # duplicate LHS of annotated rules
         duped_rules = []
         for p, s, w in annotated_rules:
-            n = nt_counts[p]
-            for i in range(1, n + 1):
+            n = max(1, nt_counts[p])
+            for i in range(1, n+1):
                 duped_rules.append((f"{p}_{i}", s, w))
 
-        print('duped_rules')
-        pp(duped_rules)
-
         # add transitions to transformed start symbol
-        n = nt_counts[self.start]
-        rules = duped_rules + [(self.start, [f"{self.start}_{i}"], 1 / n)
-                               for i in range(1, n + 1)]
-
-        print('rules')
-        pp(rules)
+        n = max(1, nt_counts[self.start])
+        rules = duped_rules + [(self.start, [f"{self.start}_{i}"], 1/n)
+                               for i in range(1, n+1)]
 
         return PCFG.from_rule_list(self.start, rules)
 
@@ -539,45 +536,10 @@ def test_explode():
         ), PCFG.from_rule_list(
             start="S",
             rules=[
-                ("S", ["S_1"], 0.5),
-                ("S", ["S_2"], 0.5),
+                ("S", ["S_1"], 1),
 
-                # 2 ^ 2 + 2
-                ("S_1", ["A_1"], 0.5),
-                ("S_1", ["A_2"], 0.5),
-                ("S_2", ["A_1"], 0.5),
-                ("S_2", ["A_2"], 0.5),
+                ("S_1", ["A_1"], 1),
                 ("A_1", ["a"], 1),
-                ("A_2", ["a"], 1),
-            ],
-        )),
-        (PCFG.from_rule_list(
-            start="S",
-            rules=[
-                ("S", ["A"], 1),
-                ("A", ["a"], 1),
-            ],
-        ), PCFG.from_rule_list(
-            start="S",
-            rules=[
-                ("S", ["S_1"], 0.333),
-                ("S", ["S_2"], 0.333),
-                ("S", ["S_3"], 0.333),
-
-                # 3 ^ 2 + 3
-                ("S_1", ["A_1"], 0.333),
-                ("S_1", ["A_2"], 0.333),
-                ("S_1", ["A_3"], 0.333),
-                ("S_2", ["A_1"], 0.333),
-                ("S_2", ["A_2"], 0.333),
-                ("S_2", ["A_3"], 0.333),
-                ("S_3", ["A_1"], 0.333),
-                ("S_3", ["A_2"], 0.333),
-                ("S_3", ["A_3"], 0.333),
-
-                ("A_1", ["a"], 1),
-                ("A_2", ["a"], 1),
-                ("A_3", ["a"], 1),
             ],
         )),
         (PCFG.from_rule_list(
@@ -589,29 +551,55 @@ def test_explode():
         ), PCFG.from_rule_list(
             start="E",
             rules=[
-                ("E", ["E_1"], 0.5),
-                ("E", ["E_2"], 0.5),
+                ("E", ["E_1"], 0.333),
+                ("E", ["E_2"], 0.333),
+                ("E", ["E_3"], 0.333),
 
-                # 2 ^ 2 + 2 ^ 3
-                ("E_1", ["-" "E_1"], 0.25),
-                ("E_1", ["-" "E_2"], 0.25),
-                ("E_1", ["E_1" "+" "E_1"], 0.125),
-                ("E_1", ["E_1" "+" "E_2"], 0.125),
-                ("E_1", ["E_2" "+" "E_1"], 0.125),
-                ("E_1", ["E_2" "+" "E_2"], 0.125),
-                ("E_2", ["-" "E_1"], 0.25),
-                ("E_2", ["-" "E_2"], 0.25),
-                ("E_2", ["E_1" "+" "E_1"], 0.125),
-                ("E_2", ["E_1" "+" "E_2"], 0.125),
-                ("E_2", ["E_2" "+" "E_1"], 0.125),
-                ("E_2", ["E_2" "+" "E_2"], 0.125),
+                ("E_1", ["-", "E_1"], 0.5 / 3),
+                ("E_1", ["-", "E_2"], 0.5 / 3),
+                ("E_1", ["-", "E_3"], 0.5 / 3),
+                ("E_1", ["E_1", "+", "E_1"], 0.5 / 9),
+                ("E_1", ["E_1", "+", "E_2"], 0.5 / 9),
+                ("E_1", ["E_1", "+", "E_3"], 0.5 / 9),
+                ("E_1", ["E_2", "+", "E_1"], 0.5 / 9),
+                ("E_1", ["E_2", "+", "E_2"], 0.5 / 9),
+                ("E_1", ["E_2", "+", "E_3"], 0.5 / 9),
+                ("E_1", ["E_3", "+", "E_1"], 0.5 / 9),
+                ("E_1", ["E_3", "+", "E_2"], 0.5 / 9),
+                ("E_1", ["E_3", "+", "E_3"], 0.5 / 9),
+
+                ("E_2", ["-", "E_1"], 0.5 / 3),
+                ("E_2", ["-", "E_2"], 0.5 / 3),
+                ("E_2", ["-", "E_3"], 0.5 / 3),
+                ("E_2", ["E_1", "+", "E_1"], 0.5 / 9),
+                ("E_2", ["E_1", "+", "E_2"], 0.5 / 9),
+                ("E_2", ["E_1", "+", "E_3"], 0.5 / 9),
+                ("E_2", ["E_2", "+", "E_1"], 0.5 / 9),
+                ("E_2", ["E_2", "+", "E_2"], 0.5 / 9),
+                ("E_2", ["E_2", "+", "E_3"], 0.5 / 9),
+                ("E_2", ["E_3", "+", "E_1"], 0.5 / 9),
+                ("E_2", ["E_3", "+", "E_2"], 0.5 / 9),
+                ("E_2", ["E_3", "+", "E_3"], 0.5 / 9),
+
+                ("E_3", ["-", "E_1"], 0.5 / 3),
+                ("E_3", ["-", "E_2"], 0.5 / 3),
+                ("E_3", ["-", "E_3"], 0.5 / 3),
+                ("E_3", ["E_1", "+", "E_1"], 0.5 / 9),
+                ("E_3", ["E_1", "+", "E_2"], 0.5 / 9),
+                ("E_3", ["E_1", "+", "E_3"], 0.5 / 9),
+                ("E_3", ["E_2", "+", "E_1"], 0.5 / 9),
+                ("E_3", ["E_2", "+", "E_2"], 0.5 / 9),
+                ("E_3", ["E_2", "+", "E_3"], 0.5 / 9),
+                ("E_3", ["E_3", "+", "E_1"], 0.5 / 9),
+                ("E_3", ["E_3", "+", "E_2"], 0.5 / 9),
+                ("E_3", ["E_3", "+", "E_3"], 0.5 / 9),
             ],
         )),
         (PCFG.from_rule_list(
             start="A",
             rules=[
-                ("A", ["a"], 0.25),
-                ("A", ["B", "C"], 0.25),
+                ("A", ["a"], 0.5),
+                ("A", ["B", "C"], 0.5),
 
                 ("B", ["B", "B"], 0.5),
                 ("B", ["C"], 0.5),
@@ -621,34 +609,15 @@ def test_explode():
         ), PCFG.from_rule_list(
             start="A",
             rules=[
-                ("A", ["A_1"], 0.5),
-                ("A", ["A_2"], 0.5),
+                ("A", ["A_1"], 1),
 
-                ("A_1", ["a"], 0.25),
-                ("A_1", ["B_1", "C_1"], 0.25 / 6),
-                ("A_1", ["B_1", "C_2"], 0.25 / 6),
-                ("A_1", ["B_2", "C_1"], 0.25 / 6),
-                ("A_1", ["B_2", "C_2"], 0.25 / 6),
-                ("A_1", ["B_3", "C_1"], 0.25 / 6),
-                ("A_1", ["B_3", "C_2"], 0.25 / 6),
-                ("A_1", ["B_1"], 0.25 / 3),
-                ("A_1", ["B_2"], 0.25 / 3),
-                ("A_1", ["B_3"], 0.25 / 3),
-                ("A_1", ["C_1"], 0.25 / 2),
-                ("A_1", ["C_2"], 0.25 / 2),
-
-                ("A_2", ["a"], 0.25),
-                ("A_2", ["B_1", "C_1"], 0.25 / 6),
-                ("A_2", ["B_1", "C_2"], 0.25 / 6),
-                ("A_2", ["B_2", "C_1"], 0.25 / 6),
-                ("A_2", ["B_2", "C_2"], 0.25 / 6),
-                ("A_2", ["B_3", "C_1"], 0.25 / 6),
-                ("A_2", ["B_3", "C_2"], 0.25 / 6),
-                ("A_2", ["B_1"], 0.25 / 3),
-                ("A_2", ["B_2"], 0.25 / 3),
-                ("A_2", ["B_3"], 0.25 / 3),
-                ("A_2", ["C_1"], 0.25 / 2),
-                ("A_2", ["C_2"], 0.25 / 2),
+                ("A_1", ["a"], 0.5),
+                ("A_1", ["B_1", "C_1"], 0.5 / 6),
+                ("A_1", ["B_1", "C_2"], 0.5 / 6),
+                ("A_1", ["B_2", "C_1"], 0.5 / 6),
+                ("A_1", ["B_2", "C_2"], 0.5 / 6),
+                ("A_1", ["B_3", "C_1"], 0.5 / 6),
+                ("A_1", ["B_3", "C_2"], 0.5 / 6),
 
                 ("B_1", ["B_1", "B_1"], 0.5 / 9),
                 ("B_1", ["B_1", "B_2"], 0.5 / 9),
@@ -686,15 +655,14 @@ def test_explode():
                 ("B_3", ["C_1"], 0.5 / 2),
                 ("B_3", ["C_2"], 0.5 / 2),
 
-                ("C_1", ["A_1"], 1 / 2),
-                ("C_1", ["A_2"], 1 / 2),
+                ("C_1", ["A_1"], 1),
 
-                ("C_2", ["A_1"], 1 / 2),
-                ("C_2", ["A_2"], 1 / 2),
+                ("C_2", ["A_1"], 1),
             ],
         )),
     ]
     for g, y in cases:
+        print("Handling case:", g, y)
         out = g.explode()
         assert out == y, f"Expected {y}, but got {out}"
     print(" [+] passed test_explode")
