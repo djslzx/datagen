@@ -2,9 +2,10 @@ import turtle
 import svgwrite
 import sys
 import random
-from typing import Dict, List, Generator, Union, Tuple
+from typing import Dict, List, Iterator, Union, Tuple
 from math import sin, cos, radians, sqrt
 import pdb
+import itertools as it
 import util
 
 
@@ -59,7 +60,7 @@ class LSystem:
     def expand(self, s: str) -> str:
         assert False, f"Should be implemented in child {type(self).__name__}"
 
-    def expansions(self, iters: int) -> Generator[str, None, None]:
+    def expansions(self, iters: int) -> Iterator[str]:
         """Returns a generator over `iters` expansions."""
         word = self.axiom
         yield word
@@ -271,6 +272,16 @@ class S0LSystem(LSystem):
         return (self.axiom, self.productions, self.distribution) == \
             (other.axiom, other.productions, other.distribution)
 
+    def to_str(self) -> str:
+        """
+        Convert the L-system to a string outputted by a metagrammar.
+        Needed to fit metagrammars to libraries of L-systems.
+        """
+        return ''.join(([self.axiom, ' | '] + list(it.chain.from_iterable(
+            [[pred, ' -> ', succ, '; ']
+             for pred, succs in self.productions.items()
+             for succ in succs])))[:-1])
+
     @staticmethod
     def from_str(s: str) -> 'S0LSystem':
         """
@@ -306,7 +317,11 @@ def test_from_str():
     cases = [
         ('F | F -> fF',
          S0LSystem('F', {'F': ['fF']}, 'uniform')),
+        ('F | F -> fF'.split(),
+         S0LSystem('F', {'F': ['fF']}, 'uniform')),
         ('  F  |  F -> fF  ; ',
+         S0LSystem('F', {'F': ['fF']}, 'uniform')),
+        ('  F  |  F -> fF;',
          S0LSystem('F', {'F': ['fF']}, 'uniform')),
         ('F | F -> A; A -> Ab; A -> bb; A -> AA',
          S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform')),
@@ -317,6 +332,19 @@ def test_from_str():
         out = S0LSystem.from_str(s)
         assert out == y, f"Expected {y}, but got {out}"
     print(" [+] passed test_from_str")
+
+
+def test_to_str():
+    cases = [
+        (S0LSystem('F', {'F': ['fF']}, 'uniform'),
+         'F | F -> fF'),
+        (S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform'),
+         'F | F -> A; A -> Ab; A -> bb; A -> AA'),
+    ]
+    for g, y in cases:
+        out = g.to_str()
+        assert out == y, f"Expected {y}, but got {out}"
+    print(" [+] passed test_to_str")
 
 
 def test_to_sticks():
@@ -462,3 +490,4 @@ if __name__ == '__main__':
     # test_to_sticks()
     # draw_systems(out_dir=sys.argv[1])
     test_from_str()
+    test_to_str()
