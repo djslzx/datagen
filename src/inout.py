@@ -76,7 +76,7 @@ def inside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
 
 
 def outside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
-    alpha = inside(G, s, debug=False)
+    alpha = inside(G, s, debug)
     if debug:
         print("outside alpha:")
         print_map(alpha)
@@ -137,13 +137,20 @@ def counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False):
 
     # compute
     for W in corpus:
-        alpha, beta = outside(G, W)
+        alpha, beta = outside(G, W, debug)
         n = len(W)
+
+        if debug:
+            print("alpha/beta")
+            print_map(alpha)
+            print_map(beta)
 
         for A, succ, phi in G.as_rule_list():
             if debug:
-                print(f"{A} -> {succ}")
+                print(f"{A} -> {succ} for word {W}")
+                print_map(alpha)
 
+            # alpha_0,n-1(S) = P_phi(S -> W) = P_phi(W)
             weight = phi / alpha[0, n-1, S]
 
             if len(succ) == 1:
@@ -172,11 +179,11 @@ def counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False):
     return count
 
 
-def inside_outside(G: PCFG, corpus: List[PCFG.Sentence]) -> PCFG:
+def inside_outside(G: PCFG, corpus: List[PCFG.Sentence], debug=False) -> PCFG:
     """
     Perform one step of inside-outside.
     """
-    count = counts(G, corpus)
+    count = counts(G, corpus, debug)
     sum_counts = {A: sum(count[A, tuple(succ)] for succ in succs)
                   for A, succs in G.rules.items()}
     rules = []
