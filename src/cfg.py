@@ -2,6 +2,7 @@ import random
 import itertools as it
 from typing import Dict, List, Tuple, Union, Set
 from pprint import pp
+import pdb
 import util
 
 
@@ -93,7 +94,7 @@ class CFG:
             s = self.apply(s)
         return s
 
-    def iterate_until(self, length: int) -> str:
+    def iterate_until(self, length: int) -> List[str]:
         """Apply rules to the starting word until its length is >= `length`."""
         s = [self.start]
         while len(s) < length:
@@ -101,7 +102,7 @@ class CFG:
             s = self.apply(s)
             if s == cache:
                 break
-        return self._to_str(s)
+        return s
 
     def _to_str(self, word: List[str]) -> str:
         """Turn the word representation into a single Turtle string."""
@@ -126,6 +127,7 @@ class PCFG(CFG):
     """
     Word = str
     Sentence = List[Word]
+    Eps = ['ε']
 
     def __init__(self,
                  start: Word,
@@ -156,6 +158,29 @@ class PCFG(CFG):
             all(util.approx_eq(f1, f2, threshold=10 ** -2)
                 for w in self.rules
                 for f1, f2 in zip(self.weights[w], other.weights[w]))
+
+    def is_in_CNF(self) -> bool:
+        """
+        Checks whether the PCFG is in Chomsky normal form.
+        In CNF, all rules should be of the form:
+         - A -> BC
+         - A -> a
+         - S -> empty
+        """
+        for p, xs, _ in self.as_rule_list():
+            if len(xs) > 2 or len(xs) < 1:
+                return False
+            elif len(xs) == 1:
+                a = xs[0]
+                if (self.is_nonterminal(a) or
+                   (p != self.start and xs == PCFG.Eps)):
+                    return False
+            elif len(xs) == 2:
+                B, C = xs
+                if (self.is_terminal(B) or self.is_terminal(C) or
+                   B == self.start or C == self.start):
+                    return False
+        return True
 
     def set_uniform_weights(self):
         self.weights = {
@@ -332,7 +357,6 @@ class PCFG(CFG):
         rules = []
         for pred in self.rules:
             succs, weights = self.rules[pred], self.weights[pred]
-            # print("term:", pred, succs, weights)
             for i, (succ, weight) in enumerate(zip(succs, weights)):
                 if len(succ) == 1:
                     rules.append((pred, succ, weight))
@@ -363,7 +387,6 @@ class PCFG(CFG):
         rules = []
         for pred in self.rules:
             succs, weights = self.rules[pred], self.weights[pred]
-            # print("bin:", pred, succs, weights)
             for i, (succ, weight) in enumerate(zip(succs, weights)):
                 if len(succ) > 2:
                     rules.append((pred, [succ[0], nt(pred, i, 1)], 1))
@@ -390,7 +413,7 @@ class PCFG(CFG):
         srcs = [
             nt
             for nt, prods in self.rules.items()
-            if nt != self.start and [""] in prods
+            if nt != self.start and PCFG.Eps in prods
         ]
         if not srcs:
             return {}
@@ -438,11 +461,11 @@ class PCFG(CFG):
 
             if succs:
                 w = weight / (len(succs) + 1)
-                if succ != ['']:
+                if succ != PCFG.Eps:
                     rules.append((pred, succ, w))
                 for s in succs:
                     rules.append((pred, s, w))
-            elif succ != ['']:
+            elif succ != PCFG.Eps:
                 rules.append((pred, succ, weight))
 
         condensed_rules = []
@@ -885,7 +908,7 @@ def test_nullable():
             start="S",
             rules={
                 "S": [["A"], ["s"]],
-                "A": [["a"], [""]],
+                "A": [["a"], PCFG.Eps],
             },
             weights="uniform",
         ), {"A"}),
@@ -903,7 +926,7 @@ def test_nullable():
                 "S": [["A"], ["s"]],       # nullable
                 "A": [["B"], ["C", "a"]],  # nullable
                 "B": [["C"]],              # nullable
-                "C": [["x"], [""]],        # nullable
+                "C": [["x"], PCFG.Eps],        # nullable
             },
             weights="uniform",
         ), {"A", "B", "C"}),
@@ -911,7 +934,7 @@ def test_nullable():
     for x, y in cases:
         out = x.nullables()
         assert out == y, f"Expected {y}, got {out}"
-    print(" [+] Passed test_nullable")
+    print(" [+] passed test_nullable")
 
 
 def test_del():
@@ -920,7 +943,7 @@ def test_del():
             start="S",
             rules={
                 "S": [["A", "b", "B"], ["C"]],
-                "A": [["a"], [""]],
+                "A": [["a"], PCFG.Eps],
                 "B": [["A", "A"], ["A", "C"]],
                 "C": [["b"], ["c"]],
             },
@@ -947,7 +970,7 @@ def test_del():
                 "S": [["A", "s1"], ["A1"], ["A1", "s1"], ["A2", "A1", "s2"]],
                 "A": [["A1"]],
                 "A1": [["A2"]],
-                "A2": [["a2"], [""]],
+                "A2": [["a2"], PCFG.Eps],
             },
             weights="uniform",
          ),
@@ -1121,6 +1144,58 @@ def demo_to_CNF():
         print(pcfg.to_CNF())
 
 
+def test_is_in_CNF():
+    cases = [
+        # unit
+        ({
+            "S": [["A"]],
+            "A": [["a"]],
+        }, False),
+        ({
+            "S": [["a"]],
+        }, True),
+        # term/nonterm mix
+        ({
+            "S": [["A", "b"]],
+            "A": [["a"]],
+        }, False),
+        ({
+            "S": [["A", "B"]],
+            "A": [["a"]],
+            "B": [["b"]],
+        }, True),
+        ({
+            "S": [["A", "B"], PCFG.Eps],
+            "A": [["a"]],
+            "B": [["b"]],
+        }, True),
+        # three succs
+        ({
+            "S": [["A", "B", "C"]],
+            "A": [["a"]],
+            "B": [["b"]],
+            "C": [["c"]],
+        }, False),
+        # empty successor in non-start nonterminal
+        ({
+            "S": [["A", "B"]],
+            "A": [PCFG.Eps],
+            "B": [["b"]],
+        }, False),
+
+    ]
+    for rules, y in cases:
+        g = PCFG("S", rules, "uniform")
+        out = g.is_in_CNF()
+        if out != y:
+            print(f"Failed test_is_in_CNF for {g}: "
+                  f"Expected {y}, but got {out}")
+            pdb.set_trace()
+            g.is_in_CNF()
+            exit(1)
+    print(" [+] passed test_is_in_CNF")
+
+
 if __name__ == '__main__':
     # cfg = CFG(
     #     start="a",
@@ -1146,4 +1221,5 @@ if __name__ == '__main__':
     test_to_CNF()
     test_to_bigram()
     test_explode()
+    test_is_in_CNF()
     # demo_to_CNF()
