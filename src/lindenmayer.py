@@ -272,38 +272,37 @@ class S0LSystem(LSystem):
         return (self.axiom, self.productions, self.distribution) == \
             (other.axiom, other.productions, other.distribution)
 
-    def to_str(self) -> str:
+    def to_sentence(self) -> List[str]:
         """
-        Convert the L-system to a string outputted by a metagrammar.
+        Convert the L-system to a sentence outputted by a metagrammar.
         Needed to fit metagrammars to libraries of L-systems.
         """
-        return ''.join(([self.axiom, ' | '] + list(it.chain.from_iterable(
-            [[pred, ' -> ', succ, '; ']
+        return ([self.axiom, ';'] + list(it.chain.from_iterable(
+            [[pred, '~', *succ, ',']
              for pred, succs in self.productions.items()
-             for succ in succs])))[:-1])
+             for succ in succs])))[:-1]
 
     @staticmethod
-    def from_str(s: str) -> 'S0LSystem':
+    def from_sentence(s: List[str]) -> 'S0LSystem':
         """
         Accepts a list of strings, or a single string with spaces between
         distinct tokens, and outputs an L-system. The list should have the
-        form 'AXIOM | RULE; RULE', where RULE has the form 'LHS -> RHS'.
+        form 'AXIOM; RULE, RULE, ...', where RULE has the form 'LHS ~ RHS'.
         """
-        # pdb.set_trace()
-
-        if isinstance(s, list):
-            s = " ".join(s)
-        s_axiom, s_rules = s.strip().split('|')
+        s = " ".join(s)
+        s_axiom, s_rules = s.strip().split(';')
         axiom = s_axiom.replace(' ', '')
+        s_rules = s_rules.strip()
 
         rules = {}
-        for s_rule in s_rules.split(';'):
+        for s_rule in s_rules.split(','):
             if not s_rule.strip():
                 continue
 
-            lhs, rhs = s_rule.split('->')
+            lhs, rhs = s_rule.split('~')
             lhs = lhs.strip()
-            rhs = rhs.replace(';', '').strip()
+            rhs = rhs.replace(',', '').strip()
+            rhs = ''.join(rhs.split())
 
             if lhs in rules:
                 rules[lhs].append(rhs)
@@ -313,38 +312,32 @@ class S0LSystem(LSystem):
         return S0LSystem(axiom, rules, "uniform")
 
 
-def test_from_str():
+def test_from_sentence():
     cases = [
-        ('F | F -> fF',
+        ('F ; F ~ f F'.split(),
          S0LSystem('F', {'F': ['fF']}, 'uniform')),
-        ('F | F -> fF'.split(),
+        ('F ; F ~ f F ,'.split(),
          S0LSystem('F', {'F': ['fF']}, 'uniform')),
-        ('  F  |  F -> fF  ; ',
-         S0LSystem('F', {'F': ['fF']}, 'uniform')),
-        ('  F  |  F -> fF;',
-         S0LSystem('F', {'F': ['fF']}, 'uniform')),
-        ('F | F -> A; A -> Ab; A -> bb; A -> AA',
-         S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform')),
-        ('F | F -> A; A -> Ab; A -> bb; A -> AA'.split(' '),
+        ('F ; F ~ A , A ~ A b , A ~ b b , A ~ A A'.split(),
          S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform')),
     ]
     for s, y in cases:
-        out = S0LSystem.from_str(s)
+        out = S0LSystem.from_sentence(s)
         assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_from_str")
+    print(" [+] passed test_from_sentence")
 
 
-def test_to_str():
+def test_to_sentence():
     cases = [
         (S0LSystem('F', {'F': ['fF']}, 'uniform'),
-         'F | F -> fF'),
+         'F ; F ~ f F'.split()),
         (S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform'),
-         'F | F -> A; A -> Ab; A -> bb; A -> AA'),
+         'F ; F ~ A , A ~ A b , A ~ b b , A ~ A A'.split()),
     ]
     for g, y in cases:
-        out = g.to_str()
+        out = g.to_sentence()
         assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_to_str")
+    print(" [+] passed test_to_sentence")
 
 
 def test_to_sticks():
@@ -489,5 +482,5 @@ if __name__ == '__main__':
 
     # test_to_sticks()
     # draw_systems(out_dir=sys.argv[1])
-    test_from_str()
-    test_to_str()
+    test_from_sentence()
+    test_to_sentence()
