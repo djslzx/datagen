@@ -2,17 +2,21 @@ import random
 import pickle
 import argparse
 import multiprocess as mp
+from pprint import pp
+from typing import List
+
 from lindenmayer import LSystem, S0LSystem
 from cfg import CFG, PCFG
 from inout import inside_outside
 import util
+import book_zoo
 
 GENERAL_MG = PCFG(
     start="L-SYSTEM",
     weights="uniform",
     rules={
         "L-SYSTEM": [
-            ["AXIOM", "|", "RULES"],
+            ["AXIOM", ";", "RULES"],
         ],
         "AXIOM": [
             ["AXIOM", "NT"],
@@ -20,11 +24,11 @@ GENERAL_MG = PCFG(
             ["F"],
         ],
         "RULES": [
-            ["RULE", ";", "RULES"],
+            ["RULE", ",", "RULES"],
             ["RULE"],
         ],
         "RULE": [
-            ["LHS", "->", "RHS"],
+            ["LHS", "~", "RHS"],
         ],
         "LHS": [
             ["NT"],
@@ -52,101 +56,99 @@ GENERAL_MG = PCFG(
 
 HANDCODED_MG = PCFG(
     start="L-SYSTEM",
-    weights="uniform",
     rules={
         "L-SYSTEM": [
-            ["AXIOM", "|", "RULES"],
+            ["AXIOM", ";", "RULES"],
         ],
         "AXIOM": [
-            ["M", "F"],
+            ["F", "M"],
         ],
         "M": [
-            ["M", "F", "+"],
-            ["M", "F", "-"],
-            [],
+            ["PLUSES", "F", "M"],
+            ["MINUSES", "F", "M"],
+            ["F"],
         ],
         "RULES": [
-            ["RULE", ";", "RULES"],
+            ["RULE", ",", "RULES"],
             ["RULE"],
         ],
         "RULE": [
-            ["LHS", "->", "RHS"],
+            ["LHS", "~", "RHS"],
         ],
         "LHS": [
-            # TODO: add more LHS options
-            ["NT"],
+            ["F"],
         ],
         "RHS": [
-            ["F", "[", "PLUSES", "+", "F", "INNER", "]", "RHS", "F"],
-            ["F", "[", "MINUSES", "-", "F", "INNER", "]", "RHS", "F"],
+            ["F", "[", "PLUSES", "F", "INNER", "]", "RHS", "F"],
+            ["F", "[", "MINUSES", "F", "INNER", "]", "RHS", "F"],
             ["F", "INNER"],
         ],
         "INNER": [
             ["INNER", "PLUSES", "FS"],
             ["INNER", "MINUSES", "FS"],
-            ["INNER", "FS"],
+            ["FS"],
         ],
         "PLUSES": [
             ["+", "PLUSES"],
-            [],
+            ["+"],
         ],
         "MINUSES": [
             ["-", "MINUSES"],
-            [],
+            ["-"],
         ],
         "FS": [
             ["FS", "F"],
-            [],
+            ["F"],
         ],
     },
+    weights={
+        "L-SYSTEM": [1],
+        "AXIOM": [1],
+        "M": [0.25, 0.25, 0.5],
+        "RULES": [0.5, 0.5],
+        "RULE": [1],
+        "LHS": [1],
+        "RHS": [0.25, 0.25, 0.5],
+        "INNER": [0.25, 0.25, 0.5],
+        "PLUSES": [0.5, 0.5],
+        "MINUSES": [0.5, 0.5],
+        "FS": [0.5, 0.5],
+    }
 )
 
+METAGRAMMARS = {
+    "general": GENERAL_MG,
+    "handcoded": HANDCODED_MG,
+}
 
-def S0LSystem_from_CFG(metagrammar: CFG,
+
+def S0LSystem_from_CFG(metagrammar: PCFG,
                        n_rules: int,
                        max_axiom_length: int,
-                       max_rule_length: int) -> S0LSystem:
+                       max_rule_length: int,
+                       levels=1) -> S0LSystem:
     """
-    Generates a random stochastic context-free L-system, using a CFG.
+    Generates a random stochastic context-free L-system, using a PCFG.
     """
-    # TODO: explode CFG to multiple levels
-    grammar_str = metagrammar.iterate_fully()
-    return S0LSystem.from_str(grammar_str)
+    mg = metagrammar
+    for i in range(levels):
+        mg = mg.to_bigram()
+    gs = mg.iterate_fully()
+    return S0LSystem.from_str(gs)
 
 
-def handcoded_random_S0LSystem(n_rules: int,
-                               max_axiom_length: int,
-                               max_rule_length: int) -> S0LSystem:
-    return S0LSystem_from_CFG(HANDCODED_MG,
-                              n_rules,
-                              max_axiom_length,
-                              max_rule_length)
+def make_grammar(args, index: int,
+                 bigram_level=1, fit=True, log=True) -> S0LSystem:
+    # fit metagrammar to zoo
+    mg = METAGRAMMARS[args.generator]
+    mg_new = inside_outside(mg, [sys.to_sentence() for sys, angle in book_zoo.zoo])
 
-
-def general_random_S0LSystem(n_rules: int,
-                             max_axiom_length: int,
-                             max_rule_length: int) -> S0LSystem:
-    return S0LSystem_from_CFG(GENERAL_MG,
-                              n_rules,
-                              max_axiom_length,
-                              max_rule_length)
-
-
-def make_grammar(args, index: int, log=True) -> S0LSystem:
-    if args.generator == 'general':
-        g = general_random_S0LSystem(
-            n_rules=random.randint(*args.n_rules),
-            max_axiom_length=random.randint(*args.axiom_length),
-            max_rule_length=random.randint(*args.rule_length),
-        )
-    elif args.generator == 'handcoded':
-        g = handcoded_random_S0LSystem(
-            n_rules=random.randint(*args.n_rules),
-            max_axiom_length=random.randint(*args.axiom_length),
-            max_rule_length=random.randint(*args.rule_length),
-        )
-    else:
-        raise ValueError(f"Unexpected generator type: {args.generator}")
+    g = S0LSystem_from_CFG(
+        mg_new,
+        n_rules=random.randint(*args.n_rules),
+        max_axiom_length=random.randint(*args.axiom_length),
+        max_rule_length=random.randint(*args.rule_length),
+    )
     print(f"[{index}] {g}")
 
     if log:
@@ -210,7 +212,7 @@ def make_sticks(args, grammar: int, specimen: int, word: str, angle: float,
         )
 
 
-def make_render(args, id: str, word: str, angle: float, verbose=False):
+def make_turtle_render(args, id: str, word: str, angle: float, verbose=False):
     if verbose:
         word_preview = word[:20] + ("..." if len(word) > 20 else "")
         print(f"{id} Rendering {word_preview} of length {len(word)}")
@@ -223,13 +225,9 @@ def make_render(args, id: str, word: str, angle: float, verbose=False):
     )
 
 
-if __name__ == '__main__':
-    grammar_str = HANDCODED_MG.iterate(50)
-    print(" ".join(grammar_str))
-    exit(0)
-
+def make():
     p = argparse.ArgumentParser(description="Generate L-systems.")
-    p.add_argument('generator', type=str, choices=['general', 'handcoded'],
+    p.add_argument('generator', type=str, choices=list(METAGRAMMARS.keys()),
                    help="Which L-system metagrammar should be used")
     p.add_argument('n_grammars', type=int,
                    help='The number of grammars to make')
@@ -281,3 +279,53 @@ if __name__ == '__main__':
         #                 verbose=True),
         #     words
         # )
+
+
+def check_bigram():
+    g = HANDCODED_MG
+
+    gs = g.iterate_until(1000)
+    print(gs)
+
+    s = S0LSystem.from_str(gs)
+    print(s)
+
+    # print('grammar:', g)
+    # print('grammar size:', len(g))
+
+    # print('bigram(cnf(g)):', len(g.to_CNF().to_bigram()))
+    # print('cnf(bigram(g))):', len(g.to_bigram().to_CNF()))
+
+    # exp = g.explode()
+    # print('exp sizes:', len(exp))
+
+
+def check_io():
+    corpus = [HANDCODED_MG.iterate_fully() for _ in range(1)]
+    print('corpus:', corpus)
+
+    # tuned_mg = inside_outside(GENERAL_MG, corpus, debug=True)
+    tuned_mg = inside_outside(HANDCODED_MG, corpus, debug=True)
+
+    print(GENERAL_MG)
+    print(tuned_mg)
+
+
+def sample(n: int, m: int):
+    gs: List[List[str]] = [HANDCODED_MG.iterate_fully() for _ in range(n)]
+    # pp(["".join(g) for g in gs])
+
+    sols = [S0LSystem.from_sentence(g) for g in gs]
+    i = 0
+    for sol in sols:
+        print(sol)
+        d, s = sol.expand_until(1000)
+        S0LSystem.render(s, d=5, theta=43, filename=f"../out/samples/out_{i}")
+        i += 1
+
+
+if __name__ == '__main__':
+    # make()
+    # check_bigram()
+    check_io()
+    # sample(n=40, m=4)
