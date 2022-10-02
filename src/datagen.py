@@ -19,9 +19,10 @@ GENERAL_MG = PCFG(
             ["AXIOM", ";", "RULES"],
         ],
         "AXIOM": [
-            ["AXIOM", "NT"],
-            ["AXIOM", "T"],
-            ["F"],
+            ["NT", "AXIOM"],
+            ["T", "AXIOM"],
+            ["NT"],
+            ["T"],
         ],
         "RULES": [
             ["RULE", ",", "RULES"],
@@ -37,7 +38,8 @@ GENERAL_MG = PCFG(
             ["[", "B", "]"],
             ["RHS", "NT"],
             ["RHS", "T"],
-            [],
+            ["NT"],
+            ["T"],
         ],
         "NT": [
             ["F"],
@@ -45,11 +47,13 @@ GENERAL_MG = PCFG(
         "T": [
             ["+"],
             ["-"],
+            ["f"],
         ],
         "B": [
             ["B", "NT"],
             ["B", "T"],
-            [],
+            ["NT"],
+            ["T"],
         ],
     },
 )
@@ -300,15 +304,29 @@ def check_bigram():
     # print('exp sizes:', len(exp))
 
 
-def check_io():
-    corpus = [HANDCODED_MG.iterate_fully() for _ in range(1)]
-    print('corpus:', corpus)
+def check_io(n: int):
+    # corpus = [HANDCODED_MG.iterate_fully() for _ in range(n)]
+    # print('corpus:', corpus)
+    corpus = [sys.to_sentence() for sys, angle in book_zoo.zoo]
 
     # tuned_mg = inside_outside(GENERAL_MG, corpus, debug=True)
-    tuned_mg = inside_outside(HANDCODED_MG, corpus, debug=True)
+    mg = GENERAL_MG.to_CNF()
+    tuned_mg = inside_outside(mg, corpus, debug=False)
 
-    print(GENERAL_MG)
-    print(tuned_mg)
+    untuned_sys = [S0LSystem.from_sentence(mg.iterate_fully())
+                   for _ in range(n)]
+    tuned_sys = [S0LSystem.from_sentence(tuned_mg.iterate_fully())
+                 for _ in range(n)]
+
+    for name, sys in zip(["untuned", "tuned"], [untuned_sys, tuned_sys]):
+        print(name)
+        i = 0
+        for sol in sys:
+            print(sol)
+            d, s = sol.expand_until(1000)
+            S0LSystem.render(s, d=5, theta=43,
+                             filename=f"../out/samples/{name}_{i}")
+            i += 1
 
 
 def sample(n: int, m: int):
@@ -327,5 +345,5 @@ def sample(n: int, m: int):
 if __name__ == '__main__':
     # make()
     # check_bigram()
-    check_io()
+    check_io(n=10)
     # sample(n=40, m=4)
