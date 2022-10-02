@@ -1,6 +1,7 @@
+from typing import List, Tuple
 from lindenmayer import S0LSystem
 
-zoo = [
+zoo: List[Tuple[S0LSystem, int]] = [
     # Deterministic L-systems
     (S0LSystem(
         axiom="F-F-F-F",
