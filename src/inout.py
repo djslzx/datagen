@@ -4,16 +4,25 @@ Implementation of the inside-outside algorithm for CFGs
 alpha(i, j, A, w, G) = P(phi, A -> w_i...w_j)
 beta(i, j, A, w, G) = P(phi, S -> w1 ... w_i-1 . A . w_j+1 ... w_n)
 """
-from typing import Dict, Tuple, List, Iterable
+from typing import Dict, Tuple, List, Iterable, Callable
 from cfg import PCFG
 import math
+import pdb
+
+# FIXME: numerical precision issues?
+# -- yup, definitely this: the values approach zero b/c of multiplies and this makes us lose info
+# >> pp(lookup_map(alpha, lambda a,b,c: a==0))
 
 
 def print_map(alpha: Dict, precision=4):
     for k, v in alpha.items():
-        if v > 0:
+        if v > 10 ** -precision:
             print(k, f'{v:.{precision}f}')
     print()
+
+
+def lookup_map(d: Dict, p: Callable) -> List:
+    return [(k, v) for k, v in d.items() if p(*k) and v > 0]
 
 
 def inward_diag(n: int, start=0) -> Iterable[Tuple[int, int]]:
@@ -43,6 +52,7 @@ def outward_diag(n: int, start=None) -> Iterable[Tuple[int, int]]:
 
 
 def inside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
+    assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
     alpha = {}
     n = len(s)
 
@@ -76,6 +86,7 @@ def inside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
 
 
 def outside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
+    assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
     alpha = inside(G, s, debug)
     if debug:
         print("outside alpha:")
@@ -124,38 +135,36 @@ def outside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
     return alpha, beta
 
 
-def counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False):
+def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False):
     """
-    Compute new weights for G to maximize the likelihood of the corpus given G.
+    Count the number of times any rule A -> x is used in the corpus.
     """
-    count = {}
+    assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
+    counts = {}
     S = G.start
 
     # initialize
     for A, succ, phi in G.as_rule_list():
-        count[A, tuple(succ)] = 0
+        counts[A, tuple(succ)] = 0
 
     # compute
     for W in corpus:
-        alpha, beta = outside(G, W, debug)
+        alpha, beta = outside(G, W, debug=False)
         n = len(W)
-
-        if debug:
-            print("alpha/beta")
-            print_map(alpha)
-            print_map(beta)
 
         for A, succ, phi in G.as_rule_list():
             if debug:
                 print(f"{A} -> {succ} for word {W}")
-                print_map(alpha)
 
             # alpha_0,n-1(S) = P_phi(S -> W) = P_phi(W)
+            if alpha[0, n-1, S] == 0:
+                pdb.set_trace()
+
             weight = phi / alpha[0, n-1, S]
 
             if len(succ) == 1:
                 w = succ[0]
-                count[A, (w,)] += weight * \
+                counts[A, (w,)] += weight * \
                     math.fsum(beta[i, i, A] for i in range(n))
 
             elif len(succ) == 2:
@@ -165,30 +174,36 @@ def counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False):
                     for j in range(i, n):
                         for k in range(j+1, n):
                             if debug:
-                                print(f"sum[{A} -> {succ}] += beta({i},{k},{A}) * "
-                                      f"alpha[{i},{j},{B}] * alpha[{j+1},{k},{C}] ", 
+                                print(f"sum[{A} -> {succ}] += "
+                                      f"beta({i},{k},{A}) * "
+                                      f"alpha[{i},{j},{B}] * "
+                                      f"alpha[{j+1},{k},{C}] ",
                                       end='')
-                                print(f"= {beta[i,k,A]} * {alpha[i,j,B]} * {alpha[j+1,k,C]}")
+                                print(f"= {beta[i,k,A]} * {alpha[i,j,B]} "
+                                      f"* {alpha[j+1,k,C]}")
                             tot += (beta[i, k, A] *
                                     alpha[i, j, B] *
                                     alpha[j+1, k, C])
-                count[A, (B, C)] += weight * tot
+                counts[A, (B, C)] += weight * tot
             else:
                 raise ValueError("Expected PCFG to be in CNF, "
                                  f"but got the rule {A} -> {succ}.")
-    return count
+    return counts
 
 
 def inside_outside(G: PCFG, corpus: List[PCFG.Sentence], debug=False) -> PCFG:
     """
     Perform one step of inside-outside.
     """
-    count = counts(G, corpus, debug)
-    sum_counts = {A: sum(count[A, tuple(succ)] for succ in succs)
+    assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
+    counts = compute_counts(G, corpus, debug)
+    sum_counts = {A: sum(counts[A, tuple(succ)]
+                         for succ in succs)
                   for A, succs in G.rules.items()}
     rules = []
     for A, succ, _ in G.as_rule_list():
-        weight = count[A, tuple(succ)] / sum_counts[A]
+        weight = counts[A, tuple(succ)] / sum_counts[A] \
+            if sum_counts[A] > 0 else 0
         rules.append((A, succ, weight))
     return PCFG.from_rule_list(G.start, rules)
 
@@ -231,6 +246,32 @@ def demo_io():
 
     # c = counts(g, [s1, s2], debug=True)
     # print_map(c)
+
+
+def test_inside():
+    cases = [
+        (PCFG("AXIOM", {
+            "AXIOM": [["_F", "M"]],
+            "M": [["F"], ["-S", "FM"]],
+            "FM": [["_F", "M"]],
+            "-S": [["-"], ["_-", "-S"]],
+            "_F": [["F"]],
+            "_-": [["-"]],
+        }, "uniform"),
+         "F - F - F F".split(),
+         # FIXME: incomplete
+         # FIXME: F-F-F is not attainable with this grammar
+         (0, 4, "AXIOM")),
+    ]
+    for pcfg, W, key in cases:
+        alpha = inside(pcfg, W)
+        if alpha[key] == 0:
+            print(f"Failed test_inside on grammar={pcfg}, word={W}, key={key}")
+            inside(pcfg, W, debug=True)
+            pdb.set_trace()
+            inside(pcfg, W)
+            exit(1)
+    print(" [+] passed test_inside")
 
 
 def test_inward_diag():
@@ -282,4 +323,5 @@ def test_outward_diag():
 if __name__ == '__main__':
     test_inward_diag()
     test_outward_diag()
-    demo_io()
+    test_inside()
+    # demo_io()
