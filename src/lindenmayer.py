@@ -277,7 +277,7 @@ class S0LSystem(LSystem):
         Convert the L-system to a sentence outputted by a metagrammar.
         Needed to fit metagrammars to libraries of L-systems.
         """
-        return ([self.axiom, ';'] + list(it.chain.from_iterable(
+        return ([x for x in self.axiom] + [';'] + list(it.chain.from_iterable(
             [[pred, '~', *succ, ',']
              for pred, succs in self.productions.items()
              for succ in succs])))[:-1]
@@ -320,6 +320,8 @@ def test_from_sentence():
          S0LSystem('F', {'F': ['fF']}, 'uniform')),
         ('F ; F ~ A , A ~ A b , A ~ b b , A ~ A A'.split(),
          S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform')),
+        ('F + F ; F ~ f F ,'.split(),
+         S0LSystem('F+F', {'F': ['fF']}, 'uniform')),
     ]
     for s, y in cases:
         out = S0LSystem.from_sentence(s)
@@ -333,6 +335,8 @@ def test_to_sentence():
          'F ; F ~ f F'.split()),
         (S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform'),
          'F ; F ~ A , A ~ A b , A ~ b b , A ~ A A'.split()),
+        (S0LSystem('F-F-F', {'F': ['fF']}, 'uniform'),
+         'F - F - F ; F ~ f F'.split()),
     ]
     for g, y in cases:
         out = g.to_sentence()
