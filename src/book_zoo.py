@@ -102,30 +102,31 @@ zoo: List[Tuple[S0LSystem, int]] = [
         },
         distribution="uniform",
     ), 90),
-    (S0LSystem(
-        axiom="-L",
-        productions={
-            "L": ["LF+RFR+FL-F-LFLFL-FRFR+"],
-            "R": ["-LFLF+RFRFR+F+RF-LFL-FR"],
-        },
-        distribution="uniform",
-    ), 90),
-    (S0LSystem(
-        axiom="-L",
-        productions={
-            "L": ["LFLF+RFR+FLFL-FRF-LFL-FR+F+RF-LFL-FRFRFR+"],
-            "R": ["-LFLFLF+RFR+FL-F-LF+RFR+FLF+RFRF-LFL-FRFR"],
-        },
-        distribution="uniform",
-    ), 90),
-    (S0LSystem(
-        axiom="L",
-        productions={
-            "L": ["LFRFL-F-RFLFR+F+LFRFL"],
-            "R": ["RFLFR+F+LFRFL-F-RFLFR"]
-        },
-        distribution="uniform",
-    ), 90),
+    # L/R
+    # (S0LSystem(
+    #     axiom="-L",
+    #     productions={
+    #         "L": ["LF+RFR+FL-F-LFLFL-FRFR+"],
+    #         "R": ["-LFLF+RFRFR+F+RF-LFL-FR"],
+    #     },
+    #     distribution="uniform",
+    # ), 90),
+    # (S0LSystem(
+    #     axiom="-L",
+    #     productions={
+    #         "L": ["LFLF+RFR+FLFL-FRF-LFL-FR+F+RF-LFL-FRFRFR+"],
+    #         "R": ["-LFLFLF+RFR+FL-F-LF+RFR+FLF+RFRF-LFL-FRFR"],
+    #     },
+    #     distribution="uniform",
+    # ), 90),
+    # (S0LSystem(
+    #     axiom="L",
+    #     productions={
+    #         "L": ["LFRFL-F-RFLFR+F+LFRFL"],
+    #         "R": ["RFLFR+F+LFRFL-F-RFLFR"]
+    #     },
+    #     distribution="uniform",
+    # ), 90),
     # Branching w/ edge rewriting
     (S0LSystem(
         axiom="F",
@@ -215,15 +216,6 @@ zoo: List[Tuple[S0LSystem, int]] = [
         },
         distribution="uniform",
     ), 20),
-    (S0LSystem(
-        axiom="F",
-        productions={
-            "F": ["F[+F]F[-F]F",
-                  "F[+F]F",
-                  "F[-F]F"],
-        },
-        distribution="uniform",
-    ), 70),
     # (S0LSystem(
     #     axiom="",
     #     productions={
