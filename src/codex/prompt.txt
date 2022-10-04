@@ -1,181 +1,26 @@
-[
-    S0LSystem(
-        axiom="F-F-F-F",
-        productions={
-            "F": ["F+FF-FF-F-F+F+F"
-                  "F-F-F+F+FF+FF-F"]
-        },
-    ),
-    S0LSystem(
-        axiom="-F",
-        productions={
-            "F": ["F+F-F-F+F"]
-        },
-    ),
-    S0LSystem(
-        axiom="F+F+F+F",
-        productions={
-            "F": ["F+f-FF+F+FF+Ff+FF-f+FF-F-FF-Ff-FFF"],
-            "f": ["fffff"]
-        },
-    ),
-    S0LSystem(
-        axiom="F-F-F-F",
-        productions={
-            "F": ["FF-F-F-F-F-F+F"]
-        },
-    ),
-    S0LSystem(
-        axiom="F-F-F-F",
-        productions={
-            "F": ["FF-F-F-F-FF"]
-        },
-    ),
-    S0LSystem(
-        axiom="F-F-F-F",
-        productions={
-            "F": ["FF-F+F-F-FF"]
-        },
-    ),
-    S0LSystem(
-        axiom="F-F-F-F",
-        productions={
-            "F": ["FF-F--F-F"]
-        },
-    ),
-    S0LSystem(
-        axiom="F-F-F-F",
-        productions={
-            "F": ["F-FF--F-F"]
-        },
-    ),
-    S0LSystem(
-        axiom="F-F-F-F",
-        productions={
-            "F": ["F-F+F-F-F"]
-        },
-    ),
-    S0LSystem(
-        axiom="F",
-        productions={
-            "F": ["F+F+",
-                  "-F-F"]
-        },
-    ),
-    S0LSystem(
-        axiom="F",
-        productions={
-            "F": ["F+F+F",
-                  "F-F-F"]
-        },
-    ),
-    S0LSystem(
-        axiom="F",
-        productions={
-            "F": ["F+F++F-F--FF-F+",
-                  "-F+FF++F+F--F-F"]
-        },
-    ),
-    S0LSystem(
-        axiom="-F",
-        productions={
-            "F": ["FF-F-F+F+F-F-FF""+F+FFF-F+F+FF+F-FF-F-F+F+FF",
-                  "+FF-F-F+F+FF+FFF-F-F+FFF-F-FF+F+F-F-F+F+FF"]
-        },
-    ),
-    S0LSystem(
-        axiom="-L",
-        productions={
-            "L": ["LF+RFR+FL-F-LFLFL-FRFR+"],
-            "R": ["-LFLF+RFRFR+F+RF-LFL-FR"],
-        },
-    ),
-    S0LSystem(
-        axiom="-L",
-        productions={
-            "L": ["LFLF+RFR+FLFL-FRF-LFL-FR+F+RF-LFL-FRFRFR+"],
-            "R": ["-LFLFLF+RFR+FL-F-LF+RFR+FLF+RFRF-LFL-FRFR"],
-        },
-    ),
-    S0LSystem(
-        axiom="L",
-        productions={
-            "L": ["LFRFL-F-RFLFR+F+LFRFL"],
-            "R": ["RFLFR+F+LFRFL-F-RFLFR"]
-        },
-    ),
-    S0LSystem(
-        axiom="F",
-        productions={
-            "F": ["F[+F]F[-F]F"]
-        },
-    ),
-    S0LSystem(
-        axiom="F",
-        productions={
-            "F": ["F[+F]F[-F][F]"]
-        },
-    ),
-    S0LSystem(
-        axiom="F",
-        productions={
-            "F": ["FF-[-F+F+F]+[+F-F-F]"]
-        },
-    ),
-    S0LSystem(
-        axiom="X",
-        productions={
-            "X": ["F[+X]F[-X]+X"],
-            "F": ["FF"],
-        },
-    ),
-    S0LSystem(
-        axiom="X",
-        productions={
-            "X": ["F[+X][-X]FX"],
-            "F": ["FF"],
-        },
-    ),
-    S0LSystem(
-        axiom="X",
-        productions={
-            "X": ["F-[[X]+X]+F[+FX]-X"],
-            "F": ["FF"],
-        },
-    ),
-    S0LSystem(
-        axiom="X",
-        productions={
-            "X": ["F[+X]FX",
-                  "F[-X]FX",
-                  "F[+X][-X]FX",
-                  "FFX",
-                  ],
-            "F": ["FF"],
-        },
-    ),
-    S0LSystem(
-        axiom="F",
-        productions={
-            "F": ["F[+F]",
-                  "F[-F]",
-                  "FF"],
-        },
-    ),
-    S0LSystem(
-        axiom="X",
-        productions={
-            "X": ["[+FX][-X]FX",
-                  "[+X][-FX]FX",
-                  "[+FX][-FX]FX"],
-            "F": ["FF"],
-        },
-    ),
-    S0LSystem(
-        axiom="F",
-        productions={
-            "F": ["F[+F]F[-F]F",
-                  "F[+F]F",
-                  "F[-F]F"],
-        },
-    ),
+F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F)
+-F;F~F+F-F-F+F)
+F+F+F+F;F~F+f-FF+F+FF+Ff+FF-f+FF-F-FF-Ff-FFF,f~fffff)
+F-F-F-F;F~FF-F-F-F-F-F+F)
+F-F-F-F;F~FF-F-F-F-FF)
+F-F-F-F;F~FF-F+F-F-FF)
+F-F-F-F;F~FF-F--F-F)
+F-F-F-F;F~F-FF--F-F)
+F-F-F-F;F~F-F+F-F-F)
+F;F~F+F+,F~-F-F)
+F;F~F+F+F,F~F-F-F)
+F;F~F+F++F-F--FF-F+,F~-F+FF++F+F--F-F)
+-F;F~FF-F-F+F+F-F-FF+F+FFF-F+F+FF+F-FF-F-F+F+FF,F~+FF-F-F+F+FF+FFF-F-F+FFF-F-FF+F+F-F-F+F+FF)
+-L;L~LF+RFR+FL-F-LFLFL-FRFR+,R~-LFLF+RFRFR+F+RF-LFL-FR)
+-L;L~LFLF+RFR+FLFL-FRF-LFL-FR+F+RF-LFL-FRFRFR+,R~-LFLFLF+RFR+FL-F-LF+RFR+FLF+RFRF-LFL-FRFR)
+L;L~LFRFL-F-RFLFR+F+LFRFL,R~RFLFR+F+LFRFL-F-RFLFR)
+F;F~F[+F]F[-F]F)
+F;F~F[+F]F[-F][F])
+F;F~FF-[-F+F+F]+[+F-F-F])
+X;X~F[+X]F[-X]+X,F~FF)
+X;X~F[+X][-X]FX,F~FF)
+X;X~F-[[X]+X]+F[+FX]-X,F~FF)
+X;X~F[+X]FX,X~F[-X]FX,X~F[+X][-X]FX,X~FFX,F~FF)
+F;F~F[+F],F~F[-F],F~FF)
+X;X~[+FX][-X]FX,X~[+X][-FX]FX,X~[+FX][-FX]FX,F~FF)
+F;F~F[+F]F[-F]F,F~F[+F]F,F~F[-F]F)

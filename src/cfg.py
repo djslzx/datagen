@@ -127,7 +127,8 @@ class PCFG(CFG):
     """
     Word = str
     Sentence = List[Word]
-    Eps = ['ε']
+    Eps = 'ε'
+    Empty = [Eps]
 
     def __init__(self,
                  start: Word,
@@ -176,7 +177,7 @@ class PCFG(CFG):
             elif len(xs) == 1:
                 a = xs[0]
                 if (self.is_nonterminal(a) or
-                   (p != self.start and xs == PCFG.Eps)):
+                   (p != self.start and xs == PCFG.Empty)):
                     return False
             elif len(xs) == 2:
                 B, C = xs
@@ -420,7 +421,7 @@ class PCFG(CFG):
         srcs = [
             nt
             for nt, prods in self.rules.items()
-            if nt != self.start and PCFG.Eps in prods
+            if nt != self.start and PCFG.Empty in prods
         ]
         if not srcs:
             return {}
@@ -468,11 +469,11 @@ class PCFG(CFG):
 
             if succs:
                 w = weight / (len(succs) + 1)
-                if succ != PCFG.Eps:
+                if succ != PCFG.Empty:
                     rules.append((pred, succ, w))
                 for s in succs:
                     rules.append((pred, s, w))
-            elif succ != PCFG.Eps:
+            elif succ != PCFG.Empty:
                 rules.append((pred, succ, weight))
 
         condensed_rules = []
@@ -919,7 +920,7 @@ def test_nullable():
             start="S",
             rules={
                 "S": [["A"], ["s"]],
-                "A": [["a"], PCFG.Eps],
+                "A": [["a"], PCFG.Empty],
             },
             weights="uniform",
         ), {"A"}),
@@ -937,7 +938,7 @@ def test_nullable():
                 "S": [["A"], ["s"]],       # nullable
                 "A": [["B"], ["C", "a"]],  # nullable
                 "B": [["C"]],              # nullable
-                "C": [["x"], PCFG.Eps],        # nullable
+                "C": [["x"], PCFG.Empty],        # nullable
             },
             weights="uniform",
         ), {"A", "B", "C"}),
@@ -954,7 +955,7 @@ def test_del():
             start="S",
             rules={
                 "S": [["A", "b", "B"], ["C"]],
-                "A": [["a"], PCFG.Eps],
+                "A": [["a"], PCFG.Empty],
                 "B": [["A", "A"], ["A", "C"]],
                 "C": [["b"], ["c"]],
             },
@@ -981,7 +982,7 @@ def test_del():
                 "S": [["A", "s1"], ["A1"], ["A1", "s1"], ["A2", "A1", "s2"]],
                 "A": [["A1"]],
                 "A1": [["A2"]],
-                "A2": [["a2"], PCFG.Eps],
+                "A2": [["a2"], PCFG.Empty],
             },
             weights="uniform",
          ),
@@ -1176,7 +1177,7 @@ def test_is_in_CNF():
             "B": [["b"]],
         }, True),
         ({
-            "S": [["A", "B"], PCFG.Eps],
+            "S": [["A", "B"], PCFG.Empty],
             "A": [["a"]],
             "B": [["b"]],
         }, True),
@@ -1190,7 +1191,7 @@ def test_is_in_CNF():
         # empty successor in non-start nonterminal
         ({
             "S": [["A", "B"]],
-            "A": [PCFG.Eps],
+            "A": [PCFG.Empty],
             "B": [["b"]],
         }, False),
 

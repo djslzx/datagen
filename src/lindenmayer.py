@@ -77,11 +77,11 @@ class LSystem:
 
     def expand_until(self, length: int) -> Tuple[int, str]:
         """
-        Apply rules to the word until the number of `F` tokens is >= length
+        Apply rules to the axiom until the number of `F` tokens is >= length
         """
         word = self.axiom
         depth = 0
-        while word.count('F') < length:
+        while len(word) < length:
             cache = word
             word = self.expand(word)
             if word == cache:
@@ -89,6 +89,16 @@ class LSystem:
             depth += 1
         return depth, word
 
+    @staticmethod
+    def to_svg(s: str, d: float, theta: float, filename: str):
+        """
+        Renders the string as an SVG file with params
+        d (step length), theta (angle)
+        """
+        sticks = LSystem.to_sticks(s, d, theta)
+        LSystem.sticks_to_svg(sticks, filename)
+
+    @staticmethod
     def to_sticks(s: str, d: float, theta: float) -> List[Stick]:
         """
         Converts the string `s` to a collection of sticks.
@@ -125,9 +135,13 @@ class LSystem:
                 x, y, heading = stack.pop()
         return sticks
 
-    def to_svg(sticks: List[Stick], filename: str):
+    @staticmethod
+    def sticks_to_svg(sticks: List[Stick], filename: str):
         if not sticks:
             return
+
+        if not filename.endswith(".svg"):
+            filename += ".svg"
 
         points = [stick.endpoints() for stick in sticks]
 
@@ -163,7 +177,7 @@ class LSystem:
         dwg.save()
 
     def render(s: str, d: float, theta: float, filename: str):
-        LSystem.to_svg(
+        LSystem.sticks_to_svg(
             sticks=LSystem.to_sticks(s=s, d=d, theta=theta),
             filename=f'{filename}.svg',
         )
