@@ -35,25 +35,21 @@ GENERAL_MG = PCFG(
             ["NT"],
         ],
         "RHS": [
-            ["[", "B", "]"],
-            ["RHS", "NT"],
-            ["RHS", "T"],
+            ["[", "RHS", "]", "RHS"],
+            ["NT", "RHS"],
+            ["T", "RHS"],
+            ["[", "RHS", "]"],
             ["NT"],
             ["T"],
         ],
         "NT": [
             ["F"],
+            ["f"],
+            ["X"],
         ],
         "T": [
             ["+"],
             ["-"],
-            ["f"],
-        ],
-        "B": [
-            ["B", "NT"],
-            ["B", "T"],
-            ["NT"],
-            ["T"],
         ],
     },
 )
@@ -65,11 +61,11 @@ HANDCODED_MG = PCFG(
             ["AXIOM", ";", "RULES"],
         ],
         "AXIOM": [
-            ["F", "M"],
-        ],
-        "M": [
-            ["PLUSES", "F", "M"],
-            ["MINUSES", "F", "M"],
+            ["PLUSES", "F", "AXIOM"],
+            ["MINUSES", "F", "AXIOM"],
+            ["F", "AXIOM"],
+            ["PLUSES", "F"],
+            ["MINUSES", "F"],
             ["F"],
         ],
         "RULES": [
@@ -145,8 +141,8 @@ def make_grammar(args, index: int,
                  bigram_level=1, fit=True, log=True) -> S0LSystem:
     # fit metagrammar to zoo
     mg = METAGRAMMARS[args.generator]
-    mg_new = inside_outside(mg, [sys.to_sentence() for sys, angle in book_zoo.zoo])
-
+    mg_new = inside_outside(mg, [sys.to_sentence()
+                                 for sys, angle in book_zoo.zoo])
     g = S0LSystem_from_CFG(
         mg_new,
         n_rules=random.randint(*args.n_rules),
@@ -305,21 +301,20 @@ def check_bigram():
 
 
 def check_io(n: int):
-    # corpus = [HANDCODED_MG.iterate_fully() for _ in range(n)]
-    # print('corpus:', corpus)
-    corpus = [sys.to_sentence() for sys, angle in book_zoo.zoo]
+    corpus = [sys.to_sentence() for sys, angle in book_zoo.zoo[:1]]
+    mg = GENERAL_MG.to_CNF(debug=True)
+    tuned_mg = inside_outside(mg, corpus, debug=False, log=False)
+    print("Finished tuning")
+    print(tuned_mg)
 
-    # tuned_mg = inside_outside(GENERAL_MG, corpus, debug=True)
-    mg = GENERAL_MG.to_CNF()
-    tuned_mg = inside_outside(mg, corpus, debug=False)
-
-    untuned_sys = [S0LSystem.from_sentence(mg.iterate_fully())
-                   for _ in range(n)]
-    tuned_sys = [S0LSystem.from_sentence(tuned_mg.iterate_fully())
-                 for _ in range(n)]
+    untuned_sys, tuned_sys = [], []
+    for i in range(n):
+        untuned_sys.append(S0LSystem.from_sentence(mg.iterate_fully()))
+        tuned_sys.append(S0LSystem.from_sentence(tuned_mg.iterate_fully()))
+        print(f"Finished {i+1}/{n}")
 
     for name, sys in zip(["untuned", "tuned"], [untuned_sys, tuned_sys]):
-        print(name)
+        print(f"Rendering from {name}")
         i = 0
         for sol in sys:
             print(sol)
