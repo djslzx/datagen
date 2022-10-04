@@ -135,7 +135,7 @@ def outside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
     return alpha, beta
 
 
-def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False):
+def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False, log=False):
     """
     Count the number of times any rule A -> x is used in the corpus.
     """
@@ -148,7 +148,10 @@ def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False):
         counts[A, tuple(succ)] = 0
 
     # compute
-    for W in corpus:
+    for i, W in enumerate(corpus, 1):
+        if log:
+            print(f"Processing {i}/{len(corpus)}-th word {W}...")
+
         alpha, beta = outside(G, W, debug=False)
         n = len(W)
 
@@ -191,21 +194,47 @@ def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], debug=False):
     return counts
 
 
-def inside_outside(G: PCFG, corpus: List[PCFG.Sentence], debug=False) -> PCFG:
+def inside_outside_once(G: PCFG, corpus: List[PCFG.Sentence],
+                        debug=False, log=False) -> PCFG:
     """
     Perform one step of inside-outside.
     """
     assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
-    counts = compute_counts(G, corpus, debug)
+    log_print = (lambda x: print(x)) if log else (lambda x: None)
+
+    log_print("Computing counts...")
+    counts = compute_counts(G, corpus, debug=debug, log=log)
+    log_print("Finished computing counts; summing...")
     sum_counts = {A: sum(counts[A, tuple(succ)]
                          for succ in succs)
                   for A, succs in G.rules.items()}
+    log_print("Finished summing.")
+
     rules = []
     for A, succ, _ in G.as_rule_list():
         weight = counts[A, tuple(succ)] / sum_counts[A] \
             if sum_counts[A] > 0 else 0
         rules.append((A, succ, weight))
     return PCFG.from_rule_list(G.start, rules)
+
+
+def inside_outside(G: PCFG, corpus: List[PCFG.Sentence], precision=4,
+                   debug=False, log=False) -> PCFG:
+    """
+    Perform inside-outside until the grammar converges.
+    """
+    # Make sure the grammar is in the right representation
+    g = G
+    if not g.is_in_CNF():
+        g = g.to_CNF()
+    g.set_uniform_weights()
+
+    prev = g
+    current = inside_outside_once(prev, corpus, debug, log)
+    while not current.approx_eq(prev, threshold=10 ** -2):
+        prev = current
+        current = inside_outside_once(current, corpus, debug, log)
+    return current
 
 
 def demo_io():
@@ -224,52 +253,37 @@ def demo_io():
             ("V", ["V", "N", "P"], 1),
             ("N", ["hesitation"], 1),
         ],
-    ).to_CNF()
-    g.set_uniform_weights()
+    )
     print(g, '\n')
-    s1 = ["She", "eats", "pizza", "without", "anchovies"]
-    s2 = ["She", "eats", "pizza", "without", "hesitation"]
-
-    for i in range(3):
-        g = inside_outside(g, [s1, s2])
-        print(g)
-        print()
-
-    # a1 = inside(g, s1, debug=True)
-    # a2 = inside(g, s2, debug=True)
-    # print_map(a1)
-    # print_map(a2)
-
-    # alpha, beta = outside(g, s1, debug=False)
-    # print_map(alpha)
-    # print_map(beta)
-
-    # c = counts(g, [s1, s2], debug=True)
-    # print_map(c)
+    corpus = [
+        ["She", "eats", "pizza", "without", "anchovies"],
+        ["She", "eats", "pizza", "without", "hesitation"],
+    ]
+    g = inside_outside(g, corpus)
+    print(g, '\n')
 
 
 def test_inside():
     cases = [
         (PCFG("AXIOM", {
-            "AXIOM": [["_F", "M"]],
-            "M": [["F"], ["-S", "FM"]],
-            "FM": [["_F", "M"]],
-            "-S": [["-"], ["_-", "-S"]],
-            "_F": [["F"]],
-            "_-": [["-"]],
+            "AXIOM": [["NT", "AXIOM"],
+                      ["T", "AXIOM"],
+                      ["NT"],
+                      ["T"]],
+            "NT": [["F"], ["f"]],
+            "T": [["+"], ["-"]],
         }, "uniform"),
          "F - F - F F".split(),
-         # FIXME: incomplete
-         # FIXME: F-F-F is not attainable with this grammar
          (0, 4, "AXIOM")),
     ]
     for pcfg, W, key in cases:
-        alpha = inside(pcfg, W)
+        cnf = pcfg.to_CNF()
+        alpha = inside(cnf, W)
         if alpha[key] == 0:
             print(f"Failed test_inside on grammar={pcfg}, word={W}, key={key}")
-            inside(pcfg, W, debug=True)
+            inside(cnf, W, debug=True)
             pdb.set_trace()
-            inside(pcfg, W)
+            inside(cnf, W)
             exit(1)
     print(" [+] passed test_inside")
 
@@ -324,4 +338,4 @@ if __name__ == '__main__':
     test_inward_diag()
     test_outward_diag()
     test_inside()
-    # demo_io()
+    demo_io()
