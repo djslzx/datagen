@@ -132,7 +132,7 @@ class PCFG(CFG):
     def __init__(self,
                  start: Word,
                  rules: Dict[Word, List[Sentence]],
-                 weights: Union[str, Dict[Word, List[float]]]):
+                 weights: Union[str, Dict[Word, List[float]]] = "uniform"):
         assert start in rules, f"Starting word {start} not found in rules"
         assert all(succ == start or any(succ in other_succs
                                         for other_succs in rules.values())
@@ -153,9 +153,12 @@ class PCFG(CFG):
             self.weights = weights
 
     def __eq__(self, other):
+        return self.approx_eq(other, threshold=10 ** -2)
+
+    def approx_eq(self, other, threshold):
         return isinstance(other, PCFG) and \
             self.rules == other.rules and \
-            all(util.approx_eq(f1, f2, threshold=10 ** -2)
+            all(util.approx_eq(f1, f2, threshold)
                 for w in self.rules
                 for f1, f2 in zip(self.weights[w], other.weights[w]))
 
@@ -327,7 +330,7 @@ class PCFG(CFG):
 
         return PCFG.from_rule_list(self.start, rules)
 
-    def to_CNF(self) -> 'PCFG':
+    def to_CNF(self, debug=False) -> 'PCFG':
         """Convert to Chomsky normal form; immutable"""
         # return self._start()._term()._bin()._del()._unit()
         ops = {
@@ -339,7 +342,11 @@ class PCFG(CFG):
         }
         g = self
         for name, op in ops.items():
-            g = op(g)
+            g_new = op(g)
+            if debug:
+                print(f"Performing {name} on\n{g}\n"
+                      f"yielded\n{g_new}")
+            g = g_new
         return g
 
     def _start(self) -> 'PCFG':
@@ -525,9 +532,13 @@ class PCFG(CFG):
         return PCFG.from_rule_list(self.start, filtered_rules)
 
     def __str__(self) -> str:
+        def denote_t_or_nt(xs):
+            return [f"{x}" if self.is_nonterminal(x) else f"`{x}`"
+                    for x in xs]
+
         rules = "\n  ".join(
             f"{pred} ->\n    " +
-            "\n    ".join(f"{' '.join(succ)} @ {weight:.2f}"
+            "\n    ".join(f"{' '.join(denote_t_or_nt(succ))} @ {weight:.2f}"
                           for succ, weight in zip(self.rules[pred],
                                                   self.weights[pred]))
             for pred in self.rules

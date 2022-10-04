@@ -151,7 +151,8 @@ class LSystem:
 
         assert all(v >= 0
                    for (ax, ay), (bx, by) in points
-                   for v in [ax, ay, bx, by])
+                   for v in [ax, ay, bx, by]), \
+            f"Found negative points in {points}"
 
         # create SVG drawing
         dwg = svgwrite.Drawing(filename=filename)
@@ -230,7 +231,7 @@ class S0LSystem(LSystem):
     def __init__(self,
                  axiom: str,
                  productions: Dict[str, List[str]],
-                 distribution: Union[str, Dict[str, List[float]]]):
+                 distribution: Union[str, Dict[str, List[float]]] = "uniform"):
         super().__init__()
         self.axiom = axiom
         self.productions = productions
@@ -277,7 +278,7 @@ class S0LSystem(LSystem):
         Convert the L-system to a sentence outputted by a metagrammar.
         Needed to fit metagrammars to libraries of L-systems.
         """
-        return ([x for x in self.axiom] + [';'] + list(it.chain.from_iterable(
+        return (list(self.axiom) + [';'] + list(it.chain.from_iterable(
             [[pred, '~', *succ, ',']
              for pred, succs in self.productions.items()
              for succ in succs])))[:-1]
