@@ -143,14 +143,13 @@ def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], log=False):
     counts = {}
     S = G.start
 
-    def f(i, j, k):
+    def f(i, j, k, A, B, C):
         x = beta[i, k, A] * alpha[i, j, B] * alpha[j+1, k, C]
         if log and x > 0:
             print(f"beta_{i},{k}({A}) = {beta[i, k, A]}",
                   f"alpha_{i},{j}({B}) = {alpha[i, j, B]}",
                   f"alpha_{j+1},{k}({C}) = {alpha[j+1, k, C]}",
-                  f"-> {x}",
-                  sep="\t")
+                  f"-> {x}")
         return x
 
     for A, succ, _ in G.as_rule_list():
@@ -179,7 +178,7 @@ def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], log=False):
             elif len(succ) == 2:
                 B, C = succ
                 counts[A, (B, C)] += phi / pr_W * sum(
-                    f(i, j, k)
+                    f(i, j, k, A, B, C)
                     # beta[i, k, A] * alpha[i, j, B] * alpha[j+1, k, C]
                     # Pr(S uses A to make W_i..k)
                     # * Pr(B -> W_i..j) * Pr(C -> W_j+1..k)
@@ -194,29 +193,34 @@ def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], log=False):
     return counts
 
 
-def inside_outside_once(G: PCFG, corpus: List[PCFG.Sentence],
+def inside_outside_step(G: PCFG, corpus: List[PCFG.Sentence],
+                        smoothing: float = 0.1,
                         debug=False, log=False) -> PCFG:
     """
     Perform one step of inside-outside.
     """
     assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
+    assert 0.1 <= smoothing <= 10, "Smoothing should be in [0.1, 10]"
+
     counts = compute_counts(G, corpus, log=log)
-    pred_counts = {A: sum(counts[A, tuple(succ)] for succ in succs)
-                   for A, succs in G.rules.items()}
+    counts = {k: v + smoothing for k, v in counts.items()}
+    sums = {A: sum(counts[A, tuple(succ)] for succ in succs)
+            for A, succs in G.rules.items()}
     rules = []
     for A, succ, _ in G.as_rule_list():
         if log:
             num = counts[A, tuple(succ)]
-            denom = pred_counts[A]
-            print(f"{A} -> {succ}: {num:.4f}/{denom:.4f}")
+            denom = sums[A]
+            print(f"{A} -> {succ}: {num}/{denom}")
+            print(num > 0, denom > 0)
 
-        weight = counts[A, tuple(succ)] / pred_counts[A] \
-            if pred_counts[A] > 0 else 0
+        weight = counts[A, tuple(succ)] / sums[A]
         rules.append((A, succ, weight))
     return PCFG.from_rule_list(G.start, rules)
 
 
-def inside_outside(G: PCFG, corpus: List[PCFG.Sentence], precision=4,
+def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
+                   smoothing=0.1, precision=4,
                    debug=False, log=False) -> PCFG:
     """
     Perform inside-outside until the grammar converges.
@@ -225,14 +229,14 @@ def inside_outside(G: PCFG, corpus: List[PCFG.Sentence], precision=4,
     g = G
     if not g.is_in_CNF():
         g = g.to_CNF()
-        g.normalize_weights()
+        g.normalize()
 
     # pdb.set_trace()
     prev = g
-    current = inside_outside_once(prev, corpus, debug, log)
+    current = inside_outside_step(prev, corpus, smoothing, debug, log)
     while not current.approx_eq(prev, threshold=10 ** -10):
         prev = current
-        current = inside_outside_once(current, corpus, debug, log)
+        current = inside_outside_step(current, corpus, smoothing, debug, log)
     return current
 
 
@@ -256,53 +260,44 @@ def demo_io():
         # ).to_CNF(),
         #     [["She", "eats", "pizza", "without", "anchovies"],
         #      ["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG.from_rule_list(
-            start="S",
-            rules=[
-                ("S", ["N", "V"], 1),
-                ("V", ["V", "N"], 1),
-                ("N", ["N", "P"], 1),
-                ("P", ["PP", "N"], 1),
-                ("N", ["She"], 1),
-                ("V", ["eats"], 1),
-                ("N", ["pizza"], 1),
-                ("PP", ["without"], 1),
-                ("N", ["anchovies"], 1),
-                ("V", ["V", "N", "P"], 1),
-                ("N", ["hesitation"], 1),
-            ],
-        ).to_CNF(),
-            [["She", "eats", "pizza", "without", "hesitation"]]),
+        # (PCFG.from_rule_list(
+        #     start="S",
+        #     rules=[
+        #         ("S", ["N", "V"], 1),
+        #         ("V", ["V", "N"], 1),
+        #         ("N", ["N", "P"], 1),
+        #         ("P", ["PP", "N"], 1),
+        #         ("N", ["She"], 1),
+        #         ("V", ["eats"], 1),
+        #         ("N", ["pizza"], 1),
+        #         ("PP", ["without"], 1),
+        #         ("N", ["anchovies"], 1),
+        #         ("V", ["V", "N", "P"], 1),
+        #         ("N", ["hesitation"], 1),
+        #     ],
+        # ).to_CNF(),
+        #     [["She", "eats", "pizza", "without", "hesitation"]]),
         (PCFG(start="S",
               rules={
                   "S": [["A", "A"], ["B", "B"]],
                   "A": [["a"]],
                   "B": [["b"]],
               }).to_CNF(),
-         [["a"]]),
+         [["a", "a"]]),
         (PCFG(start="S",
               rules={
                   "S": [["A", "A"], ["B", "B"]],
-                  "A": [["a"]],
-                  "B": [["b"]],
+                  "A": [["A'", "A'"]],
+                  "A'": [["a"]],
+                  "B": [["B'", "B'"]],
+                  "B'": [["b"]],
               }).to_CNF(),
-         [["a", "a", "a"]]),
-        (PCFG(start="S",
-              rules={
-                  "S": [["A", "A"], ["B", "B"]],
-                  "A": [["AA", "AA"]],
-                  "AA": [["a"]],
-                  "B": [["b"]],
-              }).to_CNF(),
-         [["a"]]),
+         [["a", "a", "a", "a"]]),
     ]
     for g, corpus in cases:
         print(corpus, '\n', g, '\n')
-        input()
-        print(inside_outside_once(g, corpus, log=True))
-        input()
+        print(inside_outside_step(g, corpus, log=True))
         print(inside_outside(g, corpus, log=True))
-        input()
 
 
 def demo_inside():

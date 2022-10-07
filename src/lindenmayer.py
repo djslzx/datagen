@@ -251,13 +251,16 @@ class S0LSystem(LSystem):
         self.productions = productions
 
         # check if distribution is a string
-        if isinstance(distribution, str) and distribution == "uniform":
+        if distribution == "uniform":
             distribution = {
                 pred: [1 / len(succs)] * len(succs)
                 for pred, succs in productions.items()
             }
         else:
-            distribution = util.normalize_weights(distribution)
+            distribution = {
+                pred: util.normalize(weights)
+                for pred, weights in distribution.items()
+            }
 
         # check that distribution sums to 1 for any predecessor
         assert all(abs(sum(weights) - 1) < 0.01

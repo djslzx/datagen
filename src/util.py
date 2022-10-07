@@ -79,20 +79,13 @@ def test_unique():
     print(" [+] test_unique() passed")
 
 
-def normalize(vec: List[float]) -> List[float]:
+def normalize(vec: List[float], smoothing=0.1) -> List[float]:
+    """
+    Normalize `vec` with smoothing `c`
+    """
     assert all(x >= 0 for x in vec), "All entries should be nonnegative"
-    norm = sum(vec)
-    if norm == 0:
-        m = len(vec)
-        return [1 / m for x in vec]
-    return [x / norm for x in vec]
-
-
-def normalize_weights(distro: Dict[Any, List[float]]) -> Dict[Any, List[float]]:
-    return {
-        pred: normalize(weights)
-        for pred, weights in distro.items()
-    }
+    norm = sum(vec) + smoothing * len(vec)
+    return [(x + smoothing) / norm for x in vec]
 
 
 def approx_eq(a: float, b: float, threshold=10 ** -4) -> bool:

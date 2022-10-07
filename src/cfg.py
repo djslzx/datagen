@@ -149,10 +149,11 @@ class PCFG(CFG):
         self.start = start
         self.rules = rules
         if weights == "uniform":
-            self.set_uniform_weights()
+            self.set_uniform()
         else:
             self.weights = weights
-        self.normalize_weights()
+
+        self.normalize()
 
     def __eq__(self, other):
         return self.approx_eq(other, threshold=10 ** -2)
@@ -187,14 +188,17 @@ class PCFG(CFG):
                     return False
         return True
 
-    def set_uniform_weights(self):
+    def set_uniform(self):
         self.weights = {
             pred: [1 / len(succs)] * len(succs)
             for pred, succs in self.rules.items()
         }
 
-    def normalize_weights(self):
-        self.weights = util.normalize_weights(self.weights)
+    def normalize(self):
+        self.weights = {
+            pred: util.normalize(weights) if sum(weights) != 1 else weights
+            for pred, weights in self.weights.items()
+        }
 
     def weight(self, pred: Word, succ: Sentence) -> float:
         if pred in self.rules:
