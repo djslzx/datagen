@@ -5,6 +5,10 @@ import itertools as it
 from typing import List, Tuple, Dict, Any, Iterable, Optional
 
 
+def softplus(a: float, b: float) -> float:
+    return a + np.log1p(np.exp(b - a))
+
+
 def split_list(s: List[str], t: str) -> List[List[str]]:
     out = []
     while True:
@@ -79,7 +83,8 @@ def normalize(vec: List[float]) -> List[float]:
     assert all(x >= 0 for x in vec), "All entries should be nonnegative"
     norm = sum(vec)
     if norm == 0:
-        return vec
+        m = len(vec)
+        return [1 / m for x in vec]
     return [x / norm for x in vec]
 
 
