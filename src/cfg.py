@@ -152,6 +152,7 @@ class PCFG(CFG):
             self.set_uniform_weights()
         else:
             self.weights = weights
+        self.normalize_weights()
 
     def __eq__(self, other):
         return self.approx_eq(other, threshold=10 ** -2)
@@ -191,6 +192,9 @@ class PCFG(CFG):
             pred: [1 / len(succs)] * len(succs)
             for pred, succs in self.rules.items()
         }
+
+    def normalize_weights(self):
+        self.weights = util.normalize_weights(self.weights)
 
     def weight(self, pred: Word, succ: Sentence) -> float:
         if pred in self.rules:
@@ -531,6 +535,9 @@ class PCFG(CFG):
                 filtered_rules.append((p, s, w))
 
         return PCFG.from_rule_list(self.start, filtered_rules)
+
+    def __repr__(self) -> str:
+        return str(self)
 
     def __str__(self) -> str:
         def denote_t_or_nt(xs):
