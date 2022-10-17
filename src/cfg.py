@@ -3,6 +3,8 @@ import itertools as it
 from typing import Dict, List, Tuple, Union, Set
 from pprint import pp
 import pdb
+import torch as T
+
 import util
 
 
@@ -19,7 +21,9 @@ class CFG:
 
     def __init__(self, start: str, rules: Dict[str, List[List[str]]]):
         assert start in rules, f"Starting symbol {start} not found in rules"
-        assert all(succ and all(succ) for pred, succ in rules.items()), \
+        assert all(succ and (isinstance(succ, str) or (isinstance(succ, list)
+                                                       and all(succ)))
+                   for pred, succ in rules.items()), \
             "All rule RHS should be nonempty; " \
             "each element should also be nonempty"
         assert all(succ == start or any(succ in other_succs
@@ -29,17 +33,17 @@ class CFG:
             "Each nonterminal should appear in the RHS of a rule, " \
             "unless the nonterminal is the start symbol"
         self.start = start
-        self.rules = rules
+        self.rules = {
+            pred: [(succ.split() if isinstance(succ, str) else succ)
+                   for succ in succs]
+            for pred, succs in rules.items()
+        }
 
     def __str__(self):
         rules = "\n  ".join(
             f"{pred} -> {succs}"
             for pred, succs in self.rules.items())
         return "CFG: {\n  " + rules + "\n}"
-
-    @staticmethod
-    def from_PCFG(g: 'PCFG'):
-        return CFG(g.start, g.rules)
 
     def is_nonterminal(self, letter: str) -> bool:
         return letter in self.rules
@@ -53,7 +57,7 @@ class CFG:
         else:
             return random.choice(self.rules[letter])
 
-    def apply(self, word: List[str]) -> List[str]:
+    def step(self, word: List[str]) -> List[str]:
         """
         Nondeterministically apply one of the production rules to
         a letter in the word.
@@ -71,10 +75,10 @@ class CFG:
     def fixpoint(self) -> List[str]:
         """Keep applying rules to the word until it stops changing."""
         prev = [self.start]
-        current = self.apply(self.start)
+        current = self.step(self.start)
         while current != prev:
             prev = current
-            current = self.apply(current)
+            current = self.step(current)
         return current
 
     def iterate_fully(self, debug=False) -> List[str]:
@@ -82,7 +86,7 @@ class CFG:
         if debug:
             print(s)
         while any(self.is_nonterminal(w) for w in s):
-            s = self.apply(s)
+            s = self.step(s)
             if debug:
                 print(" ".join(s))
         return s
@@ -91,7 +95,7 @@ class CFG:
         """Apply rules to the starting word `n` times."""
         s = [self.start]
         for _ in range(n):
-            s = self.apply(s)
+            s = self.step(s)
         return s
 
     def iterate_until(self, length: int) -> List[str]:
@@ -99,20 +103,13 @@ class CFG:
         s = [self.start]
         while len(s) < length:
             cache = s
-            s = self.apply(s)
+            s = self.step(s)
             if s == cache:
                 break
         return s
 
-    def _to_str(self, word: List[str]) -> str:
-        """Turn the word representation into a single Turtle string."""
-        filtered = [letter
-                    for letter in word
-                    if letter not in self.rules]
-        return "".join(filtered)
 
-
-class PCFG(CFG):
+class PCFG(T.nn.Module, CFG):
     """
     A probabilistic context-free grammar.  Terminals and nonterminals are
     represented as strings.  All of the rules for a given nonterminal should
@@ -132,9 +129,38 @@ class PCFG(CFG):
 
     def __init__(self,
                  start: Word,
-                 rules: Dict[Word, List[Sentence]],
+                 rules: Dict[Word, List[Union[str, Sentence]]],
                  weights: Union[str, Dict[Word, List[float]]] = "uniform"):
+        PCFG.check_rep(start, rules, weights)
+        super(PCFG, self).__init__()
+        self.start = start
+        self.rules = {
+            pred: [(succ.split() if isinstance(succ, str) else succ)
+                   for succ in succs]
+            for pred, succs in rules.items()
+        }
+        if weights == "uniform":
+            self.weights = T.nn.ParameterDict({
+                k: T.ones(len(v)) / len(v)
+                for k, v in rules.items()
+            })
+        else:
+            self.weights = T.nn.ParameterDict({
+                k: T.Tensor(v) / sum(v)
+                for k, v in weights.items()
+            })
+
+    def __hash__(self):
+        return hash(str(self))
+
+    @staticmethod
+    def check_rep(start, rules, weights):
         assert start in rules, f"Starting word {start} not found in rules"
+        assert all(succ and (isinstance(succ, str) or (isinstance(succ, list)
+                                                       and all(succ)))
+                   for pred, succ in rules.items()), \
+            "All rule RHS should be nonempty; " \
+            "each element should also be nonempty"
         assert all(succ == start or any(succ in other_succs
                                         for other_succs in rules.values())
                    for succs in rules.values()
@@ -146,24 +172,32 @@ class PCFG(CFG):
             assert ok, \
                 "All successors should be unique wrt a predecessor, " \
                 f"but got duplicate {pair} in {pred} -> {succs}"
-        self.start = start
-        self.rules = rules
-        if weights == "uniform":
-            self.set_uniform()
-        else:
-            self.weights = weights
-
-        self.normalize()
 
     def __eq__(self, other):
         return self.approx_eq(other, threshold=10 ** -2)
 
     def approx_eq(self, other, threshold):
+        """
+        Checks whether two PCFGs are structurally (not semantically) equivalent
+        and have roughly the same parameters.
+
+        This does not check whether the grammars produce the same set of
+        strings.
+        """
         return isinstance(other, PCFG) and \
             self.rules == other.rules and \
-            all(util.approx_eq(f1, f2, threshold)
-                for w in self.rules
-                for f1, f2 in zip(self.weights[w], other.weights[w]))
+            all(util.approx_eq(w1, w2, threshold)
+                for nt in self.rules
+                for w1, w2 in zip(self.weights[nt], other.weights[nt]))
+
+    def struct_eq(self, other: 'PCFG') -> bool:
+        """
+        Checks whether two PCFGs have the same structure.
+        """
+        if self.rules.keys() != other.rules.keys():
+            return False
+        return all(sorted(self.rules[k]) == sorted(other.rules[k])
+                   for k in self.rules)
 
     def is_in_CNF(self) -> bool:
         """
@@ -188,17 +222,9 @@ class PCFG(CFG):
                     return False
         return True
 
-    def set_uniform(self):
-        self.weights = {
-            pred: [1 / len(succs)] * len(succs)
-            for pred, succs in self.rules.items()
-        }
-
-    def normalize(self):
-        self.weights = {
-            pred: util.normalize(weights) if sum(weights) != 1 else weights
-            for pred, weights in self.weights.items()
-        }
+    def normalize_weights_(self):
+        for pred, weights in self.weights.items():
+            self.weights[pred] = T.nn.Softmax(dim=0)(weights)
 
     def weight(self, pred: Word, succ: Sentence) -> float:
         if pred in self.rules:
@@ -550,19 +576,13 @@ class PCFG(CFG):
 
         rules = "\n  ".join(
             f"{pred} ->\n    " +
-            "\n    ".join(f"{' '.join(denote_t_or_nt(succ))} @ {weight:.2f}"
+            "\n    ".join(f"{' '.join(denote_t_or_nt(succ))} @ {weight:.10f}"
                           for succ, weight in zip(self.rules[pred],
                                                   self.weights[pred]))
             for pred in self.rules
         )
         return ("PCFG: {\n  start=" + self.start +
                 "\n  rules=\n  " + rules + "\n}")
-
-    def rule_eq(self, other: 'PCFG') -> bool:
-        if self.rules.keys() != other.rules.keys():
-            return False
-        return all(sorted(self.rules[k]) == sorted(other.rules[k])
-                   for k in self.rules)
 
     def _choose_successor(self, letter: str) -> List[str]:
         if letter not in self.rules:
@@ -921,7 +941,7 @@ def test_bin():
     ]
     for x, y in cases:
         out = x._bin()
-        assert out.rule_eq(y), f"Failed test_bin: Expected\n{y},\ngot\n{out}"
+        assert out.struct_eq(y), f"Failed test_bin: Expected\n{y},\ngot\n{out}"
     print(" [+] passed test_bin")
 
 
@@ -1022,7 +1042,7 @@ def test_del():
     # FIXME: account for weights
     for x, y in cases:
         out = x._del()
-        assert out.rule_eq(y), f"Failed test_del: Expected\n{y},\ngot\n{out}"
+        assert out.struct_eq(y), f"Failed test_del: Expected\n{y},\ngot\n{out}"
     print(" [+] passed test_del")
 
 
@@ -1101,7 +1121,7 @@ def test_unit():
     ]
     for x, y in cases:
         out = x._unit()
-        assert out.rule_eq(y), \
+        assert out.struct_eq(y), \
             f"Failed test_unit: Expected\n{y},\ngot\n{out}"
     print(" [+] passed test_unit")
 

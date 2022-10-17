@@ -4,10 +4,11 @@ import argparse
 import multiprocess as mp
 from pprint import pp
 from typing import List
+import pdb
 
 from lindenmayer import LSystem, S0LSystem
 from cfg import CFG, PCFG
-from inout import inside_outside
+from inout import inside_outside, autograd_io
 import util
 import book_zoo
 
@@ -141,8 +142,7 @@ def make_grammar(args, index: int,
                  bigram_level=1, fit=True, log=True) -> S0LSystem:
     # fit metagrammar to zoo
     mg = METAGRAMMARS[args.generator]
-    mg_new = inside_outside(mg, [sys.to_sentence()
-                                 for sys, angle in book_zoo.zoo])
+    mg_new = autograd_io(mg, [sys.to_sentence() for sys, _ in book_zoo.zoo])
     g = S0LSystem_from_CFG(
         mg_new,
         n_rules=random.randint(*args.n_rules),
@@ -281,37 +281,18 @@ def make():
         # )
 
 
-def check_bigram():
-    g = HANDCODED_MG
-
-    gs = g.iterate_until(1000)
-    print(gs)
-
-    s = S0LSystem.from_str(gs)
-    print(s)
-
-    # print('grammar:', g)
-    # print('grammar size:', len(g))
-
-    # print('bigram(cnf(g)):', len(g.to_CNF().to_bigram()))
-    # print('cnf(bigram(g))):', len(g.to_bigram().to_CNF()))
-
-    # exp = g.explode()
-    # print('exp sizes:', len(exp))
-
-
-def check_io(n: int):
-    corpus = [sys.to_sentence() for sys, angle in book_zoo.zoo[:1]]
+def check_io(n_samples: int, zoo_limit=None):
+    corpus = [sys.to_sentence() for sys, angle in book_zoo.zoo[:zoo_limit]]
     mg = GENERAL_MG.to_CNF(debug=True)
     tuned_mg = inside_outside(mg, corpus, debug=False, log=False)
     print("Finished tuning")
     print(tuned_mg)
 
     untuned_sys, tuned_sys = [], []
-    for i in range(n):
+    for i in range(n_samples):
         untuned_sys.append(S0LSystem.from_sentence(mg.iterate_fully()))
         tuned_sys.append(S0LSystem.from_sentence(tuned_mg.iterate_fully()))
-        print(f"Finished {i+1}/{n}")
+        print(f"Finished {i+1}/{n_samples}")
 
     for name, sys in zip(["untuned", "tuned"], [untuned_sys, tuned_sys]):
         print(f"Rendering from {name}")
@@ -324,21 +305,25 @@ def check_io(n: int):
             i += 1
 
 
-def sample(n: int, m: int):
-    gs: List[List[str]] = [HANDCODED_MG.iterate_fully() for _ in range(n)]
-    # pp(["".join(g) for g in gs])
+def check_io_autograd(io_iters: int, n_samples: int, zoo_limit=None):
+    def sample(i: int, G: PCFG):
+        print(G)
+        for j in range(n_samples):
+            try:
+                lsys = S0LSystem.from_sentence(G.iterate_until(100))
+                print(lsys)
+                d, s = lsys.expand_until(1000)
+                S0LSystem.render(s, d=5, theta=43,
+                                 filename=f"../out/samples/{i},{j}")
+            except ValueError:
+                pass
 
-    sols = [S0LSystem.from_sentence(g) for g in gs]
-    i = 0
-    for sol in sols:
-        print(sol)
-        d, s = sol.expand_until(1000)
-        S0LSystem.render(s, d=5, theta=43, filename=f"../out/samples/out_{i}")
-        i += 1
+    corpus = [sys.to_sentence() for sys, angle in book_zoo.zoo[:zoo_limit]]
+    mg = GENERAL_MG.to_CNF(debug=False)
+    autograd_io(mg, corpus, iters=io_iters, log=True, callback=sample)
 
 
 if __name__ == '__main__':
     # make()
-    # check_bigram()
-    check_io(n=10)
-    # sample(n=40, m=4)
+    check_io(n_samples=10, zoo_limit=1)
+    # check_io_autograd(io_iters=100, n_samples=10, zoo_limit=1)

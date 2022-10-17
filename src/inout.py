@@ -5,13 +5,14 @@ alpha(i, j, A, w, G) = P(phi, A -> w_i...w_j)
 beta(i, j, A, w, G) = P(phi, S -> w1 ... w_i-1 . A . w_j+1 ... w_n)
 """
 from typing import Dict, Tuple, List, Iterable, Callable
-from cfg import PCFG
+from pprint import pp
+import torch as T
 import math
 import pdb
 
+from cfg import PCFG
+
 # FIXME: numerical precision issues?
-# -- yup, definitely this: the values approach zero b/c of multiplies and this makes us lose info
-# >> pp(lookup_map(alpha, lambda a,b,c: a==0))
 
 
 def print_map(alpha: Dict, precision=4):
@@ -59,9 +60,7 @@ def inside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
     # initialize outermost diagonal
     for i in range(n):
         for A in G.nonterminals:
-            w = [s[i]]
-            a = G.weight(A, w)
-            alpha[i, i, A] = a
+            alpha[i, i, A] = G.weight(A, [s[i]])
 
     # recurse on other diagonals, proceeding inwards
     for i, j in inward_diag(n, start=1):
@@ -69,6 +68,7 @@ def inside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
         for A in G.rules:
             alpha[i, j, A] = 0
 
+        # add up weights of rules
         for A, succ, w in G.as_rule_list():
             if len(succ) != 2:
                 continue
@@ -101,38 +101,58 @@ def outside(G: PCFG, s: PCFG.Sentence, debug=False) -> Dict:
 
     # recurse on other diagonals, proceeding outwards
     for i, j in outward_diag(n, start=n-1):
-
-        # initialize all betas to 0
         for A in G.rules:
             beta[i, j, A] = 0
-
-        for B, succ, w in G.as_rule_list():
+        for A, succ, w in G.as_rule_list():
             if len(succ) != 2:
                 continue
-
-            # A is right child
-            C, A = succ
-            for k in range(i):
-                b = w * alpha[k, i-1, C] * beta[k, j, B]
-                beta[i, j, A] += b
-                if debug:
-                    print(f"beta({i},{j},{A}) = w[{B} -> {C} {A}] * "
-                          f"alpha[{k},{i-1},{C}] * beta[{k},{j},{B}] = "
-                          f"{w} * {alpha[k, i-1, C]} * {beta[k, j, B]} = {b}")
-
-            # A is left child
-            A, C = succ
-            for k in range(j+1, n):
-                b = w * alpha[j+1, k, C] * beta[i, k, B]
-                beta[i, j, A] += b
-                if debug:
-                    print(f"beta({i},{j},{A}) = w[{B} -> {A} {C}] * "
-                          f"alpha[{j+1},{k},{C}] * beta[{i},{k},{B}] = "
-                          f"{w} * {alpha[j+1, k, C]} * {beta[i, k, B]} = {b}")
+            B, C = succ
+            for k in range(j+1, n):  # i < j < k
+                beta[i, j, B] += w * beta[i, k, A] * alpha[j+1, k, C]
+            for k in range(i):  # k < i < j
+                beta[i, j, C] += w * beta[k, j, A] * alpha[k, i-1, B]
 
     if debug:
         print_map(beta)
     return alpha, beta
+
+
+def autograd_io(G: PCFG, corpus: List[PCFG.Sentence], iters=1000,
+                callback=None, debug=False, log=False) -> Dict:
+    """
+    Uses automatic differentiation to implement Inside-Outside.
+    """
+    def ins(g: PCFG, w: PCFG.Sentence) -> float:
+        alpha = inside(g, w)
+        z = alpha[0, len(w) - 1, g.start]
+        return z
+
+    def diff(plist1: List[T.Tensor], plist2: List[T.Tensor]) -> float:
+        return T.stack([(x - y).abs().sum()
+                        for x, y in zip(plist1, plist2)]).sum()
+
+    def eq(plist1, plist2) -> bool:
+        return all(T.eq(x, y)
+                   for x, y in zip(plist1, plist2))
+
+    optimizer = T.optim.Adam(G.parameters())
+    # prev = None
+    # while prev is None or not eq(prev, G.parameters()):  # diff(prev, G.parameters()) > 1e-10:
+    for i in range(iters):
+        # prev = list([p.clone() for p in G.parameters()])
+        if log:
+            print(f"[{i}/{iters}]")
+        for word in corpus:
+            z = ins(G, word)
+            loss = -z
+            loss.backward()
+            optimizer.step()
+        if callback:
+            callback(i, G)
+
+    G.normalize_weights_()
+    # d = diff(prev, G.parameters())
+    # print(prev, list(G.parameters()), d)
 
 
 def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], log=False):
@@ -170,7 +190,9 @@ def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], log=False):
 
             if len(succ) == 1:
                 counts[A, tuple(succ)] += phi / pr_W * \
-                    math.fsum(beta[i, i, A] for i in range(n))
+                    math.fsum(beta[i, i, A]
+                              for i in range(n)
+                              if succ[0] == W[i])
                 if log:
                     print("beta: " + ", ".join([f"{i}({A}) = {beta[i, i, A]:.9f}"
                                                 for i in range(n)]))
@@ -226,57 +248,61 @@ def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
     Perform inside-outside until the grammar converges.
     """
     # Make sure the grammar is in the right representation
+    def weight_diff(g1: PCFG, g2: PCFG):
+        return {
+            key: [v1 - v2 for v1, v2 in zip(g1.weights[key], g2.weights[key])]
+            for key in g1.weights
+        }
+
     g = G
     if not g.is_in_CNF():
         g = g.to_CNF()
-        g.normalize()
+        g.normalize_weights_()
 
-    # pdb.set_trace()
-    prev = g
-    current = inside_outside_step(prev, corpus, smoothing, debug, log)
-    while not current.approx_eq(prev, threshold=10 ** -10):
-        prev = current
-        current = inside_outside_step(current, corpus, smoothing, debug, log)
+    prev, current = g, inside_outside_step(g, corpus, smoothing, debug, log)
+    while not current.approx_eq(prev, threshold=1e-6):
+        prev, current = current, inside_outside_step(current, corpus,
+                                                     smoothing, debug, log)
     return current
 
 
 def demo_io():
     cases = [
-        # (PCFG.from_rule_list(
-        #     start="S",
-        #     rules=[
-        #         ("S", ["N", "V"], 1),
-        #         ("V", ["V", "N"], 1),
-        #         ("N", ["N", "P"], 1),
-        #         ("P", ["PP", "N"], 1),
-        #         ("N", ["She"], 1),
-        #         ("V", ["eats"], 1),
-        #         ("N", ["pizza"], 1),
-        #         ("PP", ["without"], 1),
-        #         ("N", ["anchovies"], 1),
-        #         ("V", ["V", "N", "P"], 1),
-        #         ("N", ["hesitation"], 1),
-        #     ],
-        # ).to_CNF(),
-        #     [["She", "eats", "pizza", "without", "anchovies"],
-        #      ["She", "eats", "pizza", "without", "hesitation"]]),
-        # (PCFG.from_rule_list(
-        #     start="S",
-        #     rules=[
-        #         ("S", ["N", "V"], 1),
-        #         ("V", ["V", "N"], 1),
-        #         ("N", ["N", "P"], 1),
-        #         ("P", ["PP", "N"], 1),
-        #         ("N", ["She"], 1),
-        #         ("V", ["eats"], 1),
-        #         ("N", ["pizza"], 1),
-        #         ("PP", ["without"], 1),
-        #         ("N", ["anchovies"], 1),
-        #         ("V", ["V", "N", "P"], 1),
-        #         ("N", ["hesitation"], 1),
-        #     ],
-        # ).to_CNF(),
-        #     [["She", "eats", "pizza", "without", "hesitation"]]),
+        (PCFG.from_rule_list(
+            start="S",
+            rules=[
+                ("S", ["N", "V"], 1),
+                ("V", ["V", "N"], 1),
+                ("N", ["N", "P"], 1),
+                ("P", ["PP", "N"], 1),
+                ("N", ["She"], 1),
+                ("V", ["eats"], 1),
+                ("N", ["pizza"], 1),
+                ("PP", ["without"], 1),
+                ("N", ["anchovies"], 1),
+                ("V", ["V", "N", "P"], 1),
+                ("N", ["hesitation"], 1),
+            ],
+        ).to_CNF(),
+            [["She", "eats", "pizza", "without", "anchovies"],
+             ["She", "eats", "pizza", "without", "hesitation"]]),
+        (PCFG.from_rule_list(
+            start="S",
+            rules=[
+                ("S", ["N", "V"], 1),
+                ("V", ["V", "N"], 1),
+                ("N", ["N", "P"], 1),
+                ("P", ["PP", "N"], 1),
+                ("N", ["She"], 1),
+                ("V", ["eats"], 1),
+                ("N", ["pizza"], 1),
+                ("PP", ["without"], 1),
+                ("N", ["anchovies"], 1),
+                ("V", ["V", "N", "P"], 1),
+                ("N", ["hesitation"], 1),
+            ],
+        ).to_CNF(),
+            [["She", "eats", "pizza", "without", "hesitation"]]),
         (PCFG(start="S",
               rules={
                   "S": [["A", "A"], ["B", "B"]],
@@ -284,20 +310,21 @@ def demo_io():
                   "B": [["b"]],
               }).to_CNF(),
          [["a", "a"]]),
-        (PCFG(start="S",
-              rules={
-                  "S": [["A", "A"], ["B", "B"]],
-                  "A": [["A'", "A'"]],
-                  "A'": [["a"]],
-                  "B": [["B'", "B'"]],
-                  "B'": [["b"]],
-              }).to_CNF(),
-         [["a", "a", "a", "a"]]),
+        # (PCFG(start="S",
+        #       rules={
+        #           "S": [["A", "A"], ["B", "B"]],
+        #           "A": [["A'", "A'"]],
+        #           "A'": [["a"]],
+        #           "B": [["B'", "B'"]],
+        #           "B'": [["b"]],
+        #       }).to_CNF(),
+        #  [["a", "a", "a", "a"]]),
     ]
     for g, corpus in cases:
         print(corpus, '\n', g, '\n')
-        print(inside_outside_step(g, corpus, log=True))
-        print(inside_outside(g, corpus, log=True))
+        # print(inside_outside_step(g, corpus, log=True))
+        print(inside_outside(g, corpus, log=False))
+        # autograd_io(g, corpus)
 
 
 def demo_inside():
