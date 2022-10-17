@@ -143,36 +143,33 @@ class LSystem:
         if not filename.endswith(".svg"):
             filename += ".svg"
 
-        points = [stick.endpoints() for stick in sticks]
+        pts = [stick.endpoints() for stick in sticks]
 
         # translate negative points in image over to positive values
-        min_x = int(min(x
-                        for (ax, ay), (bx, by) in points
-                        for x in [ax, bx]))
-        min_y = int(min(y
-                        for (ax, ay), (bx, by) in points
-                        for y in [ay, by]))
-        max_y = int(max(y
-                        for (ax, ay), (bx, by) in points
-                        for y in [ay, by]))
+        min_x = min(x
+                    for (ax, _), (bx, _) in pts
+                    for x in [ax, bx])
+        min_y = min(y
+                    for (_, ay), (_, by) in pts
+                    for y in [ay, by])
 
         # flip and translate points
-        points = [((ax - min_x + 1,
-                    max_y - ay - min_y + 1),
-                   (bx - min_x + 1,
-                    max_y - by - min_y + 1))
-                  for (ax, ay), (bx, by) in points]
+        translated_pts = [((ax - min_x + 1,
+                            ay - min_y + 1),
+                           (bx - min_x + 1,
+                            by - min_y + 1))
+                          for (ax, ay), (bx, by) in pts]
 
         assert all(v >= 0
-                   for (ax, ay), (bx, by) in points
+                   for (ax, ay), (bx, by) in translated_pts
                    for v in [ax, ay, bx, by]), \
-            f"Found negative points in {points}"
+            f"Found negative points in {translated_pts}, transformed from pts"
 
         # create SVG drawing
         dwg = svgwrite.Drawing(filename=filename)
         dwg.add(dwg.rect(size=('100%', '100%'), fill='white', class_='bkg'))
         lines = dwg.add(dwg.g(id='sticks', stroke='black', stroke_width=1))
-        for a, b in points:
+        for a, b in translated_pts:
             lines.add(dwg.line(start=a, end=b))
         dwg.save()
 
