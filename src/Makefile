@@ -1,5 +1,5 @@
 ROOT := '../out/'
-DIR := '../out/sep21'
+DIR := '../out/sep27/fitted'
 ZOO_DIR := '../out/zoo'
 
 lindenmayer:
@@ -10,7 +10,7 @@ datagen:
 	$(MAKE) clean
 	mkdir -p $(DIR)
 # n_grammars, axiom_length[2], n_rules[2], rule_length[2], n_specimens, depth, out_dir
-	python3 -u datagen.py 'handcoded' 50 1 5 2 3 4 10 3 6 $(DIR)
+	python3 -u datagen.py 'handcoded' 5 1 5 2 3 4 10 3 3 $(DIR)
 	$(MAKE) convert
 
 datagen_remote:
