@@ -174,6 +174,8 @@ class LSystem:
         dwg.save()
 
     def render(s: str, d: float, theta: float, filename: str):
+        assert isinstance(s, str), \
+            f"Render target must be a string, but got {s} of type {type(s)}"
         LSystem.sticks_to_svg(
             sticks=LSystem.to_sticks(s=s, d=d, theta=theta),
             filename=f'{filename}.svg',

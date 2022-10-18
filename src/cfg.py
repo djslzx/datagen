@@ -141,12 +141,12 @@ class PCFG(T.nn.Module, CFG):
         }
         if weights == "uniform":
             self.weights = T.nn.ParameterDict({
-                k: T.ones(len(v)) / len(v)
+                k: T.ones(len(v), dtype=T.float64) / len(v)
                 for k, v in rules.items()
             })
         else:
             self.weights = T.nn.ParameterDict({
-                k: T.Tensor(v) / sum(v)
+                k: T.tensor(v, dtype=T.float64) / sum(v)
                 for k, v in weights.items()
             })
 
