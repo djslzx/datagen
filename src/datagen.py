@@ -8,7 +8,7 @@ import pdb
 
 from lindenmayer import LSystem, S0LSystem
 from cfg import CFG, PCFG
-from inout import inside_outside, autograd_io
+from inout import io, autograd_io
 import util
 import book_zoo
 
@@ -282,27 +282,37 @@ def make():
 
 
 def check_io(n_samples: int, zoo_limit=None):
-    corpus = [sys.to_sentence() for sys, angle in book_zoo.zoo[:zoo_limit]]
+    specimens = [sys for sys, angle in book_zoo.zoo[:zoo_limit]]
+
+    for i, specimen in enumerate(specimens):
+        d, s = specimen.expand_until(1000)
+        S0LSystem.render(s, d=5, theta=43,
+                         filename=f"../out/samples/reference_{i}")
+
+    corpus = [s.to_sentence() for s in specimens]
     mg = GENERAL_MG.to_CNF(debug=False)
-    tuned_mg = inside_outside(mg, corpus, debug=False, log=False)
+    tuned_mg = io(mg, corpus, debug=False, log=False)
     print("Finished tuning")
-    print(tuned_mg)
 
-    untuned_sys, tuned_sys = [], []
+    untuned, tuned = [], []
     for i in range(n_samples):
-        untuned_sys.append(S0LSystem.from_sentence(mg.iterate_fully()))
-        tuned_sys.append(S0LSystem.from_sentence(tuned_mg.iterate_fully()))
-        print(f"Finished {i+1}/{n_samples}")
+        print(f"Sampling {i+1}/{n_samples}...")
+        try:
+            untuned.append(S0LSystem.from_sentence(mg.iterate_until(100)))
+        except ValueError:
+            pass
+        try:
+            tuned.append(S0LSystem.from_sentence(tuned_mg.iterate_fully()))
+        except ValueError:
+            pass
 
-    for name, sys in zip(["untuned", "tuned"], [untuned_sys, tuned_sys]):
+    for name, sys in zip(["untuned", "tuned"], [untuned, tuned]):
         print(f"Rendering from {name}")
-        i = 0
-        for sol in sys:
+        for i, sol in enumerate(sys):
             print(sol)
             d, s = sol.expand_until(1000)
             S0LSystem.render(s, d=5, theta=43,
                              filename=f"../out/samples/{name}_{i}")
-            i += 1
 
 
 def check_io_autograd(io_iters: int, n_samples: int, zoo_limit=None):
