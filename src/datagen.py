@@ -283,7 +283,7 @@ def make():
 
 def check_io(n_samples: int, zoo_limit=None):
     corpus = [sys.to_sentence() for sys, angle in book_zoo.zoo[:zoo_limit]]
-    mg = GENERAL_MG.to_CNF(debug=True)
+    mg = GENERAL_MG.to_CNF(debug=False)
     tuned_mg = inside_outside(mg, corpus, debug=False, log=False)
     print("Finished tuning")
     print(tuned_mg)
