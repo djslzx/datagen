@@ -2,15 +2,15 @@ import random
 import pickle
 import argparse
 import multiprocess as mp
-from pprint import pp
-from typing import List
 import pdb
 
 from lindenmayer import LSystem, S0LSystem
-from cfg import CFG, PCFG
+from cfg import PCFG
 from inout import io, autograd_io
-import util
 import book_zoo
+import util
+
+DIR = "../out/io-samples/18oct"
 
 GENERAL_MG = PCFG(
     start="L-SYSTEM",
@@ -287,10 +287,10 @@ def check_io(n_samples: int, zoo_limit=None):
     for i, specimen in enumerate(specimens):
         d, s = specimen.expand_until(1000)
         S0LSystem.render(s, d=5, theta=43,
-                         filename=f"../out/samples/reference_{i}")
+                         filename=f"{DIR}/reference_{i}")
 
     corpus = [s.to_sentence() for s in specimens]
-    mg = GENERAL_MG.to_CNF(debug=False)
+    mg = GENERAL_MG.to_CNF(debug=False).to_bigram()
     tuned_mg = io(mg, corpus, debug=False, log=False)
     print("Finished tuning")
 
@@ -312,7 +312,7 @@ def check_io(n_samples: int, zoo_limit=None):
             print(sol)
             d, s = sol.expand_until(1000)
             S0LSystem.render(s, d=5, theta=43,
-                             filename=f"../out/samples/{name}_{i}")
+                             filename=f"{DIR}/{name}_{i}")
 
 
 def check_io_autograd(io_iters: int, n_samples: int, zoo_limit=None):
@@ -324,7 +324,7 @@ def check_io_autograd(io_iters: int, n_samples: int, zoo_limit=None):
                 print(lsys)
                 d, s = lsys.expand_until(1000)
                 S0LSystem.render(s, d=5, theta=43,
-                                 filename=f"../out/samples/{i},{j}")
+                                 filename=f"{DIR}/{i},{j}")
             except ValueError:
                 pass
 
@@ -335,5 +335,6 @@ def check_io_autograd(io_iters: int, n_samples: int, zoo_limit=None):
 
 if __name__ == '__main__':
     # make()
-    check_io(n_samples=10, zoo_limit=1)
+    util.try_mkdir(DIR)
+    check_io(n_samples=10, zoo_limit=None)
     # check_io_autograd(io_iters=100, n_samples=10, zoo_limit=1)
