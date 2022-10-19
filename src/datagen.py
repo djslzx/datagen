@@ -6,11 +6,11 @@ import pdb
 
 from lindenmayer import LSystem, S0LSystem
 from cfg import PCFG
-from inout import io, autograd_io
+from inout import inside_outside, autograd_io
 import book_zoo
 import util
 
-DIR = "../out/io-samples/18oct"
+DIR = "../out/io-samples/19oct"
 
 GENERAL_MG = PCFG(
     start="L-SYSTEM",
@@ -281,38 +281,40 @@ def make():
         # )
 
 
-def check_io(n_samples: int, zoo_limit=None):
+def fit_and_sample(n_systems: int, n_samples_per_system: int,
+                   theta=43, zoo_limit=None):
+    # extract & render training specimens
     specimens = [sys for sys, angle in book_zoo.zoo[:zoo_limit]]
-
     for i, specimen in enumerate(specimens):
-        d, s = specimen.expand_until(1000)
-        S0LSystem.render(s, d=5, theta=43,
-                         filename=f"{DIR}/reference_{i}")
-
-    corpus = [s.to_sentence() for s in specimens]
-    mg = GENERAL_MG.to_CNF(debug=False).to_bigram()
-    tuned_mg = io(mg, corpus, debug=False, log=False)
-    print("Finished tuning")
-
-    untuned, tuned = [], []
-    for i in range(n_samples):
-        print(f"Sampling {i+1}/{n_samples}...")
-        try:
-            untuned.append(S0LSystem.from_sentence(mg.iterate_until(100)))
-        except ValueError:
-            pass
-        try:
-            tuned.append(S0LSystem.from_sentence(tuned_mg.iterate_fully()))
-        except ValueError:
-            pass
-
-    for name, sys in zip(["untuned", "tuned"], [untuned, tuned]):
-        print(f"Rendering from {name}")
-        for i, sol in enumerate(sys):
-            print(sol)
-            d, s = sol.expand_until(1000)
+        for j in range(n_samples_per_system):
+            d, s = specimen.expand_until(1000)
             S0LSystem.render(s, d=5, theta=43,
-                             filename=f"{DIR}/{name}_{i}")
+                             filename=f"{DIR}/ref-{i:03d}-{j:03d}")
+
+    # fit metagrammar using inside-outside
+    mg = GENERAL_MG.to_bigram().to_CNF()
+    corpus = [s.to_sentence() for s in specimens]
+    mg = inside_outside(mg, corpus, debug=False, log=True)
+    print(f"Finished tuning: {mg}")
+
+    for i in range(n_systems):
+        try:
+            lsys = S0LSystem.from_sentence(mg.iterate_fully())
+            print(f"L-system {i}: {lsys}")
+
+            with open(f"{DIR}/system-{i:03d}.dat", "wb") as f:
+                pickle.dump(lsys, f)
+            with open(f"{DIR}/system-{i:03d}.log", "w") as f:
+                f.write(f"{lsys}")
+
+            for j in range(n_samples_per_system):
+                print(f"  Rendering {j}-th sample...")
+                d, s = lsys.expand_until(1000)
+                S0LSystem.render(s, d=5, theta=theta,
+                                 filename=f"{DIR}/system-{i:03d}-{j:03d}")
+            print()
+        except ValueError:
+            pass
 
 
 def check_io_autograd(io_iters: int, n_samples: int, zoo_limit=None):
@@ -336,5 +338,5 @@ def check_io_autograd(io_iters: int, n_samples: int, zoo_limit=None):
 if __name__ == '__main__':
     # make()
     util.try_mkdir(DIR)
-    check_io(n_samples=10, zoo_limit=None)
+    fit_and_sample(n_systems=10, n_samples_per_system=3, zoo_limit=1)
     # check_io_autograd(io_iters=100, n_samples=10, zoo_limit=1)

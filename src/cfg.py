@@ -1,7 +1,6 @@
 import random
 import itertools as it
 from typing import Dict, List, Tuple, Union, Set
-from pprint import pp
 import pdb
 import torch as T
 
@@ -222,9 +221,19 @@ class PCFG(T.nn.Module, CFG):
                     return False
         return True
 
-    def normalize_weights_(self):
-        for pred, weights in self.weights.items():
-            self.weights[pred] = T.nn.Softmax(dim=0)(weights)
+    def normalized(self, c=0.1) -> 'PCFG':
+        """
+        Returns a PCFG with similar relative weights, but normalized
+        with smoothing constant c.
+        """
+        return PCFG(
+            start=self.start,
+            rules=self.rules,
+            weights={
+                pred: (ws + c) / T.sum(ws + c)
+                for pred, ws in self.weights.items()
+            }
+        )
 
     def weight(self, pred: Word, succ: Sentence) -> float:
         if pred in self.rules:
@@ -367,7 +376,9 @@ class PCFG(T.nn.Module, CFG):
 
     def to_CNF(self, debug=False) -> 'PCFG':
         """Convert to Chomsky normal form; immutable"""
-        # return self._start()._term()._bin()._del()._unit()
+        if self.is_in_CNF():
+            return self
+
         ops = {
             'start': lambda x: x._start(),
             'term': lambda x: x._term(),

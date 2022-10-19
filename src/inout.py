@@ -143,7 +143,7 @@ def autograd_io(G: PCFG, corpus: List[PCFG.Sentence], iters=1000,
         if log:
             print(f"[{i}/{iters}]")
         for word in corpus:
-            z = ins(G, word)
+            z = ins(G, word)    # TODO: log pr
             loss = -z
             loss.backward()
             optimizer.step()
@@ -215,9 +215,9 @@ def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], log=False, debug=False)
     return counts
 
 
-def io_step(G: PCFG, corpus: List[PCFG.Sentence],
-            smoothing: float = 0.1,
-            debug=False, log=False) -> PCFG:
+def inside_outside_step(G: PCFG, corpus: List[PCFG.Sentence],
+                        smoothing: float = 0.1,
+                        debug=False, log=False) -> PCFG:
     """
     Perform one step of inside-outside.
     """
@@ -240,31 +240,28 @@ def io_step(G: PCFG, corpus: List[PCFG.Sentence],
     return PCFG.from_rule_list(G.start, rules)
 
 
-def io(G: PCFG, corpus: List[PCFG.Sentence],
-       smoothing=0.1, precision=4,
-       debug=False, log=False) -> PCFG:
+def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
+                   smoothing=0.1, precision=4,
+                   debug=False, log=False) -> PCFG:
     """
     Perform inside-outside until the grammar converges.
     """
-    g = G
-    if not g.is_in_CNF():
-        g = g.to_CNF()
-    g.normalize_weights_()
+    assert G.is_in_CNF(), "Inside-outside requires the grammar to be in CNF"
 
-    g_prev, g = g, io_step(g, corpus, smoothing, debug=debug, log=log)
-    if log:
-        print("IO step 1")
-        print("prev", g_prev)
-        print("current", g)
+    def step(g: PCFG, corpus: List[PCFG.Sentence]) -> PCFG:
+        return inside_outside_step(g, corpus, smoothing, debug=debug, log=log)
 
-    i = 2
-    while not g.approx_eq(g_prev, threshold=1e-6):
-        g_prev, g = g, io_step(g, corpus, smoothing, debug=debug, log=log)
+    g = G.normalized()
+    while True:
+        i = 1
+        g_prev, g = g, step(g, corpus)
         if log:
-            print(f"IO step {i}")
-            print("prev", g_prev)
-            print("current", g)
+            print(f"IO step {i}:\n"
+                  f"prev: {g_prev}\n"
+                  f"current: {g}")
             i += 1
+        if g.approx_eq(g_prev, threshold=1e-7):
+            break
     return g
 
 
@@ -325,7 +322,7 @@ def demo_io():
     for g, corpus in cases:
         print(corpus, '\n', g, '\n')
         # print(inside_outside_step(g, corpus, log=True))
-        print(io(g, corpus, log=False))
+        print(inside_outside(g, corpus, log=False))
         # autograd_io(g, corpus)
 
 
