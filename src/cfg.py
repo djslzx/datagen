@@ -1,6 +1,6 @@
 import random
 import itertools as it
-from typing import Dict, List, Tuple, Union, Set
+from typing import Dict, List, Tuple, Union, Set, Iterable
 import pdb
 import torch as T
 
@@ -74,7 +74,7 @@ class CFG:
     def fixpoint(self) -> List[str]:
         """Keep applying rules to the word until it stops changing."""
         prev = [self.start]
-        current = self.step(self.start)
+        current = self.step([self.start])
         while current != prev:
             prev = current
             current = self.step(current)
@@ -129,23 +129,29 @@ class PCFG(T.nn.Module, CFG):
     def __init__(self,
                  start: Word,
                  rules: Dict[Word, List[Union[str, Sentence]]],
-                 weights: Union[str, Dict[Word, List[float]]] = "uniform"):
+                 weights: Union[str, Dict[Word, List[float]]] = "uniform",
+                 log_mode=False):
         PCFG.check_rep(start, rules, weights)
         super(PCFG, self).__init__()
+
         self.start = start
         self.rules = {
             pred: [(succ.split() if isinstance(succ, str) else succ)
                    for succ in succs]
             for pred, succs in rules.items()
         }
+
+        self.log_mode = log_mode
+        maybe_log = (lambda x: T.log(x) if self.log_mode else x)
+
         if weights == "uniform":
             self.weights = T.nn.ParameterDict({
-                k: T.ones(len(v), dtype=T.float64) / len(v)
+                k: maybe_log(T.ones(len(v), dtype=T.float64) / len(v))
                 for k, v in rules.items()
             })
         else:
             self.weights = T.nn.ParameterDict({
-                k: T.tensor(v, dtype=T.float64) / sum(v)
+                k: maybe_log(T.tensor(v, dtype=T.float64) / sum(v))
                 for k, v in weights.items()
             })
 
@@ -247,10 +253,11 @@ class PCFG(T.nn.Module, CFG):
 
     @property
     def nonterminals(self) -> List[Word]:
-        return self.rules.keys()
+        return list(self.rules.keys())
 
+    @staticmethod
     def from_rule_list(start: Word,
-                       rules: List[Tuple[Word, Sentence, float]]) -> 'PCFG':
+                       rules: Iterable[Tuple[Word, Sentence, float]]) -> 'PCFG':
         """Construct a PCFG from a list of rules with weights"""
         words = {}
         weights = {}
@@ -274,7 +281,7 @@ class PCFG(T.nn.Module, CFG):
     def add_rule(self, pred: Word, succ: Sentence, weight: float) -> 'PCFG':
         """Construct a PCFG by adding a rule to the current PCFG; immutable"""
         return PCFG.from_rule_list(self.start,
-                                   self.as_rule_list() + (pred, succ, weight))
+                                   self.as_rule_list() + [(pred, succ, weight)])
 
     def rm_rule(self, pred: str, succ: List[str]) -> 'PCFG':
         """
@@ -299,7 +306,7 @@ class PCFG(T.nn.Module, CFG):
         then duplicate the resulting rules with the LHS being each
         unique annotated RHS.
 
-        Given an nt X appearing in k RHS's, annotate each X with an index i
+        Given a nt X appearing in k RHS's, annotate each X with an index i
         to yield X_i, which replaces each RHS appearance of X.
         Then, add rules X_i -> ... for each i.
         """
@@ -469,7 +476,7 @@ class PCFG(T.nn.Module, CFG):
             if nt != self.start and PCFG.Empty in prods
         ]
         if not srcs:
-            return {}
+            return set()
 
         # recursively set nonterminals as nullable or not
         # using dynamic programming
@@ -502,11 +509,11 @@ class PCFG(T.nn.Module, CFG):
         rules = []
 
         for pred, succ, weight in self.as_rule_list():
-            # if a nonterminal in the successor is nullable, then
+            # if a nonterminal in the successor is nullable,
             # then add a version of the rule that does not contain
             # the nullable successor
             succs = []
-            nullable_i = [i for i, c in enumerate(succ) if c in nullable_nts]
+            nullable_i = {i for i, c in enumerate(succ) if c in nullable_nts}
             for indices in util.language_plus(nullable_i):
                 s = util.remove_from_string(succ, indices)
                 if s and s not in self.rules[pred]:
@@ -973,14 +980,14 @@ def test_nullable():
                 "A": [["a"]],
             },
             weights="uniform",
-        ), {}),
+        ), set()),
         (PCFG(
             start="S",
             rules={
                 "S": [["A"], ["s"]],       # nullable
                 "A": [["B"], ["C", "a"]],  # nullable
                 "B": [["C"]],              # nullable
-                "C": [["x"], PCFG.Empty],        # nullable
+                "C": [["x"], PCFG.Empty],  # nullable
             },
             weights="uniform",
         ), {"A", "B", "C"}),
