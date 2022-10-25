@@ -2,7 +2,7 @@ import random
 import numpy as np
 from os import mkdir
 import itertools as it
-from typing import List, Tuple, Dict, Any, Iterable, Optional
+from typing import List, Tuple, Iterable, Optional, Set
 
 
 def softplus(a: float, b: float) -> float:
@@ -37,19 +37,24 @@ def test_split_list():
     print(" [+] passed test_split_list")
 
 
-def language(iterable: Iterable[Any]) -> Iterable[Iterable[Any]]:
+def language(alphabet: Set) -> Iterable[Iterable]:
     """
-    Return all the words in the language induced by the alphabet `iterable`
+    Return all words that can be constructed from any combination of
+    0 or 1 uses of each letter in the alphabet.
     """
-    return it.chain.from_iterable(it.combinations(iterable, r=i+1)
-                                  for i in range(len(iterable)))
+    return it.chain.from_iterable(it.combinations(alphabet, r=i + 1)
+                                  for i in range(len(alphabet)))
 
 
-def language_plus(iterable: Iterable[Any]) -> Iterable[Iterable[Any]]:
-    return [word for word in language(iterable) if word]
+def language_plus(alphabet: Set) -> Iterable[Iterable]:
+    """
+    Return all words consisting of at least one letter that can be constructed
+    from any combination of 0 or 1 uses of each letter in the alphabet.
+    """
+    return [word for word in language(alphabet) if word]
 
 
-def remove_from_string(s: str, indices: List[int]) -> str:
+def remove_from_string(s: Iterable, indices: Iterable[int]) -> str:
     """Remove the first occurrence of each letter in `letters` from `s`"""
     out = s
     for i in sorted(indices, reverse=True):
