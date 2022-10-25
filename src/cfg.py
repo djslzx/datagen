@@ -1,3 +1,4 @@
+import math
 import random
 import itertools as it
 from typing import Dict, List, Tuple, Union, Set, Iterable
@@ -111,7 +112,7 @@ class CFG:
 class PCFG(T.nn.Module, CFG):
     """
     A probabilistic context-free grammar.  Terminals and nonterminals are
-    represented as strings.  All of the rules for a given nonterminal should
+    represented as strings.  All the rules for a given nonterminal should
     be bundled together into a list.  Each of these rules has an associated
     probability.  An example ruleset is
     {
@@ -142,7 +143,7 @@ class PCFG(T.nn.Module, CFG):
         }
 
         self.log_mode = log_mode
-        maybe_log = (lambda x: T.log(x) if self.log_mode else x)
+        maybe_log = (lambda x: x.log() if self.log_mode else x)
 
         if weights == "uniform":
             self.weights = T.nn.ParameterDict({
@@ -151,7 +152,7 @@ class PCFG(T.nn.Module, CFG):
             })
         else:
             self.weights = T.nn.ParameterDict({
-                k: maybe_log(T.tensor(v, dtype=T.float64) / sum(v))
+                k: T.tensor(v, dtype=T.float64)
                 for k, v in weights.items()
             })
 
@@ -241,6 +242,14 @@ class PCFG(T.nn.Module, CFG):
             }
         )
 
+    def is_normalized(self, tolerance=1e-3) -> bool:
+        for pred, weights in self.weights.items():
+            if (not self.log_mode and abs(1 - sum(weights)) >= tolerance) or \
+               (self.log_mode and abs(T.logsumexp(weights, dim=0).item()) >= tolerance):
+                return False
+        return True
+
+
     def weight(self, pred: Word, succ: Sentence) -> float:
         if pred in self.rules:
             for s, w in zip(self.rules[pred], self.weights[pred]):
@@ -250,6 +259,12 @@ class PCFG(T.nn.Module, CFG):
 
     def __len__(self) -> int:
         return sum(len(succs) for pred, succs in self.rules.items())
+
+    def apply_to_weights(self, f) -> 'PCFG':
+        return PCFG.from_rule_list(
+            self.start,
+            [(p, s, f(w)) for p, s, w in self.as_rule_list()]
+        )
 
     @property
     def nonterminals(self) -> List[Word]:
@@ -1257,6 +1272,26 @@ def test_is_in_CNF():
     print(" [+] passed test_is_in_CNF")
 
 
+def test_is_normalized():
+    cases = [
+        (PCFG("S", {"S": ["a"]}, {"S": [1]}), True),
+        (PCFG("S", {"S": ["a", "b"]}, {"S": [1 / 2, 1 / 2]}), True),
+        (PCFG("S", {"S": ["a", "b"]}, {"S": [1, 1]}), False),
+        (PCFG("S", {"S": ["a"]}, {"S": [0]}, log_mode=True), True),
+        (PCFG("S", {"S": ["a"]}, {"S": [1]}, log_mode=True), False),
+        (PCFG("S", {"S": ["a", "b"]}, {"S": [math.log(1 / 2), math.log(1 / 2)]}, log_mode=True), True),
+        (PCFG("S", {"S": ["a", "b"]}, {"S": [1/2, 1/2]}, log_mode=True), False),
+    ]
+    for g, y in cases:
+        y_hat = g.is_normalized()
+        if y != y_hat:
+            print(f"Expected {y}, but got {y_hat} for grammar {g}")
+            pdb.set_trace()
+            g.is_normalized()
+            exit(1)
+    print(" [+] passed test_is_normalized")
+
+
 if __name__ == '__main__':
     # cfg = CFG(
     #     start="a",
@@ -1283,4 +1318,5 @@ if __name__ == '__main__':
     test_to_bigram()
     test_explode()
     test_is_in_CNF()
+    test_is_normalized()
     # demo_to_CNF()
