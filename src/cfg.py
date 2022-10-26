@@ -191,6 +191,8 @@ class PCFG(T.nn.Module, CFG):
         strings.
         """
         return isinstance(other, PCFG) and \
+            self.start == other.start and \
+            self.log_mode == other.log_mode and \
             self.rules == other.rules and \
             all(util.approx_eq(w1, w2, threshold)
                 for nt in self.rules
@@ -614,8 +616,10 @@ class PCFG(T.nn.Module, CFG):
                                                   self.weights[pred]))
             for pred in self.rules
         )
-        return ("PCFG: {\n  start=" + self.start +
-                "\n  rules=\n  " + rules + "\n}")
+        return ("PCFG: {"
+                f"\n  log_mode={self.log_mode}"
+                f"\n  start={self.start}"
+                f"\n  rules=\n  {rules}\n}}")
 
     def _choose_successor(self, letter: str) -> List[str]:
         if letter not in self.rules:

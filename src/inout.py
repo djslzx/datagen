@@ -317,10 +317,13 @@ def log_counts(G: PCFG, corpus: List[PCFG.Sentence]) -> Dict:
 
         for A, succ, log_w in G.as_rule_list():
             if len(succ) == 1:
-                log_c[A, tuple(succ)] += log_w / log_pr_W * \
-                    math.fsum(log_b[i, i, A]
-                              for i in range(n)
-                              if succ[0] == W[i])
+                term = log_w - log_pr_W + T.logsumexp(T.tensor([
+                    log_b[i, i, A] if T.tensor(W[i] == succ[0]) else T.tensor(-T.inf)
+                    # log_b[i, i, A] + T.log(T.tensor(W[i] == succ[0]))
+                    # = log_b[i,i,A] + (0 if W[i] == succ[0] else -inf)
+                    for i in range(n)
+                ]), dim=0)
+                log_c[A, tuple(succ)] = T.logaddexp(log_c[A, tuple(succ)], term)
             elif len(succ) == 2:
                 B, C = succ
                 term = log_w - log_pr_W + T.logsumexp(T.tensor([
@@ -357,7 +360,7 @@ def log_io(G: PCFG, corpus: List[PCFG.Sentence]) -> PCFG:
     g = G.apply_to_weights(lambda x: x)
     while True:
         g_prev, g = g, log_io_step(G, corpus)
-        print(g)
+        pdb.set_trace()
         if g.approx_eq(g_prev, threshold=1e-8):
             break
     return g
@@ -449,7 +452,6 @@ def demo_io():
         g_io = inside_outside(g, corpus, log=False)
         print("io", g_io)
 
-        pdb.set_trace()
         g_log = g.apply_to_weights(T.log)
         g_log.log_mode = True
         g_logio = log_io(g_log, corpus)

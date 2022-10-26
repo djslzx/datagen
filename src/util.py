@@ -1,12 +1,9 @@
 import random
 import numpy as np
+import torch as T
 from os import mkdir
 import itertools as it
 from typing import List, Tuple, Iterable, Optional, Set
-
-
-def softplus(a: float, b: float) -> float:
-    return a + np.log1p(np.exp(b - a))
 
 
 def split_list(s: List[str], t: str) -> List[List[str]]:
@@ -94,6 +91,10 @@ def normalize(vec: List[float], smoothing=0.1) -> List[float]:
 
 
 def approx_eq(a: float, b: float, threshold=10 ** -4) -> bool:
+    if T.isposinf(a) and T.isposinf(b):
+        return True
+    if T.isneginf(a) and T.isneginf(b):
+        return True
     return abs(a - b) < threshold
 
 
