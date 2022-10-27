@@ -294,7 +294,7 @@ def fit_and_sample(n_systems: int, n_samples_per_system: int,
     # fit metagrammar using inside-outside
     mg = GENERAL_MG.to_bigram().to_CNF()
     corpus = [s.to_sentence() for s in specimens]
-    mg = inside_outside(mg, corpus, debug=False, log=True)
+    mg = inside_outside(mg, corpus, debug=False, verbose=True)
     print(f"Finished tuning: {mg}")
 
     for i in range(n_systems):
