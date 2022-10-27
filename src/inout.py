@@ -313,7 +313,6 @@ def log_io(G: PCFG, corpus: List[PCFG.Sentence]) -> PCFG:
     g = G.apply_to_weights(lambda x: x)
     while True:
         g_prev, g = g, log_io_step(G, corpus, smoothing=0.1)
-        print(g)
         if g.approx_eq(g_prev, threshold=1e-8):
             break
     return g
