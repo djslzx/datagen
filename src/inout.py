@@ -343,12 +343,16 @@ def log_io_step(G: PCFG, corpus: List[PCFG.Sentence], smoothing=0.1) -> PCFG:
     assert G.log_mode
     assert G.is_normalized()
 
+    alpha = T.tensor(smoothing)
     log_c = log_counts(G, corpus)
     rules = []
     for A, succs in G.rules.items():
-        denom = T.logsumexp(T.tensor([log_c[A, tuple(succ)] for succ in succs]), dim=0)
+        n = T.tensor(len(succs))
+        denom = T.logaddexp(T.logsumexp(T.tensor([log_c[A, tuple(succ)] for succ in succs]), dim=0),
+                            T.log(alpha * n))
         for succ in succs:
-            rules.append((A, succ, log_c[A, tuple(succ)] - denom))
+            weight = T.logaddexp(log_c[A, tuple(succ)], T.log(alpha))
+            rules.append((A, succ, weight - denom))
     return PCFG.from_rule_list(G.start, rules)
 
 
@@ -360,7 +364,6 @@ def log_io(G: PCFG, corpus: List[PCFG.Sentence]) -> PCFG:
     g = G.apply_to_weights(lambda x: x)
     while True:
         g_prev, g = g, log_io_step(G, corpus)
-        pdb.set_trace()
         if g.approx_eq(g_prev, threshold=1e-8):
             break
     return g
@@ -394,41 +397,41 @@ def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
 
 def demo_io():
     cases = [
-        (PCFG.from_rule_list(
-            start="S",
-            rules=[
-                ("S", ["N", "V"], 1),
-                ("V", ["V", "N"], 1),
-                ("N", ["N", "P"], 1),
-                ("P", ["PP", "N"], 1),
-                ("N", ["She"], 1),
-                ("V", ["eats"], 1),
-                ("N", ["pizza"], 1),
-                ("PP", ["without"], 1),
-                ("N", ["anchovies"], 1),
-                ("V", ["V", "N", "P"], 1),
-                ("N", ["hesitation"], 1),
-            ],
-        ).to_CNF().normalized(),
-            [["She", "eats", "pizza", "without", "anchovies"],
-             ["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG.from_rule_list(
-            start="S",
-            rules=[
-                ("S", ["N", "V"], 1),
-                ("V", ["V", "N"], 1),
-                ("N", ["N", "P"], 1),
-                ("P", ["PP", "N"], 1),
-                ("N", ["She"], 1),
-                ("V", ["eats"], 1),
-                ("N", ["pizza"], 1),
-                ("PP", ["without"], 1),
-                ("N", ["anchovies"], 1),
-                ("V", ["V", "N", "P"], 1),
-                ("N", ["hesitation"], 1),
-            ],
-        ).to_CNF().normalized(),
-            [["She", "eats", "pizza", "without", "hesitation"]]),
+        # (PCFG.from_rule_list(
+        #     start="S",
+        #     rules=[
+        #         ("S", ["N", "V"], 1),
+        #         ("V", ["V", "N"], 1),
+        #         ("N", ["N", "P"], 1),
+        #         ("P", ["PP", "N"], 1),
+        #         ("N", ["She"], 1),
+        #         ("V", ["eats"], 1),
+        #         ("N", ["pizza"], 1),
+        #         ("PP", ["without"], 1),
+        #         ("N", ["anchovies"], 1),
+        #         ("V", ["V", "N", "P"], 1),
+        #         ("N", ["hesitation"], 1),
+        #     ],
+        # ).to_CNF().normalized(),
+        #     [["She", "eats", "pizza", "without", "anchovies"],
+        #      ["She", "eats", "pizza", "without", "hesitation"]]),
+        # (PCFG.from_rule_list(
+        #     start="S",
+        #     rules=[
+        #         ("S", ["N", "V"], 1),
+        #         ("V", ["V", "N"], 1),
+        #         ("N", ["N", "P"], 1),
+        #         ("P", ["PP", "N"], 1),
+        #         ("N", ["She"], 1),
+        #         ("V", ["eats"], 1),
+        #         ("N", ["pizza"], 1),
+        #         ("PP", ["without"], 1),
+        #         ("N", ["anchovies"], 1),
+        #         ("V", ["V", "N", "P"], 1),
+        #         ("N", ["hesitation"], 1),
+        #     ],
+        # ).to_CNF().normalized(),
+        #     [["She", "eats", "pizza", "without", "hesitation"]]),
         (PCFG(start="S",
               rules={
                   "S": [["A", "A"], ["B", "B"]],
