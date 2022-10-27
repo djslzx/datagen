@@ -224,7 +224,7 @@ def log_alpha_beta(G: PCFG, s: PCFG.Sentence) -> Tuple[Dict, Dict]:
     assert G.log_mode
     assert G.is_normalized()
 
-    log_a = inside(G, s)
+    log_a = log_alpha(G, s)
     log_b = {}
     n = len(s)
 
@@ -558,5 +558,5 @@ if __name__ == '__main__':
     # test_inward_diag()
     # test_outward_diag()
     # demo_inside()
-    # demo_io()
     test_log()
+    demo_io()

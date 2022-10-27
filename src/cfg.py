@@ -251,12 +251,12 @@ class PCFG(T.nn.Module, CFG):
                 return False
         return True
 
-    def weight(self, pred: Word, succ: Sentence) -> float:
+    def weight(self, pred: Word, succ: Sentence) -> T.Tensor:
         if pred in self.rules:
             for s, w in zip(self.rules[pred], self.weights[pred]):
                 if s == succ:
                     return w
-        return 0 if not self.log_mode else T.tensor(-T.inf)
+        return T.tensor(-T.inf) if self.log_mode else T.tensor(0)
 
     def __len__(self) -> int:
         return sum(len(succs) for pred, succs in self.rules.items())
