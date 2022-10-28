@@ -1,4 +1,3 @@
-import turtle
 import svgwrite
 import sys
 import random
@@ -7,19 +6,6 @@ from math import sin, cos, radians, sqrt
 import pdb
 import itertools as it
 import util
-
-
-def setup_turtle():
-    if turtle.isvisible():
-        turtle.screensize(1000, 1000)
-        turtle.pensize(1)
-        turtle.mode('logo')
-        turtle.hideturtle()
-        turtle.speed(0)
-        turtle.tracer(0, 0)
-        turtle.clear()
-        turtle.setpos(0, 0)
-        turtle.setheading(0)
 
 
 class Stick:
@@ -180,43 +166,6 @@ class LSystem:
             sticks=LSystem.to_sticks(s=s, d=d, theta=theta),
             filename=f'{filename}.svg',
         )
-
-    def render_with_turtle(s: str, d: float, theta: float, filename: str):
-        """Renders the L-System using Turtle graphics."""
-        setup_turtle()
-        stack = []
-        for c in s:
-            if c == 'F':
-                # move forward and draw a line
-                turtle.pendown()
-                turtle.forward(d)
-                turtle.penup()
-            elif c == 'f':
-                # move forward without drawing
-                turtle.forward(d)
-            elif c == '+':
-                turtle.left(theta)
-            elif c == '-':
-                turtle.right(theta)
-            elif c == '[':
-                # push turtle state onto stack
-                stack.append((turtle.pos(), turtle.heading()))
-            elif c == ']':
-                # pop turtle state off of stack
-                pos, heading = stack.pop()
-                turtle.setpos(*pos)
-                turtle.setheading(heading)
-
-        turtle.update()
-        turtle.getcanvas().postscript(
-            file=f'{filename}.ps',
-            colormode='color',
-            height=1500,
-            width=1500,
-        )
-        turtle.clear()
-        turtle.setpos(0, 0)
-        turtle.setheading(0)
 
 
 class D0LSystem(LSystem):
@@ -486,8 +435,8 @@ def draw_systems(out_dir: str):
             print(system)
             for level, word in enumerate(system.expansions(levels)):
                 print(word)
-                LSystem.render_with_turtle(
-                    word,
+                LSystem.render(
+                    s=word,
                     d=5,
                     theta=angle,
                     filename=f'{out_dir}/{name}-{angle}'

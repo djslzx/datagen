@@ -4,7 +4,8 @@ Implementation of the inside-outside algorithm for CFGs
 alpha(i, j, A, w, G) = P(phi, A -> w_i...w_j)
 beta(i, j, A, w, G) = P(phi, S -> w1 ... w_i-1 . A . w_j+1 ... w_n)
 """
-from typing import Dict, Tuple, List, Iterable, Callable
+import time
+from typing import Dict, Tuple, List, Iterable, Callable, Optional
 from pprint import pp
 import torch as T
 import math
@@ -305,14 +306,21 @@ def log_io_step(G: PCFG, corpus: List[PCFG.Sentence], smoothing=0.1) -> PCFG:
     return PCFG.from_rule_list(G.start, rules)
 
 
-def log_io(G: PCFG, corpus: List[PCFG.Sentence]) -> PCFG:
+def log_io(G: PCFG, corpus: List[PCFG.Sentence], verbose=False) -> PCFG:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
 
     g = G.apply_to_weights(lambda x: x)
+    i = 1
+    t = time.time()
     while True:
         g_prev, g = g, log_io_step(G, corpus, smoothing=0.1)
+        if verbose:
+            duration = time.time() - t
+            print(f"IO step {i} took {duration}s")
+            i += 1
+            t = time.time()
         if g.approx_eq(g_prev, threshold=1e-8):
             break
     return g
@@ -330,8 +338,8 @@ def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
         return inside_outside_step(g, corpus, smoothing, verbose=verbose)
 
     g = G.normalized()
+    i = 1
     while True:
-        i = 1
         g_prev, g = g, step(g, corpus)
         if verbose:
             print(f"IO step {i}:\n"

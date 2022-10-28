@@ -267,6 +267,16 @@ class PCFG(T.nn.Module, CFG):
             [(p, s, f(w)) for p, s, w in self.as_rule_list()]
         )
 
+    def log(self) -> 'PCFG':
+        g = self.apply_to_weights(T.log)
+        g.log_mode = True
+        return g
+
+    def exp(self) -> 'PCFG':
+        g = self.apply_to_weights(T.exp)
+        g.log_mode = False
+        return g
+
     @property
     def nonterminals(self) -> List[Word]:
         return list(self.rules.keys())

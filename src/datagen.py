@@ -1,16 +1,17 @@
 import random
 import pickle
 import argparse
+import time
 import multiprocess as mp
 import pdb
 
 from lindenmayer import LSystem, S0LSystem
 from cfg import PCFG
-from inout import inside_outside, autograd_io
+from inout import inside_outside, autograd_io, log_io
 import book_zoo
 import util
 
-DIR = "../out/io-samples/19oct"
+DIR = "../out/io-samples/"
 
 GENERAL_MG = PCFG(
     start="L-SYSTEM",
@@ -281,8 +282,7 @@ def make():
         # )
 
 
-def fit_and_sample(n_systems: int, n_samples_per_system: int,
-                   theta=43, zoo_limit=None):
+def fit_and_sample(n_systems: int, n_samples_per_system: int, theta=43, zoo_limit=None):
     # extract & render training specimens
     specimens = [sys for sys, angle in book_zoo.zoo[:zoo_limit]]
     for i, specimen in enumerate(specimens):
@@ -292,19 +292,27 @@ def fit_and_sample(n_systems: int, n_samples_per_system: int,
                              filename=f"{DIR}/ref-{i:03d}-{j:03d}")
 
     # fit metagrammar using inside-outside
-    mg = GENERAL_MG.to_bigram().to_CNF()
     corpus = [s.to_sentence() for s in specimens]
-    mg = inside_outside(mg, corpus, debug=False, verbose=True)
+    mg = GENERAL_MG.to_bigram().to_CNF().normalized().log()
+    mg = log_io(mg, corpus, verbose=True).exp()
     print(f"Finished tuning: {mg}")
 
+    print("Saving metagrammar...")
+    t = time.time()
+    with open(f"{DIR}/mg-{t}.dat", "wb") as f:
+        pickle.dump(mg, f)
+    with open(f"{DIR}/mg-{t}.log", "w") as f:
+        f.write(f"{mg}")
+
     for i in range(n_systems):
+        print(f"Generating {i}-th L-system from tuned grammar...")
         try:
-            lsys = S0LSystem.from_sentence(mg.iterate_fully())
+            sentence = mg.iterate_fully()
+            lsys = S0LSystem.from_sentence(sentence)
             print(f"L-system {i}: {lsys}")
 
-            with open(f"{DIR}/system-{i:03d}.dat", "wb") as f:
-                pickle.dump(lsys, f)
             with open(f"{DIR}/system-{i:03d}.log", "w") as f:
+                f.write("".join(sentence) + '\n')
                 f.write(f"{lsys}")
 
             for j in range(n_samples_per_system):
@@ -314,6 +322,7 @@ def fit_and_sample(n_systems: int, n_samples_per_system: int,
                                  filename=f"{DIR}/system-{i:03d}-{j:03d}")
             print()
         except ValueError:
+            print(f"Produced uninterpretable L-system: {mg.iterate_until(100)}")
             pass
 
 
@@ -338,5 +347,5 @@ def check_io_autograd(io_iters: int, n_samples: int, zoo_limit=None):
 if __name__ == '__main__':
     # make()
     util.try_mkdir(DIR)
-    fit_and_sample(n_systems=10, n_samples_per_system=3, zoo_limit=1)
+    fit_and_sample(n_systems=20, n_samples_per_system=3, zoo_limit=None)
     # check_io_autograd(io_iters=100, n_samples=10, zoo_limit=1)

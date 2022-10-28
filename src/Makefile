@@ -1,17 +1,15 @@
-ROOT := '../out/'
-DIR := '../out/sep27/fitted'
+DIR := '../out/io-samples'
 ZOO_DIR := '../out/zoo'
 
 lindenmayer:
 	python3 -u lindenmayer.py $(DIR)
-	$(MAKE) convert
+	$(MAKE) convert_ps
 
 datagen:
 	$(MAKE) clean
 	mkdir -p $(DIR)
-# n_grammars, axiom_length[2], n_rules[2], rule_length[2], n_specimens, depth, out_dir
-	python3 -u datagen.py 'handcoded' 5 1 5 2 3 4 10 3 3 $(DIR)
-	$(MAKE) convert
+	python3 -u datagen.py
+	$(MAKE) convert_svg
 
 datagen_remote:
 	$(MAKE) clean
@@ -19,7 +17,10 @@ datagen_remote:
 	mkdir -p $(DIR)
 	xvfb-run python3 -u datagen.py 'handcoded' 100_000 1 5 2 5 5 15 5 6 $(DIR)
 
-convert:
+convert_svg:
+	./scripts/svg-to-png.sh $(DIR)
+
+convert_ps:
 	@echo "Converting .ps files..."
 	./scripts/convert-ps.sh $(DIR)
 	@echo "Removing leftover .ps files..."
