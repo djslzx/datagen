@@ -345,41 +345,41 @@ def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
 
 def demo_io():
     cases = [
-        # (PCFG.from_rule_list(
-        #     start="S",
-        #     rules=[
-        #         ("S", ["N", "V"], 1),
-        #         ("V", ["V", "N"], 1),
-        #         ("N", ["N", "P"], 1),
-        #         ("P", ["PP", "N"], 1),
-        #         ("N", ["She"], 1),
-        #         ("V", ["eats"], 1),
-        #         ("N", ["pizza"], 1),
-        #         ("PP", ["without"], 1),
-        #         ("N", ["anchovies"], 1),
-        #         ("V", ["V", "N", "P"], 1),
-        #         ("N", ["hesitation"], 1),
-        #     ],
-        # ).to_CNF().normalized(),
-        #     [["She", "eats", "pizza", "without", "anchovies"],
-        #      ["She", "eats", "pizza", "without", "hesitation"]]),
-        # (PCFG.from_rule_list(
-        #     start="S",
-        #     rules=[
-        #         ("S", ["N", "V"], 1),
-        #         ("V", ["V", "N"], 1),
-        #         ("N", ["N", "P"], 1),
-        #         ("P", ["PP", "N"], 1),
-        #         ("N", ["She"], 1),
-        #         ("V", ["eats"], 1),
-        #         ("N", ["pizza"], 1),
-        #         ("PP", ["without"], 1),
-        #         ("N", ["anchovies"], 1),
-        #         ("V", ["V", "N", "P"], 1),
-        #         ("N", ["hesitation"], 1),
-        #     ],
-        # ).to_CNF().normalized(),
-        #     [["She", "eats", "pizza", "without", "hesitation"]]),
+        (PCFG.from_rule_list(
+            start="S",
+            rules=[
+                ("S", ["N", "V"], 1),
+                ("V", ["V", "N"], 1),
+                ("N", ["N", "P"], 1),
+                ("P", ["PP", "N"], 1),
+                ("N", ["She"], 1),
+                ("V", ["eats"], 1),
+                ("N", ["pizza"], 1),
+                ("PP", ["without"], 1),
+                ("N", ["anchovies"], 1),
+                ("V", ["V", "N", "P"], 1),
+                ("N", ["hesitation"], 1),
+            ],
+        ).to_CNF().normalized(),
+            [["She", "eats", "pizza", "without", "anchovies"],
+             ["She", "eats", "pizza", "without", "hesitation"]]),
+        (PCFG.from_rule_list(
+            start="S",
+            rules=[
+                ("S", ["N", "V"], 1),
+                ("V", ["V", "N"], 1),
+                ("N", ["N", "P"], 1),
+                ("P", ["PP", "N"], 1),
+                ("N", ["She"], 1),
+                ("V", ["eats"], 1),
+                ("N", ["pizza"], 1),
+                ("PP", ["without"], 1),
+                ("N", ["anchovies"], 1),
+                ("V", ["V", "N", "P"], 1),
+                ("N", ["hesitation"], 1),
+            ],
+        ).to_CNF().normalized(),
+            [["She", "eats", "pizza", "without", "hesitation"]]),
         (PCFG(start="S",
               rules={
                   "S": [["A", "A"], ["B", "B"]],
@@ -387,19 +387,9 @@ def demo_io():
                   "B": [["b"]],
               }).to_CNF(),
          [["a", "a"]]),
-        # (PCFG(start="S",
-        #       rules={
-        #           "S": [["A", "A"], ["B", "B"]],
-        #           "A": [["A'", "A'"]],
-        #           "A'": [["a"]],
-        #           "B": [["B'", "B'"]],
-        #           "B'": [["b"]],
-        #       }).to_CNF(),
-        #  [["a", "a", "a", "a"]]),
     ]
     for g, corpus in cases:
         print(corpus, '\n', g, '\n')
-        # print(inside_outside_step(g, corpus, log=True))
         g_io = inside_outside(g, corpus, verbose=False)
         print("io", g_io)
 
