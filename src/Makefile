@@ -10,6 +10,10 @@ datagen:
 	mkdir -p $(DIR)
 	python3 -u datagen.py
 	$(MAKE) convert_svg
+	mkdir -p $(DIR)/svgs
+	mkdir -p $(DIR)/pngs
+	mv $(DIR)/*.svg $(DIR)/svgs
+	mv $(DIR)/*.png $(DIR)/pngs
 
 datagen_remote:
 	$(MAKE) clean
