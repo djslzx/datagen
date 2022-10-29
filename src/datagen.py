@@ -304,25 +304,29 @@ def fit_and_sample(n_systems: int, n_samples_per_system: int, theta=43, zoo_limi
     with open(f"{DIR}/mg-{t}.log", "w") as f:
         f.write(f"{mg}")
 
+    return mg
+
+
+def sample_from_tuned_grammar(grammar: PCFG, n_systems: int, n_samples_per_system: int):
     for i in range(n_systems):
         print(f"Generating {i}-th L-system from tuned grammar...")
         try:
-            sentence = mg.iterate_fully()
+            sentence = grammar.iterate_fully()
             lsys = S0LSystem.from_sentence(sentence)
             print(f"L-system {i}: {lsys}")
 
-            with open(f"{DIR}/system-{i:03d}.log", "w") as f:
+            with open(f"{DIR}/sys-{i:03d}.log", "w") as f:
                 f.write("".join(sentence) + '\n')
                 f.write(f"{lsys}")
 
             for j in range(n_samples_per_system):
                 print(f"  Rendering {j}-th sample...")
                 d, s = lsys.expand_until(1000)
-                S0LSystem.render(s, d=5, theta=theta,
-                                 filename=f"{DIR}/system-{i:03d}-{j:03d}")
+                S0LSystem.render(s, d=5, theta=43,
+                                 filename=f"{DIR}/sys-{i:03d}-{j:03d}")
             print()
         except ValueError:
-            print(f"Produced uninterpretable L-system: {mg.iterate_until(100)}")
+            print(f"Produced uninterpretable L-system, e.g. {grammar.iterate_until(100)}")
             pass
 
 
@@ -347,5 +351,10 @@ def check_io_autograd(io_iters: int, n_samples: int, zoo_limit=None):
 if __name__ == '__main__':
     # make()
     util.try_mkdir(DIR)
-    fit_and_sample(n_systems=20, n_samples_per_system=3, zoo_limit=None)
+    with open("../out/saved-mgs/mg-1666938123.479085.dat", "rb") as f:
+        g = pickle.load(f)
+    print(g)
+    sample_from_tuned_grammar(g, n_systems=100, n_samples_per_system=3)
+
+    # fit_and_sample(n_systems=20, n_samples_per_system=3, zoo_limit=None)
     # check_io_autograd(io_iters=100, n_samples=10, zoo_limit=1)
