@@ -50,17 +50,10 @@ def name(filename: str) -> str:
     return str(num)
 
 
-if __name__ == "__main__":
-    n_points = 100
+def plot_pca(n_points: int, globs: List[str], markers: List[str], legend: List[str]):
     pts = []
-    markers = ['o', 'x', '^', 'v']
-    for i, s in enumerate([
-        "../out/io-samples/ref/png/*.png",
-        "../out/io-samples/png/system*.png",
-        "../out/codex-samples/text/renders/png/*.png",
-        "../out/codex-samples/code/renders/png/*.png"
-    ]):
-        paths = sorted(glob(s))[:n_points]
+    for i, glob_str in enumerate(globs):
+        paths = sorted(glob(glob_str))[:n_points]
         predictions = featurize(paths)
         points = [x.detach().numpy() for x in predictions.values()]
         labels = [name(path) for path in paths]
@@ -73,5 +66,18 @@ if __name__ == "__main__":
         for label, x, y in zip(labels, xs, ys):
             plt.annotate(text=label, xy=(x, y))
 
-    plt.legend(pts, ('Reference', 'Synthetic IO', 'text-davinci-002', 'code-davinci-002'))
+    plt.legend(pts, legend)
+
+
+if __name__ == "__main__":
+    n_points = 100
+    glob_strs = [
+        "../out/io-samples/ref/png/*.png",
+        "../out/io-samples/png/system*.png",
+        "../out/codex-samples/text/renders/png/*.png",
+        "../out/codex-samples/code/renders/png/*.png"
+    ]
+    markers = ['o', 'x', '^', 'v']
+    legend = ['Reference', 'Synthetic IO', 'text-davinci-002', 'code-davinci-002']
+    plot_pca(n_points, glob_strs, markers, legend)
     plt.show()
