@@ -12,9 +12,10 @@ from pprint import pp
 from typing import Dict, List, Set, Tuple
 
 
-def process_images(img_paths: List[str]) -> Dict[str, T.Tensor]:
+def featurize(img_paths: List[str]) -> Dict[str, T.Tensor]:
     weights = ResNet50_Weights.DEFAULT
-    model = resnet50(weights=weights)
+    resnet = resnet50(weights=weights)
+    model = T.nn.Sequential(*list(resnet.children())[:-1])  # disable last layer in resnet
     model.eval()
     preprocess = weights.transforms()
     out = {}
@@ -24,7 +25,7 @@ def process_images(img_paths: List[str]) -> Dict[str, T.Tensor]:
         if img.shape[0] == 4:
             img = img[:-1, :, :]  # cut out alpha channel
         batch = preprocess(img).unsqueeze(0)
-        prediction = model(batch).squeeze(0).softmax(0)
+        prediction = model(batch).squeeze().softmax(0)
         out[basename] = prediction
     return out
 
@@ -38,10 +39,6 @@ def classify(predictions: Dict[str, T.Tensor]) -> Dict[str, Tuple[str, float]]:
         category_name = weights.meta["categories"][class_id]
         out[name] = (category_name, score)
     return out
-
-
-def classes(classifications: Dict[str, Tuple[str, float]]) -> Set[str]:
-    return {cname for cname, score in classifications.values()}
 
 
 def name(filename: str) -> str:
@@ -64,7 +61,7 @@ if __name__ == "__main__":
         "../out/codex-samples/code/renders/png/*.png"
     ]):
         paths = sorted(glob(s))[:n_points]
-        predictions = process_images(paths)
+        predictions = featurize(paths)
         points = [x.detach().numpy() for x in predictions.values()]
         labels = [name(path) for path in paths]
 
