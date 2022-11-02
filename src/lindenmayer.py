@@ -1,10 +1,10 @@
 import svgwrite
-import sys
 import random
 from typing import Dict, List, Iterator, Union, Tuple
 from math import sin, cos, radians, sqrt
 import pdb
 import itertools as it
+import time
 import util
 
 
@@ -30,7 +30,7 @@ class Stick:
         return f"Stick(x={self.x}, y={self.y}, d={self.d}, " \
             f"cos_theta={self.cos_theta:.3f}, sin_theta={self.sin_theta:.3f})"
 
-    def endpoints(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    def endpoints(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         return (
             (self.x, self.y),
             (self.x + self.d * self.cos_theta,
@@ -81,8 +81,20 @@ class LSystem:
         Renders the string as an SVG file with params
         d (step length), theta (angle)
         """
+        assert not filename.endswith(".svg")
         sticks = LSystem.to_sticks(s, d, theta)
         LSystem.sticks_to_svg(sticks, filename)
+
+    @staticmethod
+    def to_png(s: str, d: float, theta: float, filename: str, width=512):
+        """
+        Renders the string as a PNG file with width `width`.
+        """
+        assert not filename.endswith(".png")
+        S0LSystem.to_svg(s, d, theta, filename)
+        util.convert_svg_to_png(svg_filename=f"{filename}.svg",
+                                png_filename=f"{filename}.png",
+                                width=width)
 
     @staticmethod
     def to_sticks(s: str, d: float, theta: float) -> List[Stick]:
@@ -126,9 +138,6 @@ class LSystem:
         if not sticks:
             return
 
-        if not filename.endswith(".svg"):
-            filename += ".svg"
-
         pts = [stick.endpoints() for stick in sticks]
 
         # translate negative points in image over to positive values
@@ -152,7 +161,7 @@ class LSystem:
             f"Found negative points in {translated_pts}, transformed from pts"
 
         # create SVG drawing
-        dwg = svgwrite.Drawing(filename=filename)
+        dwg = svgwrite.Drawing(filename=f"{filename}.svg")
         dwg.add(dwg.rect(size=('100%', '100%'), fill='white', class_='bkg'))
         lines = dwg.add(dwg.g(id='sticks', stroke='black', stroke_width=1))
         for a, b in translated_pts:
@@ -162,10 +171,7 @@ class LSystem:
     def render(s: str, d: float, theta: float, filename: str):
         assert isinstance(s, str), \
             f"Render target must be a string, but got {s} of type {type(s)}"
-        LSystem.sticks_to_svg(
-            sticks=LSystem.to_sticks(s=s, d=d, theta=theta),
-            filename=f'{filename}.svg',
-        )
+        LSystem.to_png(s, d, theta, filename)
 
 
 class D0LSystem(LSystem):
@@ -445,6 +451,17 @@ def draw_systems(out_dir: str):
             print()
 
 
+def test_render():
+    systems = [
+        S0LSystem(axiom="F",
+                  productions={"F": ["F+F", "F-F"]}),
+    ]
+    for system in systems:
+        _, s = system.expand_until(100)
+        time_str = int(time.time())
+        S0LSystem.render(s, d=3, theta=43, filename=f"../out/test/{time_str}")
+
+
 if __name__ == '__main__':
     # if len(sys.argv) != 2:
     #     print("Usage: lindenmayer.py DIR")
@@ -454,3 +471,4 @@ if __name__ == '__main__':
     # draw_systems(out_dir=sys.argv[1])
     test_from_sentence()
     test_to_sentence()
+    test_render()

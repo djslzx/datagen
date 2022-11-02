@@ -69,8 +69,7 @@ def render_codex_outputs(samples: int, filename: str, out_dir: str):
                 print(f"Expanding {i}-th system, {j}-th sample")
                 depth, word = s.expand_until(length=500)
                 try:
-                    S0LSystem.to_svg(word, d=5, theta=43,
-                                     filename=f"{out_dir}/{i:02d}-{j}")
+                    S0LSystem.render(word, d=5, theta=43, filename=f"{out_dir}/{i:02d}-{j}")
                 except IndexError:
                     pass
 

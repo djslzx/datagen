@@ -4,6 +4,12 @@ import torch as T
 from os import mkdir
 import itertools as it
 from typing import List, Tuple, Iterable, Optional, Set
+import subprocess
+
+
+def convert_svg_to_png(svg_filename: str, png_filename: str, width: int):
+    with open(png_filename, "w") as f:
+        subprocess.run(["rsvg-convert", "-w", str(width), svg_filename], stdout=f)
 
 
 def split_list(s: List[str], t: str) -> List[List[str]]:
