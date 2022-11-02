@@ -5,6 +5,11 @@ from os import mkdir
 import itertools as it
 from typing import List, Tuple, Iterable, Optional, Set
 import subprocess
+from hashlib import md5
+
+
+def md5_hash(s: str) -> float:
+    return md5(s.encode()).hexdigest()
 
 
 def convert_svg_to_png(svg_filename: str, png_filename: str, width: int):

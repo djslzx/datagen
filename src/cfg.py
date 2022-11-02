@@ -152,7 +152,8 @@ class PCFG(T.nn.Module, CFG):
             })
         else:
             self.weights = T.nn.ParameterDict({
-                k: T.tensor(v, dtype=T.float64)
+                k: (T.tensor(v, dtype=T.float64) if not isinstance(v, T.Tensor)
+                    else v.double())
                 for k, v in weights.items()
             })
 

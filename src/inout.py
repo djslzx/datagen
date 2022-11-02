@@ -306,7 +306,7 @@ def log_io_step(G: PCFG, corpus: List[PCFG.Sentence], smoothing=0.1) -> PCFG:
     return PCFG.from_rule_list(G.start, rules)
 
 
-def log_io(G: PCFG, corpus: List[PCFG.Sentence], verbose=False) -> PCFG:
+def log_io(G: PCFG, corpus: List[PCFG.Sentence], smoothing=0.1, verbose=False) -> PCFG:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
@@ -315,7 +315,7 @@ def log_io(G: PCFG, corpus: List[PCFG.Sentence], verbose=False) -> PCFG:
     i = 1
     t = time.time()
     while True:
-        g_prev, g = g, log_io_step(G, corpus, smoothing=0.1)
+        g_prev, g = g, log_io_step(G, corpus, smoothing)
         if verbose:
             duration = time.time() - t
             print(f"IO step {i} took {duration}s")
