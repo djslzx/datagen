@@ -223,6 +223,9 @@ class S0LSystem(LSystem):
             " probabilities summing to 1"
         self.distribution = distribution
 
+    def __hash__(self):
+        return hash(" ".join(self.to_sentence()))
+
     def expand(self, s: str) -> str:
         return ''.join(random.choices(population=self.productions.get(c, [c]),
                                       weights=self.distribution.get(c, [1]),

@@ -224,3 +224,5 @@ zoo: List[Tuple[S0LSystem, int]] = [
     #     distribution="uniform",
     # ), 90),
 ]
+
+zoo_systems = [sys for sys, angle in zoo]

@@ -12,7 +12,7 @@ from pprint import pp
 from typing import Dict, List, Set, Tuple
 
 
-def featurize(img_paths: List[str]) -> Dict[str, T.Tensor]:
+def featurize_images(img_paths: List[str]) -> Dict[str, T.Tensor]:
     weights = ResNet50_Weights.DEFAULT
     resnet = resnet50(weights=weights)
     model = T.nn.Sequential(*list(resnet.children())[:-1])  # disable last layer in resnet
@@ -25,8 +25,8 @@ def featurize(img_paths: List[str]) -> Dict[str, T.Tensor]:
         if img.shape[0] == 4:
             img = img[:-1, :, :]  # cut out alpha channel
         batch = preprocess(img).unsqueeze(0)
-        prediction = model(batch).squeeze().softmax(0)
-        out[basename] = prediction
+        features = model(batch).squeeze().softmax(0)  # turn into distribution?
+        out[basename] = features
     return out
 
 
@@ -54,7 +54,7 @@ def plot_pca(n_points: int, globs: List[str], markers: List[str], legend: List[s
     pts = []
     for i, glob_str in enumerate(globs):
         paths = sorted(glob(glob_str))[:n_points]
-        predictions = featurize(paths)
+        predictions = featurize_images(paths)
         points = [x.detach().numpy() for x in predictions.values()]
         labels = [name(path) for path in paths]
 
