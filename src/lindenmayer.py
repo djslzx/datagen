@@ -2,40 +2,13 @@ import svgwrite
 import random
 from typing import Dict, List, Iterator, Union, Tuple
 from math import sin, cos, radians, sqrt
+import numpy as np
+import skimage.draw as skdraw
+import matplotlib.pyplot as plt
 import pdb
 import itertools as it
 import time
 import util
-
-
-class Stick:
-
-    def __init__(self, x: float, y: float, d: float,
-                 cos_theta: float, sin_theta: float):
-        self.x = x
-        self.y = y
-        self.d = d
-        self.cos_theta = cos_theta
-        self.sin_theta = sin_theta
-
-    def __eq__(self, other) -> bool:
-        return isinstance(other, Stick) and \
-            all(util.approx_eq(self.__dict__[key], other.__dict__[key])
-                for key in self.__dict__.keys())
-
-    def __repr__(self) -> str:
-        return str(self)
-
-    def __str__(self) -> str:
-        return f"Stick(x={self.x}, y={self.y}, d={self.d}, " \
-            f"cos_theta={self.cos_theta:.3f}, sin_theta={self.sin_theta:.3f})"
-
-    def endpoints(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-        return (
-            (self.x, self.y),
-            (self.x + self.d * self.cos_theta,
-             self.y + self.d * self.sin_theta),
-        )
 
 
 class LSystem:
@@ -76,102 +49,37 @@ class LSystem:
         return depth, word
 
     @staticmethod
-    def to_svg(s: str, d: float, theta: float, filename: str):
+    def draw(s: str, d: float, theta: float, n_rows: int = 512, n_cols: int = 512) -> np.ndarray:
         """
-        Renders the string as an SVG file with params
-        d (step length), theta (angle)
+        Draw the turtle interpretation of the string `s` onto a `n_rows` x `n_cols` array,
+        using scikit-image's drawing library (with anti-aliasing).
         """
-        assert not filename.endswith(".svg")
-        sticks = LSystem.to_sticks(s, d, theta)
-        LSystem.sticks_to_svg(sticks, filename)
-
-    @staticmethod
-    def to_png(s: str, d: float, theta: float, filename: str, width=512):
-        """
-        Renders the string as a PNG file with width `width`.
-        """
-        assert not filename.endswith(".png")
-        S0LSystem.to_svg(s, d, theta, filename)
-        util.convert_svg_to_png(svg_filename=f"{filename}.svg",
-                                png_filename=f"{filename}.png",
-                                width=width)
-
-    @staticmethod
-    def to_sticks(s: str, d: float, theta: float) -> List[Stick]:
-        """
-        Converts the string `s` to a collection of sticks.
-        - `d`: the length of each stick
-        - `theta`: the angle of a turn, in degrees
-        """
-        # TODO: should the sticks represent angles directly or as multiples of
-        # the input parameters (d, theta)?
-        x, y = 0, 0
-        heading = 90            # use logo mode: start facing up
-        sticks = []
+        r, c = n_rows//2, n_cols//2  # start at center of canvas
+        heading = 90  # start facing up (logo)
         stack = []
-        for c in s:
-            if c == 'F':
-                sticks.append(Stick(
-                    x=x,
-                    y=y,
-                    d=d,
-                    cos_theta=cos(radians(heading)),
-                    sin_theta=sin(radians(heading)),
-                ))
-                x += d * cos(radians(heading))
-                y += d * sin(radians(heading))
-            elif c == 'f':
-                x += d * cos(radians(heading))
-                y += d * sin(radians(heading))
-            elif c == '+':
+        canvas = np.zeros((n_rows, n_cols))
+        for char in s:
+            if char == 'F':
+                r1 = r + int(d * sin(radians(heading)))
+                c1 = c + int(d * cos(radians(heading)))
+                rs, cs, val = skdraw.line_aa(r, c, r1, c1)
+                # mask out out-of-bounds indices
+                mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)
+                rs, cs, val = rs[mask], cs[mask], val[mask]
+                canvas[rs, cs] = val * 255
+                r, c = r1, c1
+            elif char == 'f':
+                r += int(d * sin(radians(heading)))
+                c += int(d * cos(radians(heading)))
+            elif char == '+':
                 heading += theta
-            elif c == '-':
+            elif char == '-':
                 heading -= theta
-            elif c == '[':
-                stack.append((x, y, heading))
-            elif c == ']':
-                x, y, heading = stack.pop()
-        return sticks
-
-    @staticmethod
-    def sticks_to_svg(sticks: List[Stick], filename: str):
-        if not sticks:
-            return
-
-        pts = [stick.endpoints() for stick in sticks]
-
-        # translate negative points in image over to positive values
-        min_x = min(x
-                    for (ax, _), (bx, _) in pts
-                    for x in [ax, bx])
-        min_y = min(y
-                    for (_, ay), (_, by) in pts
-                    for y in [ay, by])
-
-        # flip and translate points
-        translated_pts = [((ax - min_x + 1,
-                            ay - min_y + 1),
-                           (bx - min_x + 1,
-                            by - min_y + 1))
-                          for (ax, ay), (bx, by) in pts]
-
-        assert all(v >= 0
-                   for (ax, ay), (bx, by) in translated_pts
-                   for v in [ax, ay, bx, by]), \
-            f"Found negative points in {translated_pts}, transformed from pts"
-
-        # create SVG drawing
-        dwg = svgwrite.Drawing(filename=f"{filename}.svg")
-        dwg.add(dwg.rect(size=('100%', '100%'), fill='white', class_='bkg'))
-        lines = dwg.add(dwg.g(id='sticks', stroke='black', stroke_width=1))
-        for a, b in translated_pts:
-            lines.add(dwg.line(start=a, end=b))
-        dwg.save()
-
-    def render(s: str, d: float, theta: float, filename: str):
-        assert isinstance(s, str), \
-            f"Render target must be a string, but got {s} of type {type(s)}"
-        LSystem.to_png(s, d, theta, filename)
+            elif char == '[':
+                stack.append((r, c, heading))
+            elif char == ']':
+                r, c, heading = stack.pop()
+        return canvas
 
 
 class D0LSystem(LSystem):
@@ -184,6 +92,15 @@ class D0LSystem(LSystem):
         super().__init__()
         self.axiom = axiom
         self.productions = productions
+
+    def __str__(self) -> str:
+        rules = []
+        for pred, succs in self.productions.items():
+            for i, succ in enumerate(succs):
+                rules.append(
+                    f'{pred} -> {succ}'
+                )
+        return f'axiom: {self.axiom}\n' + 'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
 
     def expand(self, s: str) -> str:
         # Assume identity production if predecessor is not in self.productions
@@ -242,6 +159,9 @@ class S0LSystem(LSystem):
                 )
         return f'axiom: {self.axiom}\n' + \
             'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
+
+    def __repr__(self) -> str:
+        return str(self)
 
     def __eq__(self, other) -> bool:
         return (self.axiom, self.productions, self.distribution) == \
@@ -319,52 +239,7 @@ def test_to_sentence():
     print(" [+] passed test_to_sentence")
 
 
-def test_to_sticks():
-    cases = [
-        ("F", 1, 90,
-         [Stick(x=0, y=0, d=1, cos_theta=0, sin_theta=1)]),
-        ("FF", 1, 90,
-         [
-             Stick(x=0, y=0, d=1, cos_theta=0, sin_theta=1),
-             Stick(x=0, y=1, d=1, cos_theta=0, sin_theta=1),
-         ]),
-        ("F+F", 1, 90,
-         [
-             Stick(x=0, y=0, d=1, cos_theta=0, sin_theta=1),
-             Stick(x=0, y=1, d=1, cos_theta=-1, sin_theta=0),
-         ]),
-        ("F+F+F+F", 1, 90,
-         [
-             Stick(0, 0, 1, 0, 1),
-             Stick(0, 1, 1, -1, 0),
-             Stick(-1, 1, 1, 0, -1),
-             Stick(-1, 0, 1, 1, 0),
-         ]),
-        ("F-F-F-F", 1, 90,
-         [
-             Stick(0, 0, 1, 0, 1),
-             Stick(0, 1, 1, 1, 0),
-             Stick(1, 1, 1, 0, -1),
-             Stick(1, 0, 1, -1, 0),
-         ]),
-        ("-F", 1, 30,
-         [
-             Stick(0, 0, 1, 1/2, sqrt(3)/2),
-         ]),
-        ("+FF", 1, 30,
-         [
-             Stick(0, 0, 1, -1/2, sqrt(3)/2),
-             Stick(-1/2, sqrt(3)/2, 1, -1/2, sqrt(3)/2),
-         ]),
-    ]
-    for s, d, theta, ans in cases:
-        out = LSystem.to_sticks(s, d, theta)
-        assert ans == out, \
-            f"Expected {ans} for input {s, d, theta},\n got {out}"
-    print(" [+] passed test_to_sticks")
-
-
-def draw_systems(out_dir: str):
+def draw_systems():
     systems: Dict[str, LSystem] = {
         'koch': D0LSystem(
             axiom='F-F-F-F',
@@ -442,15 +317,10 @@ def draw_systems(out_dir: str):
         for sample in range(samples):
             system = systems[name]
             print(system)
-            for level, word in enumerate(system.expansions(levels)):
-                print(word)
-                LSystem.render(
-                    s=word,
-                    d=5,
-                    theta=angle,
-                    filename=f'{out_dir}/{name}-{angle}'
-                    f'[{sample}]-{level:02d}'
-                )
+            for _, word in enumerate(system.expansions(levels)):
+                mat = LSystem.draw(s=word, d=5, theta=angle)
+                plt.imshow(mat)
+                plt.show()
             print()
 
 
@@ -462,7 +332,9 @@ def test_render():
     for system in systems:
         _, s = system.expand_until(100)
         time_str = int(time.time())
-        S0LSystem.render(s, d=3, theta=43, filename=f"../out/test/{time_str}")
+        mat = S0LSystem.draw(s, d=3, theta=43, n_rows=512, n_cols=512)
+        plt.imshow(mat)
+        plt.show()
 
 
 if __name__ == '__main__':
@@ -474,4 +346,5 @@ if __name__ == '__main__':
     # draw_systems(out_dir=sys.argv[1])
     test_from_sentence()
     test_to_sentence()
+    draw_systems()
     test_render()
