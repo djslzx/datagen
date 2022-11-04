@@ -1,20 +1,22 @@
 """
 Test out evolutionary search algorithms for data augmentation.
 """
-from typing import List, Dict, Set, Tuple, Iterator, Iterable
-import pickle
-import time
-import pdb
-from sklearn.neighbors import NearestNeighbors
-import torch as T
 import numpy as np
+import torch as T
+from torchvision.models import resnet50, ResNet50_Weights
+from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
+import matplotlib.pyplot as plt
+from typing import List, Dict, Set, Tuple, Iterator, Iterable, Callable
+
 import random
 import os
+from pprint import pp
+import pdb
 
 from cfg import PCFG
 from lindenmayer import S0LSystem
 from inout import log_io
-from resnet import featurize_images
 from datagen import GENERAL_MG
 from book_zoo import zoo_systems
 import util
@@ -33,6 +35,26 @@ for dir in [".cache/", ".cache/imgs/"]:
         pass
 
 
+def img_featurizer() -> Callable[[np.ndarray], np.ndarray]:
+    """
+    Sets up ResNet50 and returns it as a function that maps an image to a 2048-feature vector.
+    """
+    weights = ResNet50_Weights.DEFAULT
+    resnet = resnet50(weights=weights)
+    # model = T.nn.Sequential(*list(resnet.children())[:-1])  # disable last layer in resnet
+    model = resnet
+    model.eval()
+    preprocess = weights.transforms()
+
+    def featurizer(img: np.ndarray) -> np.ndarray:
+        tensor = T.from_numpy(np.repeat(img[None, ...], 3, axis=0))  # stack array over RGB channels
+        batch = preprocess(tensor).unsqueeze(0)
+        features = model(batch).squeeze().softmax(0)
+        return features.detach().numpy()
+
+    return featurizer
+
+
 def mutate_agents(specimens: Iterable[S0LSystem], metagrammar, n_samples: int, smoothing=0.5) -> Iterator[S0LSystem]:
     """
     Produce the next generation of L-systems from a set of L-system specimens.
@@ -46,21 +68,9 @@ def mutate_agents(specimens: Iterable[S0LSystem], metagrammar, n_samples: int, s
     hash_val = util.md5_hash(hash_str)
     cache_file = f"{PCFG_CACHE_PREFIX}{hash_val}"
 
-    try:
-        with open(cache_file, "rb") as f:
-            g_fit = pickle.load(f)
-        print(f"Found cached file, loaded fitted PCFG from {cache_file}: {g_fit}")
-
-    except FileNotFoundError:
-        print("No cached file found, running inside-outside...")
-        g = metagrammar.to_CNF().normalized().log()
-        g_fit = log_io(g, genomes, smoothing, verbose=True)
-        print(f"Fitted PCFG: {g_fit}")
-
-        # cache pcfg
-        print(f"Fitted PCFG, saving to {cache_file}...")
-        with open(cache_file, "wb") as f:
-            pickle.dump(g_fit, f)
+    g = metagrammar.to_CNF().normalized().log()
+    g_fit = log_io(g, genomes, smoothing, verbose=True)
+    print(f"Fitted PCFG: {g_fit}")
 
     # sample from fitted PCFG
     # TODO: try getting n_samples with n_samples * k tries, where k >= 1
@@ -71,49 +81,47 @@ def mutate_agents(specimens: Iterable[S0LSystem], metagrammar, n_samples: int, s
         yield sys
 
 
-def novelty(indiv: S0LSystem, popn: Set[S0LSystem], k: int, n_samples: int, rollout_length: int = 100) -> float:
+def novelty(indiv: S0LSystem, popn: Set[S0LSystem], featurizer: Callable[[np.ndarray], np.ndarray],
+            k: int, n_samples: int, rollout_limit: int) -> float:
     """Measures the novelty of a stochastic L-system relative to a population of L-systems."""
-    # Sample `n_samples` images from S0LSystems in popn
-    popn_paths = []
-    for i, lsystem in enumerate(popn):
-        for j in range(n_samples):
-            _, rollout = lsystem.expand_until(rollout_length)
-            path = f"{IMG_CACHE_PREFIX}popn-{i}-{j}"
-            popn_paths.append(f"{path}.png")
-            S0LSystem.to_png(s=rollout, d=1, theta=43, filename=path)
+    def sample_lsystem(system: S0LSystem) -> List[np.ndarray]:
+        bmps = []
+        for _ in range(n_samples):
+            _, rollout = system.expand_until(rollout_limit)
+            bmp = S0LSystem.draw(s=rollout, d=3, theta=90, n_rows=300, n_cols=300)
+            bmps.append(bmp)
+        return bmps
 
-    # Sample images from individual
-    indiv_paths = []
-    for j in range(n_samples):
-        _, rollout = indiv.expand_until(rollout_length)
-        path = f"{IMG_CACHE_PREFIX}indiv-{j}"
-        indiv_paths.append(f"{path}.png")
-        S0LSystem.to_png(s=rollout, d=1, theta=43, filename=path)
+    # Sample images from S0LSystems in popn, individual
+    popn_bmps = [bmp for sys in popn for bmp in sample_lsystem(sys)]
+    indiv_bmps = sample_lsystem(indiv)
 
     # Get feature vectors from images
-    popn_features_dict = featurize_images(popn_paths)
-    popn_feature_vecs = T.stack([v for v in popn_features_dict.values()]).detach().numpy()
-    indiv_features_dict = featurize_images(indiv_paths)
-    indiv_feature_vecs = T.stack([v for v in indiv_features_dict.values()]).detach().numpy()
+    popn_features = np.stack([featurizer(bmp) for bmp in popn_bmps])
+    indiv_features = np.stack([featurizer(bmp) for bmp in indiv_bmps])
 
     # Take kNN distance
-    knn = NearestNeighbors(n_neighbors=k, algorithm="kd_tree").fit(popn_feature_vecs)
-    distances, _ = knn.kneighbors(indiv_feature_vecs)
+    knn = NearestNeighbors(n_neighbors=k, algorithm="kd_tree").fit(popn_features)
+    distances, _ = knn.kneighbors(indiv_features)
     scores = distances.sum(axis=1)
     return scores.max(axis=0)  # max or min?
 
 
 def novelty_search(init_popn: Set[S0LSystem], grammar: PCFG, iters: int,
-                   smoothing: float, p_arkv: float) -> Set[S0LSystem]:
+                   smoothing: float, p_arkv: float, verbose=False) -> Set[S0LSystem]:
     """Runs novelty search."""
     popn: Set[S0LSystem] = init_popn
     arkv: Set[S0LSystem] = set()
     popn_size = len(popn)
     for i in range(iters):
+        if verbose: print(f"[NS iter {i}]")
+
         # generate next gen
+        if verbose: print("Generating next gen...")
         next_gen = mutate_agents(popn, grammar, n_samples=popn_size, smoothing=smoothing)
 
         # evaluate next gen
+        if verbose: print("Scoring agents...")
         agents_with_scores = []
         for agent in next_gen:
             # store a subset of the popn in the arkv
@@ -123,8 +131,16 @@ def novelty_search(init_popn: Set[S0LSystem], grammar: PCFG, iters: int,
             agents_with_scores.append((score, agent))
 
         # cull popn
+        if verbose: print("Culling popn...")
         popn = {agent for score, agent in sorted(agents_with_scores, key=lambda x: x[0])[:popn_size]}
-    return popn | arkv
+
+        if verbose:
+            print("Completed iteration.")
+            pp(popn)
+            pp(arkv)
+            print("====================")
+
+    return arkv
 
 
 def demo_mutate_agents():
@@ -138,12 +154,34 @@ def demo_mutate_agents():
         print(agent)
 
 
-if __name__ == '__main__':
-    indiv = S0LSystem("F", {"F": ["F+F", "F-F"]})
+def demo_measure_novelty():
+    indiv = S0LSystem("+", {"F": ["F"]})
+    popn = {
+        # S0LSystem("F", {"F": ["F+F", "F-F"]}),
+        # S0LSystem("F", {"F": ["F+F", "F-F"]}),
+        S0LSystem(
+            "F-F-F-F",
+            {"F": ["F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"]}
+        ),
+        # S0LSystem("F", {"F": ["FF"]}),
+        # S0LSystem("F", {"F": ["F++F", "FF"]}),
+    }
+    featurizer = img_featurizer()
+    print(novelty(indiv, popn, featurizer, k=1, n_samples=1, rollout_limit=1000))
+
+
+def demo_ns():
     popn = {
         S0LSystem("F", {"F": ["F+F", "F-F"]}),
         S0LSystem("F", {"F": ["FF"]}),
         S0LSystem("F", {"F": ["F++F", "FF"]}),
     }
-    n = novelty(indiv, popn, k=2, n_samples=3, rollout_length=30)
-    print(n)
+    systems = novelty_search(init_popn=popn, grammar=GENERAL_MG, iters=30,
+                             smoothing=1, p_arkv=0.5, verbose=True)
+
+    for system in systems:
+        print(system)
+
+
+if __name__ == '__main__':
+    demo_measure_novelty()
