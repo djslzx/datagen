@@ -55,6 +55,16 @@ def img_featurizer() -> Callable[[np.ndarray], np.ndarray]:
     return featurizer
 
 
+def sample_lsystem(system: S0LSystem, n_samples: int, d: int, theta: float,
+                   rollout_limit: int, n_rows: int, n_cols: int) -> List[np.ndarray]:
+    bmps = []
+    for _ in range(n_samples):
+        _, rollout = system.expand_until(rollout_limit)
+        bmp = S0LSystem.draw(rollout, d, theta, n_rows, n_cols)
+        bmps.append(bmp)
+    return bmps
+
+
 def mutate_agents(specimens: Iterable[S0LSystem], metagrammar, n_samples: int, smoothing=0.5) -> Iterator[S0LSystem]:
     """
     Produce the next generation of L-systems from a set of L-system specimens.
@@ -84,17 +94,12 @@ def mutate_agents(specimens: Iterable[S0LSystem], metagrammar, n_samples: int, s
 def novelty(indiv: S0LSystem, popn: Set[S0LSystem], featurizer: Callable[[np.ndarray], np.ndarray],
             k: int, n_samples: int, rollout_limit: int) -> float:
     """Measures the novelty of a stochastic L-system relative to a population of L-systems."""
-    def sample_lsystem(system: S0LSystem) -> List[np.ndarray]:
-        bmps = []
-        for _ in range(n_samples):
-            _, rollout = system.expand_until(rollout_limit)
-            bmp = S0LSystem.draw(s=rollout, d=3, theta=90, n_rows=300, n_cols=300)
-            bmps.append(bmp)
-        return bmps
+    def sample(lsystem: S0LSystem):
+        return sample_lsystem(lsystem, n_samples, d=3, theta=90, rollout_limit=rollout_limit, n_rows=300, n_cols=300)
 
     # Sample images from S0LSystems in popn, individual
-    popn_bmps = [bmp for sys in popn for bmp in sample_lsystem(sys)]
-    indiv_bmps = sample_lsystem(indiv)
+    popn_bmps = [bmp for sys in popn for bmp in sample(sys)]
+    indiv_bmps = sample(indiv)
 
     # Get feature vectors from images
     popn_features = np.stack([featurizer(bmp) for bmp in popn_bmps])
@@ -108,11 +113,12 @@ def novelty(indiv: S0LSystem, popn: Set[S0LSystem], featurizer: Callable[[np.nda
 
 
 def novelty_search(init_popn: Set[S0LSystem], grammar: PCFG, iters: int,
-                   smoothing: float, p_arkv: float, verbose=False) -> Set[S0LSystem]:
+                   smoothing: float, p_arkv: float, rollout_limit: int, verbose=False) -> Set[S0LSystem]:
     """Runs novelty search."""
     popn: Set[S0LSystem] = init_popn
     arkv: Set[S0LSystem] = set()
     popn_size = len(popn)
+    featurizer = img_featurizer()
     for i in range(iters):
         if verbose: print(f"[NS iter {i}]")
 
@@ -123,12 +129,23 @@ def novelty_search(init_popn: Set[S0LSystem], grammar: PCFG, iters: int,
         # evaluate next gen
         if verbose: print("Scoring agents...")
         agents_with_scores = []
+        next_gen_bmps = []
         for agent in next_gen:
             # store a subset of the popn in the arkv
             if random.random() < p_arkv:
                 arkv.add(agent)
-            score = novelty(agent, popn | arkv, k=5, n_samples=5)
+            score = novelty(agent, popn | arkv, featurizer, k=5, n_samples=5, rollout_limit=rollout_limit)
             agents_with_scores.append((score, agent))
+            next_gen_bmps.extend([(" ".join(agent.to_sentence()), bmp)
+                                   for bmp in sample_lsystem(agent, 2, 1, 90, 100, 64, 64)])
+        # TODO: save render time by caching renders of archived agents
+
+        # plot next gen
+        fig, axes = plt.subplots(2, popn_size)
+        for ax, (name, bmp) in zip(axes.flat, next_gen_bmps):
+            ax.imshow(bmp)
+            ax.set_title(name)
+        plt.show()
 
         # cull popn
         if verbose: print("Culling popn...")
@@ -176,12 +193,12 @@ def demo_ns():
         S0LSystem("F", {"F": ["FF"]}),
         S0LSystem("F", {"F": ["F++F", "FF"]}),
     }
-    systems = novelty_search(init_popn=popn, grammar=GENERAL_MG, iters=30,
-                             smoothing=1, p_arkv=0.5, verbose=True)
+    systems = novelty_search(init_popn=popn, grammar=GENERAL_MG, iters=10,
+                             smoothing=1, p_arkv=1, rollout_limit=100, verbose=True)
 
     for system in systems:
         print(system)
 
 
 if __name__ == '__main__':
-    demo_measure_novelty()
+    demo_ns()
