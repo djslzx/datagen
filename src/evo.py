@@ -1,14 +1,15 @@
 """
 Test out evolutionary search algorithms for data augmentation.
 """
+import pickle
 import numpy as np
 import torch as T
 from torchvision.models import resnet50, ResNet50_Weights
-from sklearn.decomposition import PCA
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 from typing import List, Dict, Set, Tuple, Iterator, Iterable, Callable
-
+import math
+import time
 import random
 import os
 from pprint import pp
@@ -16,7 +17,7 @@ import pdb
 
 from cfg import PCFG
 from lindenmayer import S0LSystem
-from inout import log_io
+from inout import log_dirio_step, log_io
 from datagen import GENERAL_MG
 from book_zoo import zoo_systems
 import util
@@ -73,20 +74,20 @@ def mutate_agents(specimens: Iterable[S0LSystem], metagrammar, n_samples: int, s
     from the PCFG to get 'mutated' L-systems.
     """
     # check cached PCFG
+    print(f"Making genomes...")
     genomes = [specimen.to_sentence() for specimen in specimens]
-    hash_str = "\n".join(" ".join(genome) for genome in genomes) + str(smoothing)
-    hash_val = util.md5_hash(hash_str)
-    cache_file = f"{PCFG_CACHE_PREFIX}{hash_val}"
-
     g = metagrammar.to_CNF().normalized().log()
-    g_fit = log_io(g, genomes, smoothing, verbose=True)
+    # print(f"Fitting PCFG via Dirichlet IO...")
+    # g_fit = log_dirio_step(g, genomes, smoothing)
+    print(f"Fitting PCFG via IO...")
+    g_fit = log_io(g, genomes, smoothing)
     print(f"Fitted PCFG: {g_fit}")
 
     # sample from fitted PCFG
     # TODO: try getting n_samples with n_samples * k tries, where k >= 1
     # TODO: add a time limit param to iteration of fitted grammar
     for i in range(n_samples):
-        sentence = g_fit.exp().iterate_fully()
+        sentence = g_fit.exp().iterate_until(1000)
         sys = S0LSystem.from_sentence(sentence)
         yield sys
 
@@ -112,44 +113,41 @@ def novelty(indiv: S0LSystem, popn: Set[S0LSystem], featurizer: Callable[[np.nda
     return scores.max(axis=0)  # max or min?
 
 
-def novelty_search(init_popn: Set[S0LSystem], grammar: PCFG, iters: int,
+def novelty_search(init_popn: Set[S0LSystem], max_popn_size: int, grammar: PCFG, iters: int,
                    smoothing: float, p_arkv: float, rollout_limit: int, verbose=False) -> Set[S0LSystem]:
     """Runs novelty search."""
     popn: Set[S0LSystem] = init_popn
     arkv: Set[S0LSystem] = set()
-    popn_size = len(popn)
     featurizer = img_featurizer()
+    id = int(time.time())
+
     for i in range(iters):
         if verbose: print(f"[NS iter {i}]")
 
         # generate next gen
         if verbose: print("Generating next gen...")
-        next_gen = mutate_agents(popn, grammar, n_samples=popn_size, smoothing=smoothing)
+        next_gen = list(mutate_agents(popn, grammar, n_samples=max_popn_size, smoothing=smoothing))  # fixme
 
         # evaluate next gen
         if verbose: print("Scoring agents...")
         agents_with_scores = []
-        next_gen_bmps = []
         for agent in next_gen:
             # store a subset of the popn in the arkv
             if random.random() < p_arkv:
                 arkv.add(agent)
             score = novelty(agent, popn | arkv, featurizer, k=5, n_samples=5, rollout_limit=rollout_limit)
             agents_with_scores.append((score, agent))
-            next_gen_bmps.extend([(" ".join(agent.to_sentence()), bmp)
-                                   for bmp in sample_lsystem(agent, 2, 1, 90, 100, 64, 64)])
-        # TODO: save render time by caching renders of archived agents
 
         # plot next gen
-        fig, axes = plt.subplots(2, popn_size)
-        for ax, (name, bmp) in zip(axes.flat, next_gen_bmps):
-            ax.imshow(bmp)
-            ax.set_title(name)
-        plt.show()
+        plot_agents(next_gen, len(next_gen), 2, f"{IMG_CACHE_PREFIX}/{id}-gen-{i}.png")
 
         # cull popn
         if verbose: print("Culling popn...")
-        popn = {agent for score, agent in sorted(agents_with_scores, key=lambda x: x[0])[:popn_size]}
+        popn = {agent for score, agent in sorted(agents_with_scores, reverse=True, key=lambda x: x[0])[:max_popn_size]}
+        pp([(score, "".join(agent.to_sentence())) for score, agent in agents_with_scores])
+
+        # plot popn
+        plot_agents(popn, len(popn), 2, f"{IMG_CACHE_PREFIX}/{id}-popn-{i}.png")
 
         if verbose:
             print("Completed iteration.")
@@ -157,7 +155,28 @@ def novelty_search(init_popn: Set[S0LSystem], grammar: PCFG, iters: int,
             pp(arkv)
             print("====================")
 
+    plot_agents(arkv, len(arkv), 2, f"{IMG_CACHE_PREFIX}/{id}-arkv.png")
     return arkv
+
+
+def plot_agents(agents: Iterable[S0LSystem], n_agents: int, n_samples_per_agent: int, saveto: str):
+    n_bmps = n_samples_per_agent * n_agents
+    n_rows = int(math.sqrt(n_bmps))
+    n_cols = n_bmps // n_rows
+    if n_rows * n_cols < n_bmps:
+        n_rows += 1
+
+    fig, axes = plt.subplots(n_rows, n_cols)
+    faxes = axes.flat
+    i = 0
+    for agent in agents:
+        # title = "".join(agent.to_sentence())
+        for bmp in sample_lsystem(agent, n_samples_per_agent, 3, 90, 100, 64, 64):
+            faxes[i].imshow(bmp)
+            # faxes[i].set_title(title)
+            i += 1
+    plt.savefig(saveto)
+    plt.close()
 
 
 def demo_mutate_agents():
@@ -194,7 +213,7 @@ def demo_ns():
         S0LSystem("F", {"F": ["F++F", "FF"]}),
     }
     systems = novelty_search(init_popn=popn, grammar=GENERAL_MG, iters=10,
-                             smoothing=1, p_arkv=1, rollout_limit=100, verbose=True)
+                             max_popn_size=9, smoothing=1, p_arkv=1, rollout_limit=100, verbose=True)
 
     for system in systems:
         print(system)
