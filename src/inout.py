@@ -7,6 +7,8 @@ beta(i, j, A, w, G) = P(phi, S -> w1 ... w_i-1 . A . w_j+1 ... w_n)
 import time
 from typing import Dict, Tuple, List, Iterable, Callable, Optional
 from pprint import pp
+import numpy as np
+import scipy.stats as stats
 import torch as T
 import math
 import pdb
@@ -288,12 +290,12 @@ def log_counts(G: PCFG, corpus: List[PCFG.Sentence]) -> Dict:
     return log_c
 
 
-def log_io_step(G: PCFG, corpus: List[PCFG.Sentence], smoothing=0.1) -> PCFG:
+def log_io_step(G: PCFG, corpus: List[PCFG.Sentence], alpha=0.1) -> PCFG:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
 
-    alpha = T.tensor(smoothing)
+    alpha = T.tensor(alpha)
     log_c = log_counts(G, corpus)
     rules = []
     for A, succs in G.rules.items():
@@ -303,6 +305,23 @@ def log_io_step(G: PCFG, corpus: List[PCFG.Sentence], smoothing=0.1) -> PCFG:
         for succ in succs:
             weight = T.logaddexp(log_c[A, tuple(succ)], T.log(alpha))
             rules.append((A, succ, weight - denom))
+    return PCFG.from_rule_list(G.start, rules)
+
+
+def log_dirio_step(G: PCFG, corpus: List[PCFG.Sentence], alpha) -> PCFG:
+    assert G.is_in_CNF()
+    assert G.log_mode
+    assert G.is_normalized()
+
+    log_c = log_counts(G, corpus)
+    rules = []
+    for A, succs in G.rules.items():
+        n = T.tensor(len(succs))
+        a = np.repeat(alpha, n)
+        c = np.array([log_c[A, tuple(succ)].exp().detach() for succ in succs])
+        new_weights = stats.dirichlet.rvs(alpha=a + c)[0]
+        for succ, w in zip(succs, new_weights):
+            rules.append((A, succ, T.tensor(w).log()))
     return PCFG.from_rule_list(G.start, rules)
 
 
@@ -403,7 +422,7 @@ def demo_io():
 
         g_log = g.apply_to_weights(T.log)
         g_log.log_mode = True
-        g_logio = log_io(g_log, corpus)
+        g_logio = log_io(g_log, corpus, verbose=True)
         print("logio:", g_logio.apply_to_weights(T.exp))
         # autograd_io(g, corpus)
 
