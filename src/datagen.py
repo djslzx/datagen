@@ -17,10 +17,8 @@ GENERAL_MG = PCFG(
             ["AXIOM", ";", "RULES"],
         ],
         "AXIOM": [
-            ["NT", "AXIOM"],
-            ["T", "AXIOM"],
+            ["SYM", "AXIOM"],
             ["NT"],
-            ["T"],
         ],
         "RULES": [
             ["RULE", ",", "RULES"],
@@ -34,11 +32,13 @@ GENERAL_MG = PCFG(
         ],
         "RHS": [
             ["[", "RHS", "]", "RHS"],
-            ["NT", "RHS"],
-            ["T", "RHS"],
+            ["SYM", "RHS"],
             ["[", "RHS", "]"],
             ["NT"],
-            ["T"],
+        ],
+        "SYM": [
+            ["NT"],
+            ["T"]
         ],
         "NT": [
             ["F"],
