@@ -18,7 +18,7 @@ import pdb
 from cfg import PCFG
 from lindenmayer import S0LSystem, LSYSTEM_MG
 from inout import log_dirio_step, log_io
-from book_zoo import zoo_systems
+from book_zoo import zoo_systems, simple_zoo_systems
 import util
 
 # Set up file paths
@@ -34,6 +34,13 @@ for dir in [".cache/", ".cache/imgs/"]:
     except IsADirectoryError:
         pass
 
+# Hyperparameters
+D=3
+THETA=43
+NROWS=64
+NCOLS=64
+ROLLOUT_LIMIT=100
+
 
 def img_featurizer() -> Callable[[np.ndarray], np.ndarray]:
     """
@@ -41,8 +48,7 @@ def img_featurizer() -> Callable[[np.ndarray], np.ndarray]:
     """
     weights = ResNet50_Weights.DEFAULT
     resnet = resnet50(weights=weights)
-    # model = T.nn.Sequential(*list(resnet.children())[:-1])  # disable last layer in resnet
-    model = resnet
+    model = T.nn.Sequential(*list(resnet.children())[:-1])  # disable last layer in resnet
     model.eval()
     preprocess = weights.transforms()
 
@@ -55,8 +61,8 @@ def img_featurizer() -> Callable[[np.ndarray], np.ndarray]:
     return featurizer
 
 
-def sample_lsystem(system: S0LSystem, n_samples: int, d: int, theta: float,
-                   rollout_limit: int, n_rows: int, n_cols: int) -> List[np.ndarray]:
+def sample_images(system: S0LSystem, n_samples: int, d: int, theta: float,
+                  rollout_limit: int, n_rows: int, n_cols: int) -> List[np.ndarray]:
     bmps = []
     for _ in range(n_samples):
         _, rollout = system.expand_until(rollout_limit)
@@ -75,45 +81,40 @@ def mutate_agents(specimens: Iterable[S0LSystem], metagrammar, n_samples: int, s
     # check cached PCFG
     print(f"Making genomes...")
     genomes = [specimen.to_sentence() for specimen in specimens]
-    g = metagrammar.to_CNF().normalized().log()
+    g = LSYSTEM_MG.to_CNF().normalized().log()
     # print(f"Fitting PCFG via Dirichlet IO...")
     # g_fit = log_dirio_step(g, genomes, smoothing)
     print(f"Fitting PCFG via IO...")
-    g_fit = log_io(g, genomes, smoothing)
+    g_fit = log_io(g, genomes, smoothing).exp()
     print(f"Fitted PCFG: {g_fit}")
 
     # sample from fitted PCFG
-    # TODO: try getting n_samples with n_samples * k tries, where k >= 1
-    # TODO: add a time limit param to iteration of fitted grammar
     for i in range(n_samples):
-        sentence = g_fit.exp().iterate_until(1000)
+        sentence = g_fit.iterate_until(1000)
         sys = S0LSystem.from_sentence(sentence)
         yield sys
 
 
 def novelty(indiv: S0LSystem, popn: Set[S0LSystem], featurizer: Callable[[np.ndarray], np.ndarray],
-            k: int, n_samples: int, rollout_limit: int) -> float:
+            k: int, n_samples: int) -> float:
     """Measures the novelty of a stochastic L-system relative to a population of L-systems."""
     def sample(lsystem: S0LSystem):
-        return sample_lsystem(lsystem, n_samples, d=3, theta=90, rollout_limit=rollout_limit, n_rows=300, n_cols=300)
+        return sample_images(lsystem, n_samples, d=D, theta=THETA,
+                             rollout_limit=ROLLOUT_LIMIT, n_rows=NROWS, n_cols=NCOLS)
 
-    # Sample images from S0LSystems in popn, individual
-    popn_bmps = [bmp for sys in popn for bmp in sample(sys)]
-    indiv_bmps = sample(indiv)
-
-    # Get feature vectors from images
-    popn_features = np.stack([featurizer(bmp) for bmp in popn_bmps])
-    indiv_features = np.stack([featurizer(bmp) for bmp in indiv_bmps])
+    # Sample images from S0LSystems in popn, individual; map to feature vectors
+    popn_features = np.stack([featurizer(bmp) for sys in popn for bmp in sample(sys)])
+    indiv_features = np.stack([featurizer(bmp) for bmp in sample(indiv)])
 
     # Take kNN distance
     knn = NearestNeighbors(n_neighbors=k, algorithm="kd_tree").fit(popn_features)
     distances, _ = knn.kneighbors(indiv_features)
     scores = distances.sum(axis=1)
-    return scores.max(axis=0)  # max or min?
+    return scores.max(axis=0)  # max or min or mean?
 
 
-def novelty_search(init_popn: Set[S0LSystem], max_popn_size: int, grammar: PCFG, iters: int,
-                   smoothing: float, p_arkv: float, rollout_limit: int, verbose=False) -> Set[S0LSystem]:
+def novelty_search(init_popn: Set[S0LSystem], max_popn_size: int, iters: int,
+                   smoothing: float, p_arkv: float, verbose=False) -> Set[S0LSystem]:
     """Runs novelty search."""
     popn: Set[S0LSystem] = init_popn
     arkv: Set[S0LSystem] = set()
@@ -121,40 +122,49 @@ def novelty_search(init_popn: Set[S0LSystem], max_popn_size: int, grammar: PCFG,
     id = int(time.time())
 
     for i in range(iters):
-        if verbose: print(f"[NS iter {i}]")
+        if verbose:
+            print(f"[NS iter {i}]")
+            t_start = time.time()
 
         # generate next gen
         if verbose: print("Generating next gen...")
-        next_gen = list(mutate_agents(popn, grammar, n_samples=max_popn_size * 2, smoothing=smoothing))  # fixme
+        next_gen = list(mutate_agents(popn, n_samples=max_popn_size * 2, smoothing=smoothing))  # fixme
 
         # evaluate next gen
         if verbose: print("Scoring agents...")
-        agents_with_scores = []
+        scored_agents = []
         for agent in next_gen:
             # store a subset of the popn in the arkv
             if random.random() < p_arkv:
                 arkv.add(agent)
-            score = novelty(agent, popn | arkv, featurizer, k=5, n_samples=5, rollout_limit=rollout_limit)
-            agents_with_scores.append((score, agent))
+            score = novelty(agent, popn | arkv, featurizer, k=5, n_samples=5)
+            scored_agents.append((score, agent))
 
         # plot next gen
         plot_agents(next_gen, len(next_gen), 2, f"{IMG_CACHE_PREFIX}/{id}-gen-{i}.png")
 
         # cull popn
         if verbose: print("Culling popn...")
-        popn = {agent for score, agent in sorted(agents_with_scores, reverse=True, key=lambda x: x[0])[:max_popn_size]}
-        pp([(score, "".join(agent.to_sentence())) for score, agent in agents_with_scores])
+        scored_agents.sort(reverse=True, key=lambda x: x[0])
+        popn = {agent for score, agent in scored_agents[:max_popn_size]}
 
         # plot popn
         plot_agents(popn, len(popn), 2, f"{IMG_CACHE_PREFIX}/{id}-popn-{i}.png")
 
         if verbose:
-            print("Completed iteration.")
-            pp(popn)
-            pp(arkv)
+            t_taken = time.time() - t_start
+            print("====================")
+            print(f"Completed iteration {i} in {t_taken:.2f}s.")
+            print("New generation:")
+            pp([(score, agent.to_code()) for score, agent in scored_agents])
+            print("Population:")
+            pp([x.to_code() for x in popn])
+            print("Archive:")
+            pp([x.to_code() for x in arkv])
             print("====================")
 
     plot_agents(arkv, len(arkv), 2, f"{IMG_CACHE_PREFIX}/{id}-arkv.png")
+    save_agents(arkv, f"{PCFG_CACHE_PREFIX}{id}.txt")
     return arkv
 
 
@@ -165,23 +175,34 @@ def plot_agents(agents: Iterable[S0LSystem], n_agents: int, n_samples_per_agent:
     if n_rows * n_cols < n_bmps:
         n_rows += 1
 
-    fig, axes = plt.subplots(n_rows, n_cols)
-    faxes = axes.flat
+    fig, ax = plt.subplots(n_rows, n_cols)
+    # clear axis ticks
+    for axis in ax.flat:
+        axis.get_xaxis().set_visible(False)
+        axis.get_yaxis().set_visible(False)
+
+    # plot bitmaps
     i = 0
+    axes: List[plt.Axes] = ax.flat
     for agent in agents:
-        # title = "".join(agent.to_sentence())
-        for bmp in sample_lsystem(agent, n_samples_per_agent, 3, 90, 100, 64, 64):
-            faxes[i].imshow(bmp)
-            # faxes[i].set_title(title)
+        for bmp in sample_images(agent, n_samples_per_agent, d=D, theta=THETA,
+                                 rollout_limit=ROLLOUT_LIMIT, n_rows=NROWS, n_cols=NCOLS):
+            axis = axes[i]
+            axis.imshow(bmp)
             i += 1
     plt.savefig(saveto)
     plt.close()
 
 
+def save_agents(agents: Iterable[S0LSystem], saveto: str):
+    with open(saveto, "w") as f:
+        for agent in agents:
+            f.write(agent.to_code() + "\n")
+
+
 def demo_mutate_agents():
     agents = mutate_agents(
         specimens=[S0LSystem("F", {"F": ["F+F", "F-F"]})],
-        metagrammar=LSYSTEM_MG,
         n_samples=3,
         smoothing=0.01
     )
@@ -201,7 +222,7 @@ def demo_measure_novelty():
         # S0LSystem("F", {"F": ["F++F", "FF"]}),
     }
     featurizer = img_featurizer()
-    print(novelty(indiv, popn, featurizer, k=1, n_samples=1, rollout_limit=1000))
+    print(novelty(indiv, popn, featurizer, k=1, n_samples=1))
 
 
 def demo_ns():
@@ -210,11 +231,14 @@ def demo_ns():
         S0LSystem("F", {"F": ["FF"]}),
         S0LSystem("F", {"F": ["F++F", "FF"]}),
     }
-    systems = novelty_search(init_popn=popn, grammar=LSYSTEM_MG, iters=10,
-                             max_popn_size=9, smoothing=1, p_arkv=1, rollout_limit=100, verbose=True)
-
-    for system in systems:
-        print(system)
+    novelty_search(
+        init_popn=popn,
+        iters=1,
+        max_popn_size=4,
+        smoothing=1,
+        p_arkv=1,
+        verbose=True
+    )
 
 
 if __name__ == '__main__':

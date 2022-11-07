@@ -1,13 +1,13 @@
-import svgwrite
 import random
 from typing import Dict, List, Iterator, Union, Tuple
-from math import sin, cos, radians, sqrt
+from math import sin, cos, radians
 import numpy as np
 import skimage.draw as skdraw
 import matplotlib.pyplot as plt
 import pdb
 import itertools as it
 import time
+
 import util
 from cfg import PCFG
 
@@ -58,8 +58,8 @@ LSYSTEM_MG = PCFG(
         ],
         "NT": [
             ["F"],
-            ["f"],
-            ["X"],
+            # ["f"],
+            # ["X"],
         ],
         "T": [
             ["+"],
@@ -234,6 +234,9 @@ class S0LSystem(LSystem):
             [[pred, '~', *succ, ',']
              for pred, succs in self.productions.items()
              for succ in succs])))[:-1]
+
+    def to_code(self) -> str:
+        return "".join(self.to_sentence())
 
     @staticmethod
     def from_sentence(s: List[str]) -> 'S0LSystem':
