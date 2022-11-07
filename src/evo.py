@@ -191,6 +191,7 @@ def plot_agents(agents: Iterable[S0LSystem], n_agents: int, n_samples_per_agent:
     n_cols = n_bmps // n_rows
     if n_rows * n_cols < n_bmps:
         n_rows += 1
+    dpi = 96 * (n_cols // 3 + 1)
 
     fig, ax = plt.subplots(n_rows, n_cols)
     # clear axis ticks
@@ -207,7 +208,7 @@ def plot_agents(agents: Iterable[S0LSystem], n_agents: int, n_samples_per_agent:
             axis = axes[i]
             axis.imshow(bmp)
             i += 1
-    plt.savefig(saveto)
+    plt.savefig(saveto, dpi=dpi)
     plt.close()
 
 
@@ -250,7 +251,7 @@ def demo_ns():
     }
     novelty_search(
         init_popn=popn,
-        iters=1,
+        iters=2,
         max_popn_size=4,
         smoothing=1,
         p_arkv=1,
