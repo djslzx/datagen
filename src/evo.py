@@ -16,9 +16,8 @@ from pprint import pp
 import pdb
 
 from cfg import PCFG
-from lindenmayer import S0LSystem
+from lindenmayer import S0LSystem, LSYSTEM_MG
 from inout import log_dirio_step, log_io
-from datagen import GENERAL_MG
 from book_zoo import zoo_systems
 import util
 
@@ -126,7 +125,7 @@ def novelty_search(init_popn: Set[S0LSystem], max_popn_size: int, grammar: PCFG,
 
         # generate next gen
         if verbose: print("Generating next gen...")
-        next_gen = list(mutate_agents(popn, grammar, n_samples=max_popn_size, smoothing=smoothing))  # fixme
+        next_gen = list(mutate_agents(popn, grammar, n_samples=max_popn_size * 2, smoothing=smoothing))  # fixme
 
         # evaluate next gen
         if verbose: print("Scoring agents...")
@@ -182,7 +181,7 @@ def plot_agents(agents: Iterable[S0LSystem], n_agents: int, n_samples_per_agent:
 def demo_mutate_agents():
     agents = mutate_agents(
         specimens=[S0LSystem("F", {"F": ["F+F", "F-F"]})],
-        metagrammar=GENERAL_MG,
+        metagrammar=LSYSTEM_MG,
         n_samples=3,
         smoothing=0.01
     )
@@ -193,12 +192,11 @@ def demo_mutate_agents():
 def demo_measure_novelty():
     indiv = S0LSystem("+", {"F": ["F"]})
     popn = {
-        # S0LSystem("F", {"F": ["F+F", "F-F"]}),
-        # S0LSystem("F", {"F": ["F+F", "F-F"]}),
         S0LSystem(
             "F-F-F-F",
             {"F": ["F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"]}
         ),
+        # S0LSystem("F", {"F": ["F+F", "F-F"]}),
         # S0LSystem("F", {"F": ["FF"]}),
         # S0LSystem("F", {"F": ["F++F", "FF"]}),
     }
@@ -212,7 +210,7 @@ def demo_ns():
         S0LSystem("F", {"F": ["FF"]}),
         S0LSystem("F", {"F": ["F++F", "FF"]}),
     }
-    systems = novelty_search(init_popn=popn, grammar=GENERAL_MG, iters=10,
+    systems = novelty_search(init_popn=popn, grammar=LSYSTEM_MG, iters=10,
                              max_popn_size=9, smoothing=1, p_arkv=1, rollout_limit=100, verbose=True)
 
     for system in systems:
@@ -220,4 +218,6 @@ def demo_ns():
 
 
 if __name__ == '__main__':
+    # demo_mutate_agents()
+    # demo_measure_novelty()
     demo_ns()

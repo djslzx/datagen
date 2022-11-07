@@ -14,6 +14,8 @@ import math
 import pdb
 
 from cfg import PCFG
+from lindenmayer import LSYSTEM_MG
+from book_zoo import zoo_systems
 
 
 def print_map(alpha: Dict, precision=4):
@@ -189,7 +191,7 @@ def inside_outside_step(G: PCFG, corpus: List[PCFG.Sentence],
     for A, succ, _ in G.as_rule_list():
         weight = counts[A, tuple(succ)] / sums[A]
         rules.append((A, succ, weight))
-    return PCFG.from_rule_list(G.start, rules)
+    return PCFG.from_weighted_rules(G.start, rules)
 
 
 def log_alpha(G: PCFG, s: PCFG.Sentence) -> Dict:
@@ -305,7 +307,7 @@ def log_io_step(G: PCFG, corpus: List[PCFG.Sentence], alpha=0.1) -> PCFG:
         for succ in succs:
             weight = T.logaddexp(log_c[A, tuple(succ)], T.log(alpha))
             rules.append((A, succ, weight - denom))
-    return PCFG.from_rule_list(G.start, rules)
+    return PCFG.from_weighted_rules(G.start, rules)
 
 
 def log_dirio_step(G: PCFG, corpus: List[PCFG.Sentence], alpha) -> PCFG:
@@ -322,7 +324,7 @@ def log_dirio_step(G: PCFG, corpus: List[PCFG.Sentence], alpha) -> PCFG:
         new_weights = stats.dirichlet.rvs(alpha=a + c)[0]
         for succ, w in zip(succs, new_weights):
             rules.append((A, succ, T.tensor(w).log()))
-    return PCFG.from_rule_list(G.start, rules)
+    return PCFG.from_weighted_rules(G.start, rules)
 
 
 def log_io(G: PCFG, corpus: List[PCFG.Sentence], smoothing=0.1, verbose=False) -> PCFG:
@@ -372,7 +374,7 @@ def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
 
 def demo_io():
     cases = [
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["N", "V"], 1),
@@ -390,7 +392,7 @@ def demo_io():
         ).to_CNF().normalized(),
             [["She", "eats", "pizza", "without", "anchovies"],
              ["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["N", "V"], 1),
@@ -414,12 +416,13 @@ def demo_io():
                   "B": [["b"]],
               }).to_CNF(),
          [["a", "a"]]),
+        (LSYSTEM_MG.apply_to_weights(lambda x: x).to_CNF().normalized(),
+         [sys.to_sentence() for sys in zoo_systems]),
     ]
     for g, corpus in cases:
         print(corpus, '\n', g, '\n')
-        g_io = inside_outside(g, corpus, verbose=False)
-        print("io", g_io)
-
+        # g_io = inside_outside(g, corpus, verbose=False)
+        # print("io", g_io)
         g_log = g.apply_to_weights(T.log)
         g_log.log_mode = True
         g_logio = log_io(g_log, corpus, verbose=True)
@@ -428,7 +431,7 @@ def demo_io():
 
 
 def demo_inside():
-    g = PCFG.from_rule_list(
+    g = PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["N", "V"], 1),
@@ -462,7 +465,7 @@ def test_log():
     is consistent with non-log versions
     """
     grammar_corpus_pairs = [
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["N", "V"], 1),
@@ -480,7 +483,7 @@ def test_log():
         ).to_CNF().normalized(),
          [["She", "eats", "pizza", "without", "anchovies"],
           ["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["N", "V"], 1),
@@ -574,5 +577,5 @@ if __name__ == '__main__':
     # test_inward_diag()
     # test_outward_diag()
     # demo_inside()
-    test_log()
+    # test_log()
     demo_io()

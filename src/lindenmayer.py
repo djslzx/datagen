@@ -9,6 +9,64 @@ import pdb
 import itertools as it
 import time
 import util
+from cfg import PCFG
+
+# TODO: define LSYSTEM_MG as a CFG, then turn it into a PCFG when
+#  it's being used so we don't have to worry about immutability
+LSYSTEM_MG = PCFG(
+    start="L-SYSTEM",
+    weights="uniform",
+    rules={
+        "L-SYSTEM": [
+            ["AXIOM", ";", "RULES"],
+        ],
+        "AXIOM": [
+            ["NT", "AXIOM_W_NT"],
+            ["NT"],
+            ["T", "AXIOM"],
+        ],
+        "AXIOM_W_NT": [
+            ["NT_OR_T", "AXIOM_W_NT"],
+            ["NT_OR_T"],
+        ],
+        "RULES": [
+            ["RULE", ",", "RULES"],
+            ["RULE"],
+        ],
+        "RULE": [
+            ["LHS", "~", "RHS"],
+        ],
+        "LHS": [
+            ["NT"],
+        ],
+        "RHS": [
+            ["[", "RHS", "]", "RHS"],
+            ["[", "RHS", "]"],
+            ["NT", "RHS_W_NT"],
+            ["NT"],
+            ["T", "RHS"],
+        ],
+        "RHS_W_NT": [
+            ["[", "RHS", "]", "RHS"],
+            ["[", "RHS", "]"],
+            ["NT_OR_T", "RHS_W_NT"],
+            ["NT_OR_T"],
+        ],
+        "NT_OR_T": [
+            ["NT"],
+            ["T"]
+        ],
+        "NT": [
+            ["F"],
+            ["f"],
+            ["X"],
+        ],
+        "T": [
+            ["+"],
+            ["-"],
+        ],
+    },
+)
 
 
 class LSystem:

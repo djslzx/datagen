@@ -1,56 +1,13 @@
 import pickle
 import time
 
-from lindenmayer import S0LSystem
+from lindenmayer import S0LSystem, LSYSTEM_MG
 from cfg import PCFG
 from inout import autograd_io, log_io
 import book_zoo
 import util
 
 DIR = "../out/io-samples/"
-
-GENERAL_MG = PCFG(
-    start="L-SYSTEM",
-    weights="uniform",
-    rules={
-        "L-SYSTEM": [
-            ["AXIOM", ";", "RULES"],
-        ],
-        "AXIOM": [
-            ["SYM", "AXIOM"],
-            ["NT"],
-        ],
-        "RULES": [
-            ["RULE", ",", "RULES"],
-            ["RULE"],
-        ],
-        "RULE": [
-            ["LHS", "~", "RHS"],
-        ],
-        "LHS": [
-            ["NT"],
-        ],
-        "RHS": [
-            ["[", "RHS", "]", "RHS"],
-            ["SYM", "RHS"],
-            ["[", "RHS", "]"],
-            ["NT"],
-        ],
-        "SYM": [
-            ["NT"],
-            ["T"]
-        ],
-        "NT": [
-            ["F"],
-            # ["f"],
-            # ["X"],
-        ],
-        "T": [
-            ["+"],
-            ["-"],
-        ],
-    },
-)
 
 
 def fit_mg(zoo_limit=None):
@@ -63,7 +20,7 @@ def fit_mg(zoo_limit=None):
 
     # fit meta-grammar using inside-outside
     corpus = [s.to_sentence() for s in specimens]
-    mg = GENERAL_MG.to_bigram().to_CNF().normalized().log()
+    mg = LSYSTEM_MG.to_bigram().to_CNF().normalized().log()
     mg = log_io(mg, corpus, verbose=True).exp()
     print(f"Finished tuning: {mg}")
 

@@ -132,7 +132,7 @@ class PCFG(T.nn.Module, CFG):
                  rules: Dict[Word, List[Union[str, Sentence]]],
                  weights: Union[str, Dict[Word, List[float]]] = "uniform",
                  log_mode=False):
-        PCFG.check_rep(start, rules, weights)
+        PCFG.check_rep(start, rules)
         super(PCFG, self).__init__()
 
         self.start = start
@@ -161,7 +161,7 @@ class PCFG(T.nn.Module, CFG):
         return hash(str(self))
 
     @staticmethod
-    def check_rep(start, rules, weights):
+    def check_rep(start, rules):
         assert start in rules, f"Starting word {start} not found in rules"
         assert all(succ and (isinstance(succ, str) or (isinstance(succ, list)
                                                        and all(succ)))
@@ -263,7 +263,7 @@ class PCFG(T.nn.Module, CFG):
         return sum(len(succs) for pred, succs in self.rules.items())
 
     def apply_to_weights(self, f) -> 'PCFG':
-        return PCFG.from_rule_list(
+        return PCFG.from_weighted_rules(
             self.start,
             [(p, s, f(w)) for p, s, w in self.as_rule_list()]
         )
@@ -283,9 +283,8 @@ class PCFG(T.nn.Module, CFG):
         return list(self.rules.keys())
 
     @staticmethod
-    def from_rule_list(start: Word,
-                       rules: Iterable[Tuple[Word, Sentence, float]]) -> 'PCFG':
-        """Construct a PCFG from a list of rules with weights"""
+    def from_weighted_rules(start: Word, rules: Iterable[Tuple[Word, Sentence, float]]) -> 'PCFG':
+        """Construct a PCFG from an iterable of weighted rules"""
         words = {}
         weights = {}
         for letter, word, weight in sorted(rules, key=lambda x: x[0]):
@@ -297,33 +296,11 @@ class PCFG(T.nn.Module, CFG):
                 weights[letter].append(weight)
         return PCFG(start, words, weights)
 
-    def as_rule_list(self) -> List[Tuple[Word, Sentence, float]]:
+    def as_rule_list(self) -> Iterable[Tuple[Word, Sentence, float]]:
         """View a PCFG as a list of rules with weights"""
-        return [
-            (letter, word, weight)
-            for letter in self.rules
-            for word, weight in zip(self.rules[letter], self.weights[letter])
-        ]
-
-    def add_rule(self, pred: Word, succ: Sentence, weight: float) -> 'PCFG':
-        """Construct a PCFG by adding a rule to the current PCFG; immutable"""
-        return PCFG.from_rule_list(self.start,
-                                   self.as_rule_list() + [(pred, succ, weight)])
-
-    def rm_rule(self, pred: str, succ: List[str]) -> 'PCFG':
-        """
-        Construct a PCFG by remove a rule from the current PCFG; immutable
-        """
-        if pred not in self.rules:
-            return self
-        else:
-            return PCFG.from_rule_list(
-                self.start,
-                filter(
-                    lambda x: x[:2] != (pred, succ),
-                    self.as_rule_list()
-                )
-            )
+        for nt in self.rules:
+            for i, succ in enumerate(self.rules[nt]):
+                yield nt, succ, self.weights[nt][i]
 
     def to_bigram(self) -> 'PCFG':
         """
@@ -364,7 +341,7 @@ class PCFG(T.nn.Module, CFG):
         for i in range(1, n+1):
             duped_rules.append((self.start, [f"{self.start}_{i}"], 1/n))
 
-        return PCFG.from_rule_list(self.start, duped_rules)
+        return PCFG.from_weighted_rules(self.start, duped_rules)
 
     def explode(self) -> 'PCFG':
         """
@@ -406,7 +383,7 @@ class PCFG(T.nn.Module, CFG):
         rules = duped_rules + [(self.start, [f"{self.start}_{i}"], 1/n)
                                for i in range(1, n+1)]
 
-        return PCFG.from_rule_list(self.start, rules)
+        return PCFG.from_weighted_rules(self.start, rules)
 
     def to_CNF(self, debug=False) -> 'PCFG':
         """Convert to Chomsky normal form; immutable"""
@@ -431,9 +408,9 @@ class PCFG(T.nn.Module, CFG):
 
     def _start(self) -> 'PCFG':
         """Eliminate the start symbol from any RHS"""
-        return PCFG.from_rule_list(
+        return PCFG.from_weighted_rules(
             "_start_",
-            self.as_rule_list() + [("_start_", [self.start], 1)]
+            it.chain(self.as_rule_list(), [("_start_", [self.start], 1)])
         )
 
     def _term(self) -> 'PCFG':
@@ -460,7 +437,7 @@ class PCFG(T.nn.Module, CFG):
                             new_succ.append(c)
                     rules.append((pred, new_succ, weight))
 
-        return PCFG.from_rule_list(self.start, rules)
+        return PCFG.from_weighted_rules(self.start, rules)
 
     def _bin(self) -> 'PCFG':
         """
@@ -488,7 +465,7 @@ class PCFG(T.nn.Module, CFG):
                     rules.append((nt(pred, i, j), succ[-2:], 1))
                 else:
                     rules.append((pred, succ, weight))
-        return PCFG.from_rule_list(self.start, rules)
+        return PCFG.from_weighted_rules(self.start, rules)
 
     def nullables(self) -> Set[Word]:
         """
@@ -511,19 +488,12 @@ class PCFG(T.nn.Module, CFG):
         cache[self.start] = False
 
         def is_nullable(letter) -> bool:
-            out = None
             if letter in cache:
                 return cache[letter]
-            elif self.is_terminal(letter):
-                out = False
-            elif any(all(is_nullable(c) for c in rule if c != letter)
-                     for rule in self.rules[letter]):
-                out = True
-            else:
-                out = False
-
-            cache[letter] = out
-            return out
+            cache[letter] = not self.is_terminal(letter) and \
+                            any(all(is_nullable(c) for c in rule if c != letter)
+                                for rule in self.rules[letter])
+            return cache[letter]
 
         return {nt for nt in self.rules if is_nullable(nt)}
 
@@ -561,7 +531,7 @@ class PCFG(T.nn.Module, CFG):
             weights = [x[2] for x in grp]
             condensed_rules.append((pred, succ, sum(weights)))
 
-        return PCFG.from_rule_list(self.start, condensed_rules)
+        return PCFG.from_weighted_rules(self.start, condensed_rules)
 
     def _unit(self) -> 'PCFG':
         """
@@ -609,7 +579,7 @@ class PCFG(T.nn.Module, CFG):
                and (p, s, w) not in filtered_rules:
                 filtered_rules.append((p, s, w))
 
-        return PCFG.from_rule_list(self.start, filtered_rules)
+        return PCFG.from_weighted_rules(self.start, filtered_rules)
 
     def __repr__(self) -> str:
         return str(self)
@@ -642,13 +612,13 @@ class PCFG(T.nn.Module, CFG):
 
 def test_explode():
     cases = [
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["A"], 1),
                 ("A", ["a"], 1),
             ],
-        ), PCFG.from_rule_list(
+        ), PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["S_1"], 1),
@@ -657,13 +627,13 @@ def test_explode():
                 ("A_1", ["a"], 1),
             ],
         )),
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="E",
             rules=[
                 ("E", ["-", "E"], 0.5),
                 ("E", ["E", "+", "E"], 0.5),
             ],
-        ), PCFG.from_rule_list(
+        ), PCFG.from_weighted_rules(
             start="E",
             rules=[
                 ("E", ["E_1"], 0.333),
@@ -710,7 +680,7 @@ def test_explode():
                 ("E_3", ["E_3", "+", "E_3"], 0.5 / 9),
             ],
         )),
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="A",
             rules=[
                 ("A", ["a"], 0.5),
@@ -721,7 +691,7 @@ def test_explode():
 
                 ("C", ["A"], 1),
             ],
-        ), PCFG.from_rule_list(
+        ), PCFG.from_weighted_rules(
             start="A",
             rules=[
                 ("A", ["A_1"], 1),
@@ -786,25 +756,25 @@ def test_to_bigram():
     # annotate repeated nonterminals with indices, then make
     # copies of the original rules with however many indices were used
     cases = [
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["a"], 1),
             ],
-        ), PCFG.from_rule_list(
+        ), PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["S_1"], 1),
                 ("S_1", ["a"], 1),
             ],
         )),
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["A"], 1),
                 ("A", ["a"], 1),
             ],
-        ), PCFG.from_rule_list(
+        ), PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["S_1"], 1),
@@ -812,14 +782,14 @@ def test_to_bigram():
                 ("A_1", ["a"], 1),
             ],
         )),
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["a", "S"], 0.333),
                 ("S", ["b", "S"], 0.333),
                 ("S", ["c", "S"], 0.333),
             ],
-        ), PCFG.from_rule_list(
+        ), PCFG.from_weighted_rules(
             start="S",
             rules=[
                 ("S", ["S_1"], 0.333),
@@ -840,13 +810,13 @@ def test_to_bigram():
                 ("S_3", ["c", "S_3"], 0.333),
             ],
         )),
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="E",
             rules=[
                 ("E", ["-", "E"], 0.5),
                 ("E", ["E", "+", "E"], 0.5),
             ],
-        ), PCFG.from_rule_list(
+        ), PCFG.from_weighted_rules(
             start="E",
             rules=[
                 ("E", ["E_1"], 0.333),
@@ -864,7 +834,7 @@ def test_to_bigram():
                 ("E_3", ["E_2", "+", "E_3"], 0.5),
             ],
         )),
-        (PCFG.from_rule_list(
+        (PCFG.from_weighted_rules(
             start="A",
             rules=[
                 ("A", ["a"], 0.25),
@@ -875,7 +845,7 @@ def test_to_bigram():
                 ("B", ["C"], 0.5),
                 ("C", ["A"], 1),
             ],
-        ), PCFG.from_rule_list(
+        ), PCFG.from_weighted_rules(
             start="A",
             rules=[
                 ("A", ["A_1"], 1),
@@ -1333,4 +1303,4 @@ if __name__ == '__main__':
     test_explode()
     test_is_in_CNF()
     test_is_normalized()
-    # demo_to_CNF()
+    demo_to_CNF()
