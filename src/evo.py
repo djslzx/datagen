@@ -71,7 +71,24 @@ def sample_images(system: S0LSystem, n_samples: int, d: int, theta: float,
     return bmps
 
 
-def mutate_agents(specimens: Iterable[S0LSystem], metagrammar, n_samples: int, smoothing=0.5) -> Iterator[S0LSystem]:
+def random_lsystems(n_systems: int) -> List[S0LSystem]:
+    try:
+        with open(f"{PCFG_CACHE_PREFIX}-zoo.pcfg", "rb") as f:
+            mg = pickle.load(f)
+        print(f"Loaded pickled zoo meta-grammar from {PCFG_CACHE_PREFIX}-zoo.pcfg")
+    except FileNotFoundError:
+        print(f"Could not find pickled zoo meta-grammar, fitting...")
+        mg = LSYSTEM_MG.apply_to_weights(lambda x: x)
+        corpus = [sys.to_sentence() for sys in zoo_systems]
+        mg = log_io(mg, corpus, smoothing=1)
+        with open(f"{PCFG_CACHE_PREFIX}-zoo.pcfg", "wb") as f:
+            pickle.dump(mg, f)
+
+    return [S0LSystem.from_sentence(mg.iterate_fully())
+            for _ in range(n_systems)]
+
+
+def mutate_agents(specimens: Iterable[S0LSystem], n_samples: int, smoothing=0.5) -> Iterator[S0LSystem]:
     """
     Produce the next generation of L-systems from a set of L-system specimens.
 
