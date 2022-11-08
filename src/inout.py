@@ -15,7 +15,7 @@ import pdb
 
 from cfg import PCFG
 from lindenmayer import LSYSTEM_MG
-from book_zoo import zoo_systems
+import book_zoo as zoo
 
 
 def print_map(alpha: Dict, precision=4):
@@ -417,7 +417,7 @@ def demo_io():
               }).to_CNF(),
          [["a", "a"]]),
         (LSYSTEM_MG.apply_to_weights(lambda x: x).to_CNF().normalized(),
-         [sys.to_sentence() for sys in zoo_systems]),
+         [sys.to_sentence() for sys in zoo.simple_zoo_systems]),
     ]
     for g, corpus in cases:
         print(corpus, '\n', g, '\n')

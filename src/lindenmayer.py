@@ -13,6 +13,7 @@ from cfg import PCFG
 
 # TODO: define LSYSTEM_MG as a CFG, then turn it into a PCFG when
 #  it's being used so we don't have to worry about immutability
+# TODO: add test cases for the different kinds of expressions we want to cover with this metagrammar
 LSYSTEM_MG = PCFG(
     start="L-SYSTEM",
     weights="uniform",
@@ -41,14 +42,13 @@ LSYSTEM_MG = PCFG(
         ],
         "RHS": [
             ["[", "RHS", "]", "RHS"],
-            ["[", "RHS", "]"],
+            ["RHS", "[", "RHS", "]"],
             ["NT", "RHS_W_NT"],
-            ["NT"],
             ["T", "RHS"],
         ],
         "RHS_W_NT": [
             ["[", "RHS", "]", "RHS"],
-            ["[", "RHS", "]"],
+            ["RHS", "[", "RHS", "]"],
             ["NT_OR_T", "RHS_W_NT"],
             ["NT_OR_T"],
         ],

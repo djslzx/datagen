@@ -2,12 +2,13 @@
 Test out evolutionary search algorithms for data augmentation.
 """
 import pickle
+import itertools as it
 import numpy as np
 import torch as T
 from torchvision.models import resnet50, ResNet50_Weights
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
-from typing import List, Dict, Set, Tuple, Iterator, Iterable, Callable
+from typing import List, Dict, Set, Tuple, Iterator, Iterable, Callable, Collection
 import math
 import time
 import random
@@ -25,21 +26,21 @@ import util
 PCFG_CACHE_PREFIX = ".cache/pcfg-"
 IMG_CACHE_PREFIX = ".cache/imgs/"
 
-for dir in [".cache/", ".cache/imgs/"]:
+for directory in [".cache/", ".cache/imgs/"]:
     try:
-        open(dir, "r")
+        open(directory, "r")
     except FileNotFoundError:
-        print(f"{dir} directory not found, making dir...")
-        os.mkdir(dir)
+        print(f"{directory} directory not found, making dir...")
+        os.mkdir(directory)
     except IsADirectoryError:
         pass
 
 # Hyperparameters
-D=3
-THETA=43
-NROWS=64
-NCOLS=64
-ROLLOUT_LIMIT=100
+D = 3
+THETA = 43
+NROWS = 64
+NCOLS = 64
+ROLLOUT_LIMIT = 100
 
 
 def img_featurizer() -> Callable[[np.ndarray], np.ndarray]:
@@ -112,7 +113,7 @@ def mutate_agents(specimens: Iterable[S0LSystem], n_samples: int, smoothing=0.5)
         yield sys
 
 
-def novelty(indiv: S0LSystem, popn: Set[S0LSystem], featurizer: Callable[[np.ndarray], np.ndarray],
+def novelty(indiv: S0LSystem, popn: Iterable[S0LSystem], featurizer: Callable[[np.ndarray], np.ndarray],
             k: int, n_samples: int) -> float:
     """Measures the novelty of a stochastic L-system relative to a population of L-systems."""
     def sample(lsystem: S0LSystem):
@@ -130,13 +131,14 @@ def novelty(indiv: S0LSystem, popn: Set[S0LSystem], featurizer: Callable[[np.nda
     return scores.max(axis=0)  # max or min or mean?
 
 
-def novelty_search(init_popn: Set[S0LSystem], max_popn_size: int, iters: int,
+def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: int,
                    smoothing: float, p_arkv: float, verbose=False) -> Set[S0LSystem]:
     """Runs novelty search."""
-    popn: Set[S0LSystem] = init_popn
-    arkv: Set[S0LSystem] = set()
+    popn = init_popn
+    arkv = set()
     featurizer = img_featurizer()
     id = int(time.time())
+    n_next_gen = max_popn_size * 2
 
     for i in range(iters):
         if verbose:
@@ -145,48 +147,50 @@ def novelty_search(init_popn: Set[S0LSystem], max_popn_size: int, iters: int,
 
         # generate next gen
         if verbose: print("Generating next gen...")
-        next_gen = list(mutate_agents(popn, n_samples=max_popn_size * 2, smoothing=smoothing))  # fixme
+        next_gen = np.array(list(mutate_agents(popn, n_samples=n_next_gen, smoothing=smoothing)))
 
         # evaluate next gen
         if verbose: print("Scoring agents...")
-        scored_agents = []
-        for agent in next_gen:
+        scores = np.empty(len(next_gen), dtype=float)
+        for j, agent in enumerate(next_gen):
             # store a subset of the popn in the arkv
             if random.random() < p_arkv:
                 arkv.add(agent)
-            score = novelty(agent, popn | arkv, featurizer, k=5, n_samples=5)
-            scored_agents.append((score, agent))
-
-        # plot next gen
-        plot_agents(next_gen, len(next_gen), 2, f"{IMG_CACHE_PREFIX}/{id}-gen-{i}.png")
+            scores[j] = novelty(agent, it.chain(popn, arkv), featurizer, k=5, n_samples=5)
 
         # cull popn
         if verbose: print("Culling popn...")
-        scored_agents.sort(reverse=True, key=lambda x: x[0])
-        popn = {agent for score, agent in scored_agents[:max_popn_size]}
+        indices = np.argsort(-scores)[:max_popn_size]  # take indices of top `max_popn_size` agents
+        popn = next_gen[indices]
 
-        # plot popn
-        plot_agents(popn, len(popn), 2, f"{IMG_CACHE_PREFIX}/{id}-popn-{i}.png")
+        # plot generation with selection markings
+        labels = [f"{score:.2e}" + ("*" if i in indices else "")
+                  for i, score in enumerate(scores)]
+        plot_agents(next_gen, labels, 2, f"{IMG_CACHE_PREFIX}/{id}-popn-{i}.png")
 
         if verbose:
             t_taken = time.time() - t_start
             print("====================")
             print(f"Completed iteration {i} in {t_taken:.2f}s.")
             print("New generation:")
-            pp([(score, agent.to_code()) for score, agent in scored_agents])
+            for agent, label in zip(next_gen, labels):
+                print(f"  {agent.to_code()} - {label}")
             print("Population:")
             pp([x.to_code() for x in popn])
             print("Archive:")
             pp([x.to_code() for x in arkv])
             print("====================")
 
-    plot_agents(arkv, len(arkv), 2, f"{IMG_CACHE_PREFIX}/{id}-arkv.png")
+    plot_agents(arkv, ["" for _ in range(len(arkv))], 2, f"{IMG_CACHE_PREFIX}/{id}-arkv.png")
     save_agents(arkv, f"{PCFG_CACHE_PREFIX}{id}.txt")
     return arkv
 
 
-def plot_agents(agents: Iterable[S0LSystem], n_agents: int, n_samples_per_agent: int, saveto: str):
-    n_bmps = n_samples_per_agent * n_agents
+def plot_agents(agents: Collection[S0LSystem], labels: Collection[str], n_samples_per_agent: int, saveto: str):
+    assert len(agents) == len(labels), \
+        f"Found mismatched lengths of agents ({len(agents)}) and labels ({len(labels)})"
+
+    n_bmps = n_samples_per_agent * len(agents)
     n_rows = int(math.sqrt(n_bmps))
     n_cols = n_bmps // n_rows
     if n_rows * n_cols < n_bmps:
@@ -202,11 +206,12 @@ def plot_agents(agents: Iterable[S0LSystem], n_agents: int, n_samples_per_agent:
     # plot bitmaps
     i = 0
     axes: List[plt.Axes] = ax.flat
-    for agent in agents:
+    for agent, label in zip(agents, labels):
         for bmp in sample_images(agent, n_samples_per_agent, d=D, theta=THETA,
                                  rollout_limit=ROLLOUT_LIMIT, n_rows=NROWS, n_cols=NCOLS):
             axis = axes[i]
             axis.imshow(bmp)
+            axis.set_title(label, fontsize=4, pad=4)
             i += 1
     plt.savefig(saveto, dpi=dpi)
     plt.close()
