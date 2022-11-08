@@ -1,6 +1,5 @@
 #!/bin/bash
-# eval "$(conda shell.bash hook)"
-# conda activate prob-repl
-
+eval "$(conda shell.bash hook)"
+conda activate tenv
 cd /home/djl328/prob-repl/src/
-make datagen_remote
+make evo

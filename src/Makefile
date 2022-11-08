@@ -1,6 +1,9 @@
 DIR := '../out/io-samples'
 ZOO_DIR := '../out/zoo'
 
+evo:
+	python3 -u evo.py
+
 lindenmayer:
 	python3 -u lindenmayer.py $(DIR)
 	$(MAKE) convert_ps
