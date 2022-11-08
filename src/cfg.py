@@ -404,6 +404,7 @@ class PCFG(T.nn.Module, CFG):
                 print(f"Performing {name} on\n{g}\n"
                       f"yielded\n{g_new}")
             g = g_new
+        # TODO: move this to CFG so we don't have to muck around with weights
         return g
 
     def _start(self) -> 'PCFG':

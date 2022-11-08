@@ -226,6 +226,6 @@ zoo: List[Tuple[S0LSystem, int]] = [
 ]
 
 zoo_systems = [sys for sys, angle in zoo]
-simple_zoo_systems = [["F" if char in ["f", "X"] else char
-                       for char in sys.to_sentence()]
+simple_zoo_systems = [S0LSystem.from_sentence(["F" if char in ["f", "X"] else char
+                                               for char in sys.to_sentence()])
                       for sys in zoo_systems]
