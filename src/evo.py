@@ -253,13 +253,17 @@ def demo_ns():
         S0LSystem("F", {"F": ["F+F", "F-F"]}),
         S0LSystem("F", {"F": ["FF"]}),
         S0LSystem("F", {"F": ["F++F", "FF"]}),
+        S0LSystem(
+            "F-F-F-F",
+            {"F": ["F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"]}
+        ),
     }
     novelty_search(
         init_popn=popn,
-        iters=2,
-        max_popn_size=4,
+        iters=100,
+        max_popn_size=49,
         smoothing=1,
-        p_arkv=1,
+        p_arkv=0.2,
         verbose=True
     )
 
