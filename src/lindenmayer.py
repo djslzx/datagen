@@ -42,13 +42,14 @@ LSYSTEM_MG = PCFG(
         ],
         "RHS": [
             ["[", "RHS", "]", "RHS"],
-            ["RHS", "[", "RHS", "]"],
+            ["[", "RHS", "]"],
             ["NT", "RHS_W_NT"],
+            ["NT"],
             ["T", "RHS"],
         ],
         "RHS_W_NT": [
             ["[", "RHS", "]", "RHS"],
-            ["RHS", "[", "RHS", "]"],
+            ["[", "RHS", "]"],
             ["NT_OR_T", "RHS_W_NT"],
             ["NT_OR_T"],
         ],
