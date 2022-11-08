@@ -213,6 +213,7 @@ def plot_agents(agents: Collection[S0LSystem], labels: Collection[str], n_sample
             axis.imshow(bmp)
             axis.set_title(label, fontsize=4, pad=4)
             i += 1
+    plt.tight_layout()
     plt.savefig(saveto, dpi=dpi)
     plt.close()
 
