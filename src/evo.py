@@ -213,7 +213,7 @@ def plot_agents(agents: Collection[S0LSystem], labels: Collection[str], n_sample
             axis.imshow(bmp)
             axis.set_title(label, fontsize=4, pad=4)
             i += 1
-    plt.tight_layout()
+    plt.tight_layout(pad=0.3, w_pad=0.1, h_pad=0.1)
     plt.savefig(saveto, dpi=dpi)
     plt.close()
 
@@ -222,6 +222,12 @@ def save_agents(agents: Iterable[S0LSystem], saveto: str):
     with open(saveto, "w") as f:
         for agent in agents:
             f.write(agent.to_code() + "\n")
+
+
+def demo_plot():
+    agents = [S0LSystem("F", {"F": ["F+F", "F-F"]})] * 36
+    plot_agents(agents, labels=[agent.to_code() for agent in agents], n_samples_per_agent=2,
+                saveto=f"{IMG_CACHE_PREFIX}test-plot.png")
 
 
 def demo_mutate_agents():
@@ -268,4 +274,5 @@ def demo_ns():
 if __name__ == '__main__':
     # demo_mutate_agents()
     # demo_measure_novelty()
-    demo_ns()
+    # demo_ns()
+    demo_plot()
