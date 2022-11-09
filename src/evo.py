@@ -278,5 +278,5 @@ def demo_ns():
 if __name__ == '__main__':
     # demo_mutate_agents()
     # demo_measure_novelty()
-    # demo_ns()
-    demo_plot()
+    # demo_plot()
+    demo_ns()
