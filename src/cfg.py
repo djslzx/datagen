@@ -466,6 +466,13 @@ class PCFG(T.nn.Module):
                 for k, v in weights.items()
             })
 
+    @staticmethod
+    def new(start: CFG.Word,
+            rules: Dict[str, Iterable[str | CFG.Sentence]],
+            weights: str | Dict[CFG.Word, List[float] | T.Tensor] = "uniform",
+            *kvs) -> 'PCFG':
+        return PCFG(CFG(start, rules), weights, *kvs)
+
     def __len__(self) -> int:
         return sum(len(succs) for succs in self.cfg.rules.values())
 
@@ -492,8 +499,15 @@ class PCFG(T.nn.Module):
                 f"\n  start={self.cfg.start}"
                 f"\n  rules=\n  {rules}\n}}")
 
+    def is_in_CNF(self) -> bool:
+        return self.cfg.is_in_CNF()
+
     def is_nonterminal(self, sym: CFG.Word) -> bool:
         return self.cfg.is_nonterminal(sym)
+
+    @property
+    def nonterminals(self) -> Iterable[CFG.Word]:
+        return self.cfg.nonterminals
 
     def approx_eq(self, other, threshold):
         """

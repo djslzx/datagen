@@ -13,9 +13,7 @@ import torch as T
 import math
 import pdb
 
-from cfg import PCFG
-from lindenmayer import LSYSTEM_MG
-import book_zoo as zoo
+from cfg import CFG, PCFG
 
 
 def print_map(alpha: Dict, precision=4):
@@ -55,7 +53,7 @@ def outward_diag(n: int, start=None) -> Iterable[Tuple[int, int]]:
             yield j, i + j
 
 
-def inside(G: PCFG, s: PCFG.Sentence) -> Dict:
+def inside(G: PCFG, s: CFG.Sentence) -> Dict:
     assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
     alpha = {}
     n = len(s)
@@ -68,7 +66,7 @@ def inside(G: PCFG, s: PCFG.Sentence) -> Dict:
     # recurse on other diagonals, proceeding inwards
     for i, j in inward_diag(n, start=1):
         # init each cell to 0
-        for A in G.rules:
+        for A in G.nonterminals:
             alpha[i, j, A] = 0
         # add up weights of rules
         for A, succ, w in G.as_weighted_rules():
@@ -81,19 +79,19 @@ def inside(G: PCFG, s: PCFG.Sentence) -> Dict:
     return alpha
 
 
-def outside(G: PCFG, s: PCFG.Sentence) -> Tuple[Dict, Dict]:
+def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict, Dict]:
     assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
     alpha = inside(G, s)
     beta = {}
     n = len(s)
 
     # start with inner diagonal (singleton)
-    for A in G.rules:
+    for A in G.nonterminals:
         beta[0, n-1, A] = int(A == G.start)
 
     # recurse on other diagonals, proceeding outwards
     for i, j in outward_diag(n, start=n-1):
-        for A in G.rules:
+        for A in G.nonterminals:
             beta[i, j, A] = 0
         for A, succ, w in G.as_weighted_rules():
             if len(succ) != 2:
@@ -106,12 +104,12 @@ def outside(G: PCFG, s: PCFG.Sentence) -> Tuple[Dict, Dict]:
     return alpha, beta
 
 
-def autograd_io(G: PCFG, corpus: List[PCFG.Sentence], iters=1000,
+def autograd_io(G: PCFG, corpus: List[CFG.Sentence], iters=1000,
                 callback=None, log=False):
     """
     Uses automatic differentiation to implement Inside-Outside.
     """
-    def ins(g: PCFG, w: PCFG.Sentence) -> float:
+    def ins(g: PCFG, w: CFG.Sentence) -> float:
         alpha = inside(g, w)
         z = alpha[0, len(w) - 1, g.start]
         return z
@@ -144,7 +142,7 @@ def autograd_io(G: PCFG, corpus: List[PCFG.Sentence], iters=1000,
     # print(prev, list(G.parameters()), d)
 
 
-def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], verbose=False):
+def compute_counts(G: PCFG, corpus: List[CFG.Sentence], verbose=False):
     """
     Count the number of times any rule A -> x is used in the corpus.
     """
@@ -175,7 +173,7 @@ def compute_counts(G: PCFG, corpus: List[PCFG.Sentence], verbose=False):
     return counts
 
 
-def inside_outside_step(G: PCFG, corpus: List[PCFG.Sentence],
+def inside_outside_step(G: PCFG, corpus: List[CFG.Sentence],
                         smoothing: float = 0.1, verbose=False) -> PCFG:
     """
     Perform one step of inside-outside.
@@ -194,7 +192,7 @@ def inside_outside_step(G: PCFG, corpus: List[PCFG.Sentence],
     return PCFG.from_weighted_rules(G.start, rules)
 
 
-def log_alpha(G: PCFG, s: PCFG.Sentence) -> Dict:
+def log_alpha(G: PCFG, s: CFG.Sentence) -> Dict:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
@@ -210,7 +208,7 @@ def log_alpha(G: PCFG, s: PCFG.Sentence) -> Dict:
     # recurse on other diagonals, proceeding inwards
     for i, j in inward_diag(n, start=1):
         # init each cell to 0
-        for A in G.rules:
+        for A in G.nonterminals:
             log_a[i, j, A] = T.tensor(-T.inf)
 
         # add up weights of rules
@@ -224,7 +222,7 @@ def log_alpha(G: PCFG, s: PCFG.Sentence) -> Dict:
     return log_a
 
 
-def log_alpha_beta(G: PCFG, s: PCFG.Sentence) -> Tuple[Dict, Dict]:
+def log_alpha_beta(G: PCFG, s: CFG.Sentence) -> Tuple[Dict, Dict]:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
@@ -234,12 +232,12 @@ def log_alpha_beta(G: PCFG, s: PCFG.Sentence) -> Tuple[Dict, Dict]:
     n = len(s)
 
     # start with inner diagonal (singleton)
-    for A in G.rules:
+    for A in G.nonterminals:
         log_b[0, n-1, A] = T.log(T.tensor(A == G.start))
 
     # recurse on other diagonals, proceeding outwards
     for i, j in outward_diag(n, start=n-1):
-        for A in G.rules:
+        for A in G.nonterminals:
             log_b[i, j, A] = -T.tensor(T.inf)
         for A, succ, w in G.as_weighted_rules():
             if len(succ) != 2:
@@ -255,7 +253,7 @@ def log_alpha_beta(G: PCFG, s: PCFG.Sentence) -> Tuple[Dict, Dict]:
     return log_a, log_b
 
 
-def log_counts(G: PCFG, corpus: List[PCFG.Sentence]) -> Dict:
+def log_counts(G: PCFG, corpus: List[CFG.Sentence]) -> Dict:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
@@ -292,7 +290,7 @@ def log_counts(G: PCFG, corpus: List[PCFG.Sentence]) -> Dict:
     return log_c
 
 
-def log_io_step(G: PCFG, corpus: List[PCFG.Sentence], alpha=0.1) -> PCFG:
+def log_io_step(G: PCFG, corpus: List[CFG.Sentence], alpha=0.1) -> PCFG:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
@@ -310,7 +308,7 @@ def log_io_step(G: PCFG, corpus: List[PCFG.Sentence], alpha=0.1) -> PCFG:
     return PCFG.from_weighted_rules(G.start, rules)
 
 
-def log_dirio_step(G: PCFG, corpus: List[PCFG.Sentence], alpha) -> PCFG:
+def log_dirio_step(G: PCFG, corpus: List[CFG.Sentence], alpha) -> PCFG:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
@@ -327,7 +325,7 @@ def log_dirio_step(G: PCFG, corpus: List[PCFG.Sentence], alpha) -> PCFG:
     return PCFG.from_weighted_rules(G.start, rules)
 
 
-def log_io(G: PCFG, corpus: List[PCFG.Sentence], smoothing=0.1, verbose=False) -> PCFG:
+def log_io(G: PCFG, corpus: List[CFG.Sentence], smoothing=0.1, verbose=False) -> PCFG:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
@@ -347,7 +345,7 @@ def log_io(G: PCFG, corpus: List[PCFG.Sentence], smoothing=0.1, verbose=False) -
     return g
 
 
-def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
+def inside_outside(G: PCFG, corpus: List[CFG.Sentence],
                    smoothing=0.1, verbose=False) -> PCFG:
     """
     Perform inside-outside until the grammar converges.
@@ -355,7 +353,7 @@ def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
     assert G.is_in_CNF(), "Inside-outside requires the grammar to be in CNF"
     assert G.is_normalized()
 
-    def step(g: PCFG, corpus: List[PCFG.Sentence]) -> PCFG:
+    def step(g: PCFG, corpus: List[CFG.Sentence]) -> PCFG:
         return inside_outside_step(g, corpus, smoothing, verbose=verbose)
 
     g = G.normalized()
@@ -370,212 +368,3 @@ def inside_outside(G: PCFG, corpus: List[PCFG.Sentence],
         if g.approx_eq(g_prev, threshold=1e-7):
             break
     return g
-
-
-def demo_io():
-    cases = [
-        (PCFG.from_weighted_rules(
-            start="S",
-            rules=[
-                ("S", ["N", "V"], 1),
-                ("V", ["V", "N"], 1),
-                ("N", ["N", "P"], 1),
-                ("P", ["PP", "N"], 1),
-                ("N", ["She"], 1),
-                ("V", ["eats"], 1),
-                ("N", ["pizza"], 1),
-                ("PP", ["without"], 1),
-                ("N", ["anchovies"], 1),
-                ("V", ["V", "N", "P"], 1),
-                ("N", ["hesitation"], 1),
-            ],
-        ).to_CNF().normalized(),
-            [["She", "eats", "pizza", "without", "anchovies"],
-             ["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG.from_weighted_rules(
-            start="S",
-            rules=[
-                ("S", ["N", "V"], 1),
-                ("V", ["V", "N"], 1),
-                ("N", ["N", "P"], 1),
-                ("P", ["PP", "N"], 1),
-                ("N", ["She"], 1),
-                ("V", ["eats"], 1),
-                ("N", ["pizza"], 1),
-                ("PP", ["without"], 1),
-                ("N", ["anchovies"], 1),
-                ("V", ["V", "N", "P"], 1),
-                ("N", ["hesitation"], 1),
-            ],
-        ).to_CNF().normalized(),
-            [["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG(start="S",
-              rules={
-                  "S": [["A", "A"], ["B", "B"]],
-                  "A": [["a"]],
-                  "B": [["b"]],
-              }).to_CNF(),
-         [["a", "a"]]),
-        (LSYSTEM_MG.apply_to_weights(lambda x: x).to_CNF().normalized(),
-         [sys.to_sentence() for sys in zoo.simple_zoo_systems]),
-    ]
-    for g, corpus in cases:
-        print(corpus, '\n', g, '\n')
-        # g_io = inside_outside(g, corpus, verbose=False)
-        # print("io", g_io)
-        g_log = g.apply_to_weights(T.log)
-        g_log.log_mode = True
-        g_logio = log_io(g_log, corpus, verbose=True)
-        print("logio:", g_logio.apply_to_weights(T.exp))
-        # autograd_io(g, corpus)
-
-
-def demo_inside():
-    g = PCFG.from_weighted_rules(
-            start="S",
-            rules=[
-                ("S", ["N", "V"], 1),
-                ("V", ["V", "N"], 1),
-                ("N", ["N", "P"], 1),
-                ("P", ["PP", "N"], 1),
-                ("N", ["She"], 1),
-                ("V", ["eats"], 1),
-                ("N", ["pizza"], 1),
-                ("PP", ["without"], 1),
-                ("N", ["anchovies"], 1),
-                ("V", ["V", "N", "P"], 1),
-                ("N", ["hesitation"], 1),
-            ],
-        ).to_CNF()
-    corpus = [["She", "eats", "pizza", "without", "anchovies"]]
-    a = inside(g, corpus[0])
-    print('a')
-    print_map(a)
-    print()
-
-    a, b = outside(g, corpus[0])
-    print('a, b')
-    print_map(a)
-    print_map(b)
-
-
-def test_log():
-    """
-    Check that the behavior of log versions of functions
-    is consistent with non-log versions
-    """
-    grammar_corpus_pairs = [
-        (PCFG.from_weighted_rules(
-            start="S",
-            rules=[
-                ("S", ["N", "V"], 1),
-                ("V", ["V", "N"], 1),
-                ("N", ["N", "P"], 1),
-                ("P", ["PP", "N"], 1),
-                ("N", ["She"], 1),
-                ("V", ["eats"], 1),
-                ("N", ["pizza"], 1),
-                ("PP", ["without"], 1),
-                ("N", ["anchovies"], 1),
-                ("V", ["V", "N", "P"], 1),
-                ("N", ["hesitation"], 1),
-            ],
-        ).to_CNF().normalized(),
-         [["She", "eats", "pizza", "without", "anchovies"],
-          ["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG.from_weighted_rules(
-            start="S",
-            rules=[
-                ("S", ["N", "V"], 1),
-                ("V", ["V", "N"], 1),
-                ("N", ["N", "P"], 1),
-                ("P", ["PP", "N"], 1),
-                ("N", ["She"], 1),
-                ("V", ["eats"], 1),
-                ("N", ["pizza"], 1),
-                ("PP", ["without"], 1),
-                ("N", ["anchovies"], 1),
-                ("V", ["V", "N", "P"], 1),
-                ("N", ["hesitation"], 1),
-            ],
-        ).to_CNF().normalized(),
-         [["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG(start="S",
-              rules={
-                  "S": [["A", "A"], ["B", "B"]],
-                  "A": [["a"]],
-                  "B": [["b"]],
-              }).to_CNF(),
-         [["a", "a"]]),
-    ]
-    # inside check
-    for g, corpus in grammar_corpus_pairs:
-        g_log = g.apply_to_weights(T.log)
-        g_log.log_mode = True
-
-        a = inside(g, corpus)
-        log_a = log_alpha(g_log, corpus)
-
-        for i, j, A in a.keys():
-            a_val = T.tensor(a[i, j, A])
-            log_a_val = T.tensor(log_a[i, j, A])
-
-            if (a_val - log_a_val.exp()).abs() > 0.01:
-                print(a_val, log_a_val.exp())
-                pdb.set_trace()
-
-    print(" [+] passed test_log")
-
-
-def test_inward_diag():
-    cases = [
-        (1, 0,
-         [(0, 0)]),
-        (2, 0,
-         [(0, 0), (1, 1), (0, 1)]),
-        (3, 0,
-         [(0, 0), (1, 1), (2, 2),
-          (0, 1), (1, 2),
-          (0, 2)]),
-        (5, 1,
-         [(0, 1), (1, 2), (2, 3), (3, 4),
-          (0, 2), (1, 3), (2, 4),
-          (0, 3), (1, 4),
-          (0, 4)]),
-    ]
-    for n, start, y in cases:
-        out = list(inward_diag(n, start))
-        assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_inward_diag")
-
-
-def test_outward_diag():
-    cases = [
-        (1, None,
-         [(0, 0)]),
-        (2, None,
-         [(0, 1), (1, 1), (0, 0)]),
-        (3, None,
-         [(0, 2),
-          (1, 2), (0, 1),
-          (2, 2), (1, 1), (0, 0)]),
-        (5, 4,
-         [
-             (1, 4), (0, 3),
-             (2, 4), (1, 3), (0, 2),
-             (3, 4), (2, 3), (1, 2), (0, 1),
-             (4, 4), (3, 3), (2, 2), (1, 1), (0, 0),
-         ]),
-    ]
-    for n, start, y in cases:
-        out = list(outward_diag(n, start))
-        assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_outward_diag")
-
-
-if __name__ == '__main__':
-    # test_inward_diag()
-    # test_outward_diag()
-    # demo_inside()
-    # test_log()
-    demo_io()
