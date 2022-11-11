@@ -21,6 +21,13 @@ def test_cfg_check_rep():
                           "A": ["a", "a"]}),
         lambda: CFG("S", {"S": ["A"],
                           "A": ["a", "a", "a"]}),
+        # identity mapping
+        lambda: CFG("S", {"S": ["S"]}),
+        # RHS has only epsilon
+        lambda: CFG("S", {"S": ["A"],
+                          "A": [CFG.Empty]}),
+        lambda: CFG("S", {"S": ["A"],
+                          "A": CFG.Empty}),
     ]
     for f in cases:
         with pytest.raises(ValueError):
@@ -29,6 +36,9 @@ def test_cfg_check_rep():
 
 def test_cfg_eq():
     cases = [
+        (CFG("S", {"S": ["a", "b", "c"]}),
+         0,
+         False),
         (CFG("S", {"S": ["a", "b", "c"]}),
          CFG("S", {"S": ["c", "b", "a"]}),
          True),
@@ -83,6 +93,43 @@ def test_make_cfg():
     ]
     assert all(cfgs[0] == cfg for cfg in cfgs[1:]), \
         f"Expected all CFGs to be equal, but got the following CFGs: {cfgs}"
+
+
+def test_cfg_iterate_fully():
+    cases = [
+        (CFG("S", {"S": ["a b c"]}),
+         ["a", "b", "c"]),
+        (CFG("S", {"S": ["A"],
+                   "A": ["B"],
+                   "B": ["C"],
+                   "C": ["c"]}),
+         ["c"]),
+    ]
+    for cfg, sentence in cases:
+        out = cfg.iterate_fully()
+        assert sentence == out, f"Expected {sentence} but got {out}"
+
+
+def test_cfg_iterate_until():
+    cases = [
+        (CFG("S", {"S": ["a b c"]}), 1,
+         ["S"]),
+        (CFG("S", {"S": ["a b c"]}), 2,
+         ["a", "b", "c"]),
+        (CFG("S", {"S": ["A"],
+                   "A": ["B"],
+                   "B": ["C"],
+                   "C": ["c"]}), 2,
+         ["c"]),
+        (CFG("S", {"S": ["a A"],
+                   "A": ["a B"],
+                   "B": ["a C"],
+                   "C": ["c"]}), 2,
+         ["a", "A"]),
+    ]
+    for cfg, k, sentence in cases:
+        out = cfg.iterate_until(k)
+        assert sentence == out, f"Expected {sentence} but got {out}"
 
 
 def test_explode():
@@ -572,12 +619,46 @@ def test_unit():
         assert out == y, f"Failed test_unit: Expected\n{y},\ngot\n{out}"
 
 
-def test_to_CNF():
+def test_to_CNF_parts():
     test_term()
     test_bin()
     test_nullable()
     test_del()
     test_unit()
+
+
+def test_to_CNF():
+    cases = [
+        # identity
+        (CFG("S", {"S": ["a"]}),
+         CFG("S", {"S": ["a"]})),
+        # start, term, bin
+        (CFG("S", {"S": ["a b c"]}),
+         CFG("_start_", {"_start_": ["_term_a_ _bin_S_0_1_"],
+                         "_bin_S_0_1_": ["_term_b_ _term_c_"],
+                         "_term_a_": ["a"],
+                         "_term_b_": ["b"],
+                         "_term_c_": ["c"],
+                        })),
+        # start, del
+        (CFG("S", {"S": ["A B"],
+                   "A": ["a", CFG.Empty],
+                   "B": ["b"]}),
+         CFG("_start_", {"_start_": ["b", "A B"],
+                         "A": ["a"],
+                         "B": ["b"]})),
+        # start, del, unit
+        (CFG("S", {"S": ["A"],
+                   "A": ["a", CFG.Empty]}),
+         CFG("_start_", {"_start_": ["a"]})),
+        # start, unit
+        (CFG("S", {"S": ["A"],
+                   "A": ["a"]}),
+         CFG("_start_", {"_start_": ["a"]})),
+    ]
+    for a, b in cases:
+        out = a.to_CNF()
+        assert b == out, f"Expected\n{b}\nbut got\n{out}"
 
 
 def test_is_in_CNF():
@@ -615,7 +696,7 @@ def test_is_in_CNF():
         # empty successor in non-start nonterminal
         ({
             "S": [["A", "B"]],
-            "A": [CFG.Empty],
+            "A": [["a"], CFG.Empty],
             "B": [["b"]],
         }, False),
 

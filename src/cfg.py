@@ -41,6 +41,11 @@ class CFG:
                    for pred, succ in rules.items()):
             raise ValueError("All rule RHS should be nonempty, "
                              "and each element should also be nonempty")
+        if any(pred in succs for pred, succs in rules.items()):
+            raise ValueError("No nonterminal should map to itself")
+        if any(succs == [CFG.Empty] or succs == CFG.Empty
+               for succs in rules.values()):
+            raise ValueError("All RHS should have at least one non-epsilon successor")
         if not all(pred == start or any(pred in succ
                                         for succs in rules.values()
                                         for succ in succs)
@@ -83,7 +88,7 @@ class CFG:
         rules = "\n  ".join(
             f"{pred} -> {succs}"
             for pred, succs in self.rules.items())
-        return "CFG: {\n  " + rules + "\n}"
+        return f"CFG({self.start}): ""{\n  " + rules + "\n}"
 
     def is_nonterminal(self, letter: str) -> bool:
         return letter in self.rules
@@ -95,28 +100,25 @@ class CFG:
     def nonterminals(self) -> Iterable[Word]:
         return self.rules.keys()
 
-    def _choose_successor(self, letter: str) -> List[str]:
-        if letter not in self.rules:
-            return [letter]
-        else:
-            return random.choice(self.rules[letter])
+    def _choose_successor(self, nt: Word) -> Sentence:
+        return random.choice(self.rules[nt])
 
-    def step(self, word: List[str]) -> List[str]:
+    def step(self, sentence: List[str]) -> Sentence:
         """
         Non-deterministically apply one of the production rules to
-        a letter in the word.
+        a word in the sentence.
         """
         # Only choose nonterminals to expand
-        nonterminals = [i for i, letter in enumerate(word)
-                        if self.is_nonterminal(letter)]
+        nonterminals = [i for i, word in enumerate(sentence)
+                        if self.is_nonterminal(word)]
         if not nonterminals:
-            return word
+            return sentence
         index = random.choice(nonterminals)
-        letter = word[index]
-        expansion = self._choose_successor(letter)
-        return word[:index] + expansion + word[index + 1:]
+        nt = sentence[index]
+        expansion = self._choose_successor(nt)
+        return sentence[:index] + expansion + sentence[index + 1:]
 
-    def iterate_fully(self, debug=False) -> List[str]:
+    def iterate_fully(self, debug=False) -> Sentence:
         s = [self.start]
         if debug:
             print(s)
@@ -126,7 +128,7 @@ class CFG:
                 print(" ".join(s))
         return s
 
-    def iterate_until(self, length: int) -> List[str]:
+    def iterate_until(self, length: int) -> Sentence:
         """
         Apply rules to the starting word until its length is >= `length`.
         Exit if a fixpoint is reached.
@@ -473,9 +475,6 @@ class PCFG(T.nn.Module, CFG):
                 for k, v in weights.items()
             })
 
-    def __hash__(self):
-        return hash(str(self))
-
     def __eq__(self, other):
         return self.approx_eq(other, threshold=10 ** -2)
 
@@ -494,15 +493,6 @@ class PCFG(T.nn.Module, CFG):
             all(util.approx_eq(w1, w2, threshold)
                 for nt in self.rules
                 for w1, w2 in zip(self.weights[nt], other.weights[nt]))
-
-    def struct_eq(self, other: 'PCFG') -> bool:
-        """
-        Checks whether two PCFGs have the same structure.
-        """
-        if self.rules.keys() != other.rules.keys():
-            return False
-        return all(sorted(self.rules[k]) == sorted(other.rules[k])
-                   for k in self.rules)
 
     def normalized(self, c=0.1) -> 'PCFG':
         """
