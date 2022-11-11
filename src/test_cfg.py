@@ -35,273 +35,271 @@ def test_make_cfg():
 
 def test_explode():
     cases = [
-        (PCFG.from_weighted_rules(
+        (CFG.from_rules(
             start="S",
             rules=[
-                ("S", ["A"], 1),
-                ("A", ["a"], 1),
+                ("S", ["A"]),
+                ("A", ["a"]),
             ],
-        ), PCFG.from_weighted_rules(
+        ), CFG.from_rules(
             start="S",
             rules=[
-                ("S", ["S_1"], 1),
+                ("S", ["S_1"]),
 
-                ("S_1", ["A_1"], 1),
-                ("A_1", ["a"], 1),
+                ("S_1", ["A_1"]),
+                ("A_1", ["a"]),
             ],
         )),
-        (PCFG.from_weighted_rules(
+        (CFG.from_rules(
             start="E",
             rules=[
-                ("E", ["-", "E"], 0.5),
-                ("E", ["E", "+", "E"], 0.5),
+                ("E", ["-", "E"]),
+                ("E", ["E", "+", "E"]),
             ],
-        ), PCFG.from_weighted_rules(
+        ), CFG.from_rules(
             start="E",
             rules=[
-                ("E", ["E_1"], 0.333),
-                ("E", ["E_2"], 0.333),
-                ("E", ["E_3"], 0.333),
+                ("E", ["E_1"]),
+                ("E", ["E_2"]),
+                ("E", ["E_3"]),
 
-                ("E_1", ["-", "E_1"], 0.5 / 3),
-                ("E_1", ["-", "E_2"], 0.5 / 3),
-                ("E_1", ["-", "E_3"], 0.5 / 3),
-                ("E_1", ["E_1", "+", "E_1"], 0.5 / 9),
-                ("E_1", ["E_1", "+", "E_2"], 0.5 / 9),
-                ("E_1", ["E_1", "+", "E_3"], 0.5 / 9),
-                ("E_1", ["E_2", "+", "E_1"], 0.5 / 9),
-                ("E_1", ["E_2", "+", "E_2"], 0.5 / 9),
-                ("E_1", ["E_2", "+", "E_3"], 0.5 / 9),
-                ("E_1", ["E_3", "+", "E_1"], 0.5 / 9),
-                ("E_1", ["E_3", "+", "E_2"], 0.5 / 9),
-                ("E_1", ["E_3", "+", "E_3"], 0.5 / 9),
+                ("E_1", ["-", "E_1"]),
+                ("E_1", ["-", "E_2"]),
+                ("E_1", ["-", "E_3"]),
+                ("E_1", ["E_1", "+", "E_1"]),
+                ("E_1", ["E_1", "+", "E_2"]),
+                ("E_1", ["E_1", "+", "E_3"]),
+                ("E_1", ["E_2", "+", "E_1"]),
+                ("E_1", ["E_2", "+", "E_2"]),
+                ("E_1", ["E_2", "+", "E_3"]),
+                ("E_1", ["E_3", "+", "E_1"]),
+                ("E_1", ["E_3", "+", "E_2"]),
+                ("E_1", ["E_3", "+", "E_3"]),
 
-                ("E_2", ["-", "E_1"], 0.5 / 3),
-                ("E_2", ["-", "E_2"], 0.5 / 3),
-                ("E_2", ["-", "E_3"], 0.5 / 3),
-                ("E_2", ["E_1", "+", "E_1"], 0.5 / 9),
-                ("E_2", ["E_1", "+", "E_2"], 0.5 / 9),
-                ("E_2", ["E_1", "+", "E_3"], 0.5 / 9),
-                ("E_2", ["E_2", "+", "E_1"], 0.5 / 9),
-                ("E_2", ["E_2", "+", "E_2"], 0.5 / 9),
-                ("E_2", ["E_2", "+", "E_3"], 0.5 / 9),
-                ("E_2", ["E_3", "+", "E_1"], 0.5 / 9),
-                ("E_2", ["E_3", "+", "E_2"], 0.5 / 9),
-                ("E_2", ["E_3", "+", "E_3"], 0.5 / 9),
+                ("E_2", ["-", "E_1"]),
+                ("E_2", ["-", "E_2"]),
+                ("E_2", ["-", "E_3"]),
+                ("E_2", ["E_1", "+", "E_1"]),
+                ("E_2", ["E_1", "+", "E_2"]),
+                ("E_2", ["E_1", "+", "E_3"]),
+                ("E_2", ["E_2", "+", "E_1"]),
+                ("E_2", ["E_2", "+", "E_2"]),
+                ("E_2", ["E_2", "+", "E_3"]),
+                ("E_2", ["E_3", "+", "E_1"]),
+                ("E_2", ["E_3", "+", "E_2"]),
+                ("E_2", ["E_3", "+", "E_3"]),
 
-                ("E_3", ["-", "E_1"], 0.5 / 3),
-                ("E_3", ["-", "E_2"], 0.5 / 3),
-                ("E_3", ["-", "E_3"], 0.5 / 3),
-                ("E_3", ["E_1", "+", "E_1"], 0.5 / 9),
-                ("E_3", ["E_1", "+", "E_2"], 0.5 / 9),
-                ("E_3", ["E_1", "+", "E_3"], 0.5 / 9),
-                ("E_3", ["E_2", "+", "E_1"], 0.5 / 9),
-                ("E_3", ["E_2", "+", "E_2"], 0.5 / 9),
-                ("E_3", ["E_2", "+", "E_3"], 0.5 / 9),
-                ("E_3", ["E_3", "+", "E_1"], 0.5 / 9),
-                ("E_3", ["E_3", "+", "E_2"], 0.5 / 9),
-                ("E_3", ["E_3", "+", "E_3"], 0.5 / 9),
+                ("E_3", ["-", "E_1"]),
+                ("E_3", ["-", "E_2"]),
+                ("E_3", ["-", "E_3"]),
+                ("E_3", ["E_1", "+", "E_1"]),
+                ("E_3", ["E_1", "+", "E_2"]),
+                ("E_3", ["E_1", "+", "E_3"]),
+                ("E_3", ["E_2", "+", "E_1"]),
+                ("E_3", ["E_2", "+", "E_2"]),
+                ("E_3", ["E_2", "+", "E_3"]),
+                ("E_3", ["E_3", "+", "E_1"]),
+                ("E_3", ["E_3", "+", "E_2"]),
+                ("E_3", ["E_3", "+", "E_3"]),
             ],
         )),
-        (PCFG.from_weighted_rules(
+        (CFG.from_rules(
             start="A",
             rules=[
-                ("A", ["a"], 0.5),
-                ("A", ["B", "C"], 0.5),
+                ("A", ["a"]),
+                ("A", ["B", "C"]),
 
-                ("B", ["B", "B"], 0.5),
-                ("B", ["C"], 0.5),
+                ("B", ["B", "B"]),
+                ("B", ["C"]),
 
-                ("C", ["A"], 1),
+                ("C", ["A"]),
             ],
-        ), PCFG.from_weighted_rules(
+        ), CFG.from_rules(
             start="A",
             rules=[
-                ("A", ["A_1"], 1),
+                ("A", ["A_1"]),
 
-                ("A_1", ["a"], 0.5),
-                ("A_1", ["B_1", "C_1"], 0.5 / 6),
-                ("A_1", ["B_1", "C_2"], 0.5 / 6),
-                ("A_1", ["B_2", "C_1"], 0.5 / 6),
-                ("A_1", ["B_2", "C_2"], 0.5 / 6),
-                ("A_1", ["B_3", "C_1"], 0.5 / 6),
-                ("A_1", ["B_3", "C_2"], 0.5 / 6),
+                ("A_1", ["a"]),
+                ("A_1", ["B_1", "C_1"]),
+                ("A_1", ["B_1", "C_2"]),
+                ("A_1", ["B_2", "C_1"]),
+                ("A_1", ["B_2", "C_2"]),
+                ("A_1", ["B_3", "C_1"]),
+                ("A_1", ["B_3", "C_2"]),
 
-                ("B_1", ["B_1", "B_1"], 0.5 / 9),
-                ("B_1", ["B_1", "B_2"], 0.5 / 9),
-                ("B_1", ["B_1", "B_3"], 0.5 / 9),
-                ("B_1", ["B_2", "B_1"], 0.5 / 9),
-                ("B_1", ["B_2", "B_2"], 0.5 / 9),
-                ("B_1", ["B_2", "B_3"], 0.5 / 9),
-                ("B_1", ["B_3", "B_1"], 0.5 / 9),
-                ("B_1", ["B_3", "B_2"], 0.5 / 9),
-                ("B_1", ["B_3", "B_3"], 0.5 / 9),
-                ("B_1", ["C_1"], 0.5 / 2),
-                ("B_1", ["C_2"], 0.5 / 2),
+                ("B_1", ["B_1", "B_1"]),
+                ("B_1", ["B_1", "B_2"]),
+                ("B_1", ["B_1", "B_3"]),
+                ("B_1", ["B_2", "B_1"]),
+                ("B_1", ["B_2", "B_2"]),
+                ("B_1", ["B_2", "B_3"]),
+                ("B_1", ["B_3", "B_1"]),
+                ("B_1", ["B_3", "B_2"]),
+                ("B_1", ["B_3", "B_3"]),
+                ("B_1", ["C_1"]),
+                ("B_1", ["C_2"]),
 
-                ("B_2", ["B_1", "B_1"], 0.5 / 9),
-                ("B_2", ["B_1", "B_2"], 0.5 / 9),
-                ("B_2", ["B_1", "B_3"], 0.5 / 9),
-                ("B_2", ["B_2", "B_1"], 0.5 / 9),
-                ("B_2", ["B_2", "B_2"], 0.5 / 9),
-                ("B_2", ["B_2", "B_3"], 0.5 / 9),
-                ("B_2", ["B_3", "B_1"], 0.5 / 9),
-                ("B_2", ["B_3", "B_2"], 0.5 / 9),
-                ("B_2", ["B_3", "B_3"], 0.5 / 9),
-                ("B_2", ["C_1"], 0.5 / 2),
-                ("B_2", ["C_2"], 0.5 / 2),
+                ("B_2", ["B_1", "B_1"]),
+                ("B_2", ["B_1", "B_2"]),
+                ("B_2", ["B_1", "B_3"]),
+                ("B_2", ["B_2", "B_1"]),
+                ("B_2", ["B_2", "B_2"]),
+                ("B_2", ["B_2", "B_3"]),
+                ("B_2", ["B_3", "B_1"]),
+                ("B_2", ["B_3", "B_2"]),
+                ("B_2", ["B_3", "B_3"]),
+                ("B_2", ["C_1"]),
+                ("B_2", ["C_2"]),
 
-                ("B_3", ["B_1", "B_1"], 0.5 / 9),
-                ("B_3", ["B_1", "B_2"], 0.5 / 9),
-                ("B_3", ["B_1", "B_3"], 0.5 / 9),
-                ("B_3", ["B_2", "B_1"], 0.5 / 9),
-                ("B_3", ["B_2", "B_2"], 0.5 / 9),
-                ("B_3", ["B_2", "B_3"], 0.5 / 9),
-                ("B_3", ["B_3", "B_1"], 0.5 / 9),
-                ("B_3", ["B_3", "B_2"], 0.5 / 9),
-                ("B_3", ["B_3", "B_3"], 0.5 / 9),
-                ("B_3", ["C_1"], 0.5 / 2),
-                ("B_3", ["C_2"], 0.5 / 2),
+                ("B_3", ["B_1", "B_1"]),
+                ("B_3", ["B_1", "B_2"]),
+                ("B_3", ["B_1", "B_3"]),
+                ("B_3", ["B_2", "B_1"]),
+                ("B_3", ["B_2", "B_2"]),
+                ("B_3", ["B_2", "B_3"]),
+                ("B_3", ["B_3", "B_1"]),
+                ("B_3", ["B_3", "B_2"]),
+                ("B_3", ["B_3", "B_3"]),
+                ("B_3", ["C_1"]),
+                ("B_3", ["C_2"]),
 
-                ("C_1", ["A_1"], 1),
+                ("C_1", ["A_1"]),
 
-                ("C_2", ["A_1"], 1),
+                ("C_2", ["A_1"]),
             ],
         )),
     ]
     for g, y in cases:
         out = g.explode()
         assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_explode")
 
 
 def test_to_bigram():
     # annotate repeated nonterminals with indices, then make
     # copies of the original rules with however many indices were used
     cases = [
-        (PCFG.from_weighted_rules(
+        (CFG.from_rules(
             start="S",
             rules=[
-                ("S", ["a"], 1),
+                ("S", "a"),
             ],
-        ), PCFG.from_weighted_rules(
+        ), CFG.from_rules(
             start="S",
             rules=[
-                ("S", ["S_1"], 1),
-                ("S_1", ["a"], 1),
-            ],
-        )),
-        (PCFG.from_weighted_rules(
-            start="S",
-            rules=[
-                ("S", ["A"], 1),
-                ("A", ["a"], 1),
-            ],
-        ), PCFG.from_weighted_rules(
-            start="S",
-            rules=[
-                ("S", ["S_1"], 1),
-                ("S_1", ["A_1"], 1),
-                ("A_1", ["a"], 1),
+                ("S", "S_1"),
+                ("S_1", "a"),
             ],
         )),
-        (PCFG.from_weighted_rules(
+        (CFG.from_rules(
             start="S",
             rules=[
-                ("S", ["a", "S"], 0.333),
-                ("S", ["b", "S"], 0.333),
-                ("S", ["c", "S"], 0.333),
+                ("S", "A"),
+                ("A", "a"),
             ],
-        ), PCFG.from_weighted_rules(
+        ), CFG.from_rules(
             start="S",
             rules=[
-                ("S", ["S_1"], 0.333),
-                ("S", ["S_2"], 0.333),
-                ("S", ["S_3"], 0.333),
+                ("S", "S_1"),
+                ("S_1", "A_1"),
+                ("A_1", "a"),
+            ],
+        )),
+        (CFG.from_rules(
+            start="S",
+            rules=[
+                ("S", "a S"),
+                ("S", "b S"),
+                ("S", "c S"),
+            ],
+        ), CFG.from_rules(
+            start="S",
+            rules=[
+                ("S", ["S_1"]),
+                ("S", ["S_2"]),
+                ("S", ["S_3"]),
 
                 # 3 rules ^ 2
-                ("S_1", ["a", "S_1"], 0.333),
-                ("S_1", ["b", "S_2"], 0.333),
-                ("S_1", ["c", "S_3"], 0.333),
+                ("S_1", ["a", "S_1"]),
+                ("S_1", ["b", "S_2"]),
+                ("S_1", ["c", "S_3"]),
 
-                ("S_2", ["a", "S_1"], 0.333),
-                ("S_2", ["b", "S_2"], 0.333),
-                ("S_2", ["c", "S_3"], 0.333),
+                ("S_2", ["a", "S_1"]),
+                ("S_2", ["b", "S_2"]),
+                ("S_2", ["c", "S_3"]),
 
-                ("S_3", ["a", "S_1"], 0.333),
-                ("S_3", ["b", "S_2"], 0.333),
-                ("S_3", ["c", "S_3"], 0.333),
+                ("S_3", ["a", "S_1"]),
+                ("S_3", ["b", "S_2"]),
+                ("S_3", ["c", "S_3"]),
             ],
         )),
-        (PCFG.from_weighted_rules(
+        (CFG.from_rules(
             start="E",
             rules=[
-                ("E", ["-", "E"], 0.5),
-                ("E", ["E", "+", "E"], 0.5),
+                ("E", ["-", "E"]),
+                ("E", ["E", "+", "E"]),
             ],
-        ), PCFG.from_weighted_rules(
+        ), CFG.from_rules(
             start="E",
             rules=[
-                ("E", ["E_1"], 0.333),
-                ("E", ["E_2"], 0.333),
-                ("E", ["E_3"], 0.333),
+                ("E", ["E_1"]),
+                ("E", ["E_2"]),
+                ("E", ["E_3"]),
 
                 # 2 rules ^ 2
-                ("E_1", ["-", "E_1"], 0.5),
-                ("E_1", ["E_2", "+", "E_3"], 0.5),
+                ("E_1", ["-", "E_1"]),
+                ("E_1", ["E_2", "+", "E_3"]),
 
-                ("E_2", ["-", "E_1"], 0.5),
-                ("E_2", ["E_2", "+", "E_3"], 0.5),
+                ("E_2", ["-", "E_1"]),
+                ("E_2", ["E_2", "+", "E_3"]),
 
-                ("E_3", ["-", "E_1"], 0.5),
-                ("E_3", ["E_2", "+", "E_3"], 0.5),
+                ("E_3", ["-", "E_1"]),
+                ("E_3", ["E_2", "+", "E_3"]),
             ],
         )),
-        (PCFG.from_weighted_rules(
+        (CFG.from_rules(
             start="A",
             rules=[
-                ("A", ["a"], 0.25),
-                ("A", ["B", "C"], 0.25),
-                ("A", ["B"], 0.25),
-                ("A", ["C"], 0.25),
-                ("B", ["B", "B"], 0.5),
-                ("B", ["C"], 0.5),
-                ("C", ["A"], 1),
+                ("A", ["a"]),
+                ("A", ["B", "C"]),
+                ("A", ["B"]),
+                ("A", ["C"]),
+                ("B", ["B", "B"]),
+                ("B", ["C"]),
+                ("C", ["A"]),
             ],
-        ), PCFG.from_weighted_rules(
+        ), CFG.from_rules(
             start="A",
             rules=[
-                ("A", ["A_1"], 1),
+                ("A", ["A_1"]),
 
-                ("A_1", ["a"], 0.25),
-                ("A_1", ["B_1", "C_1"], 0.25),
-                ("A_1", ["B_2"], 0.25),
-                ("A_1", ["C_2"], 0.25),
+                ("A_1", ["a"]),
+                ("A_1", ["B_1", "C_1"]),
+                ("A_1", ["B_2"]),
+                ("A_1", ["C_2"]),
 
-                ("B_1", ["B_3", "B_4"], 0.5),
-                ("B_1", ["C_3"], 0.5),
-                ("B_2", ["B_3", "B_4"], 0.5),
-                ("B_2", ["C_3"], 0.5),
-                ("B_3", ["B_3", "B_4"], 0.5),
-                ("B_3", ["C_3"], 0.5),
-                ("B_4", ["B_3", "B_4"], 0.5),
-                ("B_4", ["C_3"], 0.5),
+                ("B_1", ["B_3", "B_4"]),
+                ("B_1", ["C_3"]),
+                ("B_2", ["B_3", "B_4"]),
+                ("B_2", ["C_3"]),
+                ("B_3", ["B_3", "B_4"]),
+                ("B_3", ["C_3"]),
+                ("B_4", ["B_3", "B_4"]),
+                ("B_4", ["C_3"]),
 
-                ("C_1", ["A_1"], 1),
-                ("C_2", ["A_1"], 1),
-                ("C_3", ["A_1"], 1),
+                ("C_1", ["A_1"]),
+                ("C_2", ["A_1"]),
+                ("C_3", ["A_1"]),
             ],
         )),
     ]
     for g, y in cases:
         out = g.to_bigram()
         assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_to_bigram")
 
 
 def test_term():
     cases = [
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A"]],
@@ -315,9 +313,8 @@ def test_term():
                 "D": [["D", "d", "D"]],
                 "E": [["e"]],
                 "F": [["f"]],
-            },
-            weights="uniform"),
-         PCFG(
+            }),
+         CFG(
             start="S",
             rules={
                 "S": [["A"]],
@@ -335,18 +332,16 @@ def test_term():
                 "_term_c2_": [["c2"]],
                 "_term_c3_": [["c3"]],
                 "_term_d_": [["d"]],
-            },
-            weights="uniform")),
+            })),
     ]
     for x, y in cases:
         out = x._term()
         assert out == y, f"Failed test_term: Expected\n{y},\ngot\n{out}"
-    print(" [+] passed test_term")
 
 
 def test_bin():
     cases = [
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A"]],
@@ -358,9 +353,7 @@ def test_bin():
                 "E": [["e"]],
                 "F": [["f"]],
             },
-            weights="uniform",
-        ),
-            PCFG(
+        ), CFG(
             start="S",
             rules={
                 "S": [["A"]],
@@ -376,63 +369,56 @@ def test_bin():
                 "E": [["e"]],
                 "F": [["f"]],
             },
-            weights="uniform",
         )),
     ]
     for x, y in cases:
         out = x._bin()
-        assert out.struct_eq(y), f"Failed test_bin: Expected\n{y},\ngot\n{out}"
-    print(" [+] passed test_bin")
+        assert out == y, f"Failed test_bin: Expected\n{y},\ngot\n{out}"
 
 
 def test_nullable():
     cases = [
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A"], ["s"]],
-                "A": [["a"], PCFG.Empty],
+                "A": [["a"], CFG.Empty],
             },
-            weights="uniform",
         ), {"A"}),
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A"], ["s"]],
                 "A": [["a"]],
             },
-            weights="uniform",
         ), set()),
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A"], ["s"]],       # nullable
                 "A": [["B"], ["C", "a"]],  # nullable
                 "B": [["C"]],              # nullable
-                "C": [["x"], PCFG.Empty],  # nullable
+                "C": [["x"], CFG.Empty],  # nullable
             },
-            weights="uniform",
         ), {"A", "B", "C"}),
     ]
     for x, y in cases:
         out = x.nullables()
         assert out == y, f"Expected {y}, got {out}"
-    print(" [+] passed test_nullable")
 
 
 def test_del():
     cases = [
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A", "b", "B"], ["C"]],
-                "A": [["a"], PCFG.Empty],
+                "A": [["a"], CFG.Empty],
                 "B": [["A", "A"], ["A", "C"]],
                 "C": [["b"], ["c"]],
             },
-            weights="uniform",
          ),
-         PCFG(
+         CFG(
             start="S",
             rules={
                 "S": [["A", "b", "B"], ["C"], ["b", "B"], ["A", "b"], ["b"]],
@@ -440,24 +426,17 @@ def test_del():
                 "B": [["A", "A"], ["A", "C"], ["A"], ["C"]],
                 "C": [["b"], ["c"]],
             },
-            weights={
-                "S": [1, 1, 0.33, 0.33, 0.33],
-                "A": [1],
-                "B": [0.5, 0.33, 0.83, 0.33],
-                "C": [1, 1]
-            }
         )),
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A", "s1"], ["A1"], ["A1", "s1"], ["A2", "A1", "s2"]],
                 "A": [["A1"]],
                 "A1": [["A2"]],
-                "A2": [["a2"], PCFG.Empty],
+                "A2": [["a2"], CFG.Empty],
             },
-            weights="uniform",
          ),
-         PCFG(
+         CFG(
             start="S",
             rules={
                 "S": [["A", "s1"], ["s1"],
@@ -468,42 +447,28 @@ def test_del():
                 "A1": [["A2"]],
                 "A2": [["a2"]]
             },
-            weights={
-                "S": [0.5, 0.5,
-                      1,
-                      1,
-                      0.25, 0.25, 0.25, 0.25],
-                "A": [1],
-                "A1": [1],
-                "A2": [1],
-            }
         )),
     ]
-    # FIXME: account for weights
     for x, y in cases:
         out = x._del()
-        assert out.struct_eq(y), f"Failed test_del: Expected\n{y},\ngot\n{out}"
-    print(" [+] passed test_del")
+        assert out == y, f"Failed test_del: Expected\n{y},\ngot\n{out}"
 
 
 def test_unit():
     cases = [
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A"], ["s", "s", "s"]],
                 "A": [["a", "b", "c"], ["e", "f"]],
             },
-            weights="uniform",
-        ),
-            PCFG(
+        ), CFG(
             start="S",
             rules={
                 "S": [["a", "b", "c"], ["e", "f"], ["s", "s", "s"]],
             },
-            weights="uniform",
         )),
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A", "B"], ["C"]],
@@ -511,18 +476,15 @@ def test_unit():
                 "B": [["b"]],
                 "C": [["c"]],
             },
-            weights="uniform",
-        ),
-            PCFG(
+        ), CFG(
             start="S",
             rules={
                 "S": [["A", "B"], ["c"]],
                 "A": [["a"]],
                 "B": [["b"]],
             },
-            weights="uniform",
         )),
-        (PCFG(
+        (CFG(
             start="S",
             rules={
                 "S": [["A"]],
@@ -530,16 +492,13 @@ def test_unit():
                 "B": [["C"]],
                 "C": [["c"]],
             },
-            weights="uniform",
-        ),
-            PCFG(
+        ), CFG(
             start="S",
             rules={
                 "S": [["c"]],
             },
-            weights="uniform",
         )),
-        (PCFG(
+        (CFG(
             start='S0',
             rules={
                 'S0': [['S']],
@@ -547,23 +506,18 @@ def test_unit():
                 'A': [['A', 'A']],
                 'B': [['B', 'A']],
             },
-            weights="uniform",
-         ),
-         PCFG(
+         ), CFG(
              start='S0',
              rules={
                  'S0': [['A', 'A'], ['A', 'B']],
                  'A': [['A', 'A']],
                  'B': [['B', 'A']],
              },
-             weights='uniform',
         )),
     ]
     for x, y in cases:
         out = x._unit()
-        assert out.struct_eq(y), \
-            f"Failed test_unit: Expected\n{y},\ngot\n{out}"
-    print(" [+] passed test_unit")
+        assert out == y, f"Failed test_unit: Expected\n{y},\ngot\n{out}"
 
 
 def test_to_CNF():
@@ -595,7 +549,7 @@ def test_is_in_CNF():
             "B": [["b"]],
         }, True),
         ({
-            "S": [["A", "B"], PCFG.Empty],
+            "S": [["A", "B"], CFG.Empty],
             "A": [["a"]],
             "B": [["b"]],
         }, True),
@@ -609,21 +563,16 @@ def test_is_in_CNF():
         # empty successor in non-start nonterminal
         ({
             "S": [["A", "B"]],
-            "A": [PCFG.Empty],
+            "A": [CFG.Empty],
             "B": [["b"]],
         }, False),
 
     ]
     for rules, y in cases:
-        g = PCFG("S", rules, "uniform")
+        g = CFG("S", rules)
         out = g.is_in_CNF()
-        if out != y:
-            print(f"Failed test_is_in_CNF for {g}: "
-                  f"Expected {y}, but got {out}")
-            pdb.set_trace()
-            g.is_in_CNF()
-            exit(1)
-    print(" [+] passed test_is_in_CNF")
+        assert out == y, \
+            f"Failed test_is_in_CNF for {g}: Expected {y}, but got {out}"
 
 
 def test_is_normalized():
@@ -638,9 +587,4 @@ def test_is_normalized():
     ]
     for g, y in cases:
         y_hat = g.is_normalized()
-        if y != y_hat:
-            print(f"Expected {y}, but got {y_hat} for grammar {g}")
-            pdb.set_trace()
-            g.is_normalized()
-            exit(1)
-    print(" [+] passed test_is_normalized")
+        assert y == y_hat, f"Expected {y}, but got {y_hat} for grammar {g}"
