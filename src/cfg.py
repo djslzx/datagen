@@ -26,7 +26,6 @@ class CFG:
     def __init__(self, start: str, rules: Dict[str, Iterable[Union[str, Sentence]]]):
         CFG.check_rep(start, rules)
         self.start = start
-        # TODO: use set instead of list of rules? rules don't need to be ordered
         self.rules = {
             pred: [(succ.split() if isinstance(succ, str) else succ)
                    for succ in succs]
@@ -42,10 +41,10 @@ class CFG:
                    for pred, succ in rules.items()):
             raise ValueError("All rule RHS should be nonempty, "
                              "and each element should also be nonempty")
-        if not all(succ == start or any(succ in other_succs
-                                        for other_succs in rules.values())
-                   for pred, succs in rules.items()
-                   for succ in succs):
+        if not all(pred == start or any(pred in succ
+                                        for succs in rules.values()
+                                        for succ in succs)
+                   for pred in rules.keys()):
             raise ValueError("Each nonterminal should appear in the RHS of a rule, "
                              "unless the nonterminal is the start symbol")
         for pred, succs in rules.items():
@@ -224,7 +223,7 @@ class CFG:
 
     def is_in_CNF(self) -> bool:
         """
-        Checks whether the PCFG is in Chomsky normal form.
+        Checks whether the CFG is in Chomsky normal form.
         In CNF, all rules should be of the form:
          - A -> BC
          - A -> a
@@ -236,7 +235,7 @@ class CFG:
             elif len(xs) == 1:
                 a = xs[0]
                 if (self.is_nonterminal(a) or
-                   (p != self.start and xs == PCFG.Empty)):
+                   (p != self.start and xs == CFG.Empty)):
                     return False
             elif len(xs) == 2:
                 B, C = xs
@@ -367,7 +366,7 @@ class CFG:
             succs = []
             nullable_indices = {i for i, c in enumerate(succ) if c in nullable_nts}
             for indices in util.language_plus(nullable_indices):
-                s = util.remove_from_string(succ, indices)
+                s = util.remove_at_pos(succ, indices)
                 if s and s not in self.rules[pred]:
                     succs.append(s)
 
@@ -444,15 +443,10 @@ class PCFG(T.nn.Module, CFG):
     This represents a grammar where A expands to B or CD with equal
     probability.
     """
-    Word = str
-    Sentence = List[Word]
-    Eps = 'ε'
-    Empty = [Eps]
-
     def __init__(self,
-                 start: Word,
-                 rules: Dict[Word, List[Union[str, Sentence]]],
-                 weights: Union[str, Dict[Word, List[float]]] = "uniform",
+                 start: CFG.Word,
+                 rules: Dict[CFG.Word, List[Union[str, CFG.Sentence]]],
+                 weights: Union[str, Dict[CFG.Word, List[float]]] = "uniform",
                  log_mode=False):
         CFG.check_rep(start, rules)
         super(PCFG, self).__init__()
@@ -531,7 +525,7 @@ class PCFG(T.nn.Module, CFG):
                 return False
         return True
 
-    def weight(self, pred: Word, succ: Sentence) -> T.Tensor:
+    def weight(self, pred: CFG.Word, succ: CFG.Sentence) -> T.Tensor:
         if pred in self.rules:
             for s, w in zip(self.rules[pred], self.weights[pred]):
                 if s == succ:
@@ -558,7 +552,8 @@ class PCFG(T.nn.Module, CFG):
         return g
 
     @staticmethod
-    def from_weighted_rules(start: Word, rules: Iterable[Tuple[Word, Sentence, float]]) -> 'PCFG':
+    def from_weighted_rules(start: CFG.Word,
+                            rules: Iterable[Tuple[CFG.Word, CFG.Sentence, float]]) -> 'PCFG':
         """Construct a PCFG from an iterable of weighted rules"""
         words = {}
         weights = {}
@@ -571,7 +566,7 @@ class PCFG(T.nn.Module, CFG):
                 weights[letter].append(weight)
         return PCFG(start, words, weights)
 
-    def as_rule_list(self) -> Iterable[Tuple[Word, Sentence, float]]:
+    def as_rule_list(self) -> Iterable[Tuple[CFG.Word, CFG.Sentence, float]]:
         """View a PCFG as a list of rules with weights"""
         for nt in self.rules:
             for i, succ in enumerate(self.rules[nt]):

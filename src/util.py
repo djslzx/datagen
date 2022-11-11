@@ -8,13 +8,8 @@ import subprocess
 from hashlib import md5
 
 
-def md5_hash(s: str) -> float:
+def md5_hash(s: str) -> str:
     return md5(s.encode()).hexdigest()
-
-
-def convert_svg_to_png(svg_filename: str, png_filename: str, width: int):
-    with open(png_filename, "w") as f:
-        subprocess.run(["rsvg-convert", "-w", str(width), svg_filename], stdout=f)
 
 
 def split_list(s: List[str], t: str) -> List[List[str]]:
@@ -31,23 +26,11 @@ def split_list(s: List[str], t: str) -> List[List[str]]:
             return out
 
 
-def test_split_list():
-    cases = [
-        (["aa", "bb", "cc"], "x", [["aa", "bb", "cc"]]),
-        (["aa", "bb", "cc"], "a", [["aa", "bb", "cc"]]),
-        (["aa", "bb", "cc"], "aa", [["bb", "cc"]]),
-        (["aa", "bb", "cc"], "bb", [["aa"], ["cc"]]),
-        (["aa", "bb", "cc"], "cc", [["aa", "bb"]]),
-    ]
-    for s, t, y in cases:
-        out = split_list(s, t)
-        assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_split_list")
-
-
-def language(alphabet: Set) -> Iterable[Iterable]:
+def combinations(alphabet: Set) -> Iterable:
     """
-    Return all words that can be constructed from any combination of
+    Returns all any-length combinations of letters in the alphabet.
+
+    Constructs all words that can be formed as a combination of
     0 or 1 uses of each letter in the alphabet.
     """
     return it.chain.from_iterable(it.combinations(alphabet, r=i + 1)
@@ -59,11 +42,12 @@ def language_plus(alphabet: Set) -> Iterable[Iterable]:
     Return all words consisting of at least one letter that can be constructed
     from any combination of 0 or 1 uses of each letter in the alphabet.
     """
-    return [word for word in language(alphabet) if word]
+    return [word for word in combinations(alphabet) if word]
 
 
-def remove_from_string(s: Iterable, indices: Iterable[int]) -> str:
-    """Remove the first occurrence of each letter in `letters` from `s`"""
+def remove_at_pos(s: Iterable, indices: Iterable[int]) -> str:
+    """Remove the letters at positions in `indices`"""
+    assert all(i >= 0 for i in indices), "Expected nonnegative indices"
     out = s
     for i in sorted(indices, reverse=True):
         out = out[:i] + out[i + 1:]
@@ -79,34 +63,12 @@ def unique(vec: List) -> Tuple[bool, Optional[Tuple]]:
     return True, None
 
 
-def test_unique():
-    cases = [
-        ([1, 2, 3], True),
-        ([1, 2, 3, 1], False),
-        ([[1], [2], [3]], True),
-        ([[1], [2], [1]], False),
-    ]
-    for x, y in cases:
-        out, _ = unique(x)
-        assert out == y, f"Expected {y}, got {out}"
-    print(" [+] test_unique() passed")
-
-
-def normalize(vec: List[float], smoothing=0.1) -> List[float]:
-    """
-    Normalize `vec` with smoothing `c`
-    """
-    assert all(x >= 0 for x in vec), "All entries should be nonnegative"
-    norm = sum(vec) + smoothing * len(vec)
-    return [(x + smoothing) / norm for x in vec]
-
-
-def approx_eq(a: float, b: float, threshold=10 ** -4) -> bool:
+def approx_eq(a: T.Tensor, b: T.Tensor, threshold=10 ** -4) -> bool:
     if T.isposinf(a) and T.isposinf(b):
         return True
     if T.isneginf(a) and T.isneginf(b):
         return True
-    return abs(a - b) < threshold
+    return abs(a - b) <= threshold
 
 
 def coinflip(p: float):
@@ -169,14 +131,3 @@ def parse_braces(s: str) -> List[Tuple[int, int]]:
             pairs.append((stack.pop(), i))
     assert not stack, "Found nonempty stack"
     return sorted(pairs)
-
-
-if __name__ == '__main__':
-    # for i in range(10):
-    #     print(gaussian_vec(5))
-    # s = '[asdf[ddd]s[df]sdf][dsdf]'
-    # for a, b in parse_braces(s):
-    #     print(s[a:b+1])
-
-    test_unique()
-    test_split_list()

@@ -2,6 +2,58 @@ import pytest
 from cfg import *
 
 
+def test_cfg_check_rep():
+    cases = [
+        # unused start symbol
+        lambda: CFG("S", {"A": ["a"]}),
+        # empty rules
+        lambda: CFG("S", {"S": []}),
+        lambda: CFG("S", {"S": [""]}),
+        lambda: CFG("S", {"S": ["A A"], "A": []}),
+        lambda: CFG("S", {"S": [["A"], ""], "A": [""]}),
+        # unused nonterminals
+        lambda: CFG("S", {"S": ["S"], "A": ["a"]}),
+        lambda: CFG("S", {"S": ["A"],
+                          "A": ["a"],
+                          "B": ["b"]}),
+        # duplicate rules
+        lambda: CFG("S", {"S": ["A"],
+                          "A": ["a", "a"]}),
+        lambda: CFG("S", {"S": ["A"],
+                          "A": ["a", "a", "a"]}),
+    ]
+    for f in cases:
+        with pytest.raises(ValueError):
+            print(f())
+
+
+def test_cfg_eq():
+    cases = [
+        (CFG("S", {"S": ["a", "b", "c"]}),
+         CFG("S", {"S": ["c", "b", "a"]}),
+         True),
+        (CFG("S", {"S": ["a", "b", "c"]}),
+         CFG("S", {"S": ["c", "b", "a", "z"]}),
+         False),
+        (CFG("S", {"S": ["A B", "c"],
+                   "A": ["a1", "a2", "a3"],
+                   "B": ["b1", "b2", "b3"]}),
+         CFG("S", {"S": ["A B", "c"],
+                   "A": ["a3", "a2", "a1"],
+                   "B": ["b3", "b2", "b1"]}),
+         True),
+        (CFG("S", {"S": ["A B", "c"],
+                   "A": ["a1", "a2", "a3"],
+                   "B": ["b1", "b2", "b3"]}),
+         CFG("S", {"A": ["a3", "a2", "a1"],
+                   "S": ["A B", "c"],
+                   "B": ["b3", "b2", "b1"]}),
+         True),
+    ]
+    for a, b, y in cases:
+        assert (a == b) == y, f"Expected ({a} == {b}) == {y}, but got {a == b}"
+
+
 def test_make_cfg():
     cfgs = [
         CFG("S", {"S": ["A B", "A", "B"],
