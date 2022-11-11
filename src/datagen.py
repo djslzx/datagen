@@ -57,7 +57,6 @@ def sample_from_mg(mg: PCFG, n_systems: int, n_samples_per_system: int):
 
 
 if __name__ == '__main__':
-    util.try_mkdir(DIR)
     with open("../out/saved-mgs/mg-1666938123.479085.dat", "rb") as f:
         g = pickle.load(f)
     print(g)

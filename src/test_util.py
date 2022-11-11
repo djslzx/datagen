@@ -1,4 +1,3 @@
-import pytest
 from util import *
 
 
@@ -56,13 +55,11 @@ def test_approx_eq():
         (1.0, 1.01, 0.1, True),
         (1.0, 1.01, 0.01, True),
         (1.0, 1.01, 0.001, False),
+        (T.inf, T.inf, 0.1, True),
+        (-T.inf, -T.inf, 0.1, True),
+        (T.inf, -T.inf, 0.1, False),
+        (-T.inf, T.inf, 0.1, False),
     ]
-
-
-
-
-
-
-
-
-
+    for a, b, thresh, y in cases:
+        out = approx_eq(T.tensor(a), T.tensor(b), thresh)
+        assert y == out, f"Expected {y} but got {out}"
