@@ -64,7 +64,7 @@ def test_cfg_eq():
         assert (a == b) == y, f"Expected ({a} == {b}) == {y}, but got {a == b}"
 
 
-def test_make_cfg():
+def test_cfg():
     cfgs = [
         CFG("S", {"S": ["A B", "A", "B"],
                   "A": ["a1", "a2"],
@@ -639,7 +639,7 @@ def test_to_CNF():
                          "_term_a_": ["a"],
                          "_term_b_": ["b"],
                          "_term_c_": ["c"],
-                        })),
+                         })),
         # start, del
         (CFG("S", {"S": ["A B"],
                    "A": ["a", CFG.Empty],
@@ -708,16 +708,91 @@ def test_is_in_CNF():
             f"Failed test_is_in_CNF for {g}: Expected {y}, but got {out}"
 
 
-def test_is_normalized():
+def test_pcfg():
+    cfg = CFG("S", {"S": ["A", "B"],
+                    "A": ["a"],
+                    "B": ["b"]})
     cases = [
-        (PCFG("S", {"S": ["a"]}, {"S": [1]}), True),
-        (PCFG("S", {"S": ["a", "b"]}, {"S": [1 / 2, 1 / 2]}), True),
-        (PCFG("S", {"S": ["a", "b"]}, {"S": [1, 1]}), False),
-        (PCFG("S", {"S": ["a"]}, {"S": [0]}, log_mode=True), True),
-        (PCFG("S", {"S": ["a"]}, {"S": [1]}, log_mode=True), False),
-        (PCFG("S", {"S": ["a", "b"]}, {"S": [math.log(1 / 2), math.log(1 / 2)]}, log_mode=True), True),
-        (PCFG("S", {"S": ["a", "b"]}, {"S": [1/2, 1/2]}, log_mode=True), False),
+        (PCFG(cfg, "uniform", log_mode=False),
+         PCFG(cfg, {"S": [0.5, 0.5],
+                    "A": [1],
+                    "B": [1]},
+              log_mode=False)),
+        (PCFG(cfg, "uniform", log_mode=True),
+         PCFG(cfg, {"S": T.tensor([0.5, 0.5]).log(),
+                    "A": T.tensor([0]),
+                    "B": T.tensor([0])},
+              log_mode=True)),
+        (PCFG(cfg, "uniform", log_mode=False),
+         PCFG.from_weighted_rules("S", [
+             ("S", "A", 0.5),
+             ("S", "B", 0.5),
+             ("A", "a", 1.0),
+             ("B", "b", 1.0),
+         ])),
+        (PCFG(cfg, "uniform", log_mode=False),
+         PCFG.from_weighted_rules(
+             "S",
+             PCFG(cfg, "uniform", log_mode=False).as_weighted_rules()
+         )),
+    ]
+    for a, b in cases:
+        assert a == b, f"Expected {a} == {b} = True but got False"
+
+
+def test_weight():
+    pcfg = PCFG(CFG("S", {"S": ["A", "B", "C"],
+                          "A": ["a1", "a2"],
+                          "B": ["b1", "b2"],
+                          "C": ["c1", "c2"]}),
+                weights={"S": [0.1, 0.9, 0],
+                         "A": [0.2, 0.8],
+                         "B": [0.3, 0.7],
+                         "C": [0.4, 0.6]},
+                log_mode=False)
+    cases = [
+        ("S", ["A"], 0.1),
+        ("S", ["B"], 0.9),
+        ("S", ["C"], 0),
+        ("A", ["a1"], 0.2),
+        ("A", ["a2"], 0.8),
+        ("B", ["b1"], 0.3),
+        ("B", ["b2"], 0.7),
+        ("C", ["c1"], 0.4),
+        ("C", ["c2"], 0.6),
+        # missing weight
+        ("S", ["S"], 0),
+    ]
+    for pred, succ, w in cases:
+        out = pcfg.weight(pred, succ)
+        assert w == out, f"Expected {w} but got {out} as weight of\n" \
+                         f"{pred} -> {succ}\nin\n{pcfg}"
+
+
+def test_pcfg_is_normalized():
+    cases = [
+        (PCFG(CFG("S", {"S": ["a"]}), {"S": [1]}), True),
+        (PCFG(CFG("S", {"S": ["a", "b"]}), {"S": [1 / 2, 1 / 2]}), True),
+        (PCFG(CFG("S", {"S": ["a", "b"]}), {"S": [1, 1]}), False),
+        (PCFG(CFG("S", {"S": ["a"]}), {"S": [0]}, log_mode=True), True),
+        (PCFG(CFG("S", {"S": ["a"]}), {"S": [1]}, log_mode=True), False),
+        (PCFG(CFG("S", {"S": ["a", "b"]}), {"S": [math.log(1 / 2), math.log(1 / 2)]}, log_mode=True), True),
+        (PCFG(CFG("S", {"S": ["a", "b"]}), {"S": [1/2, 1/2]}, log_mode=True), False),
     ]
     for g, y in cases:
         y_hat = g.is_normalized()
         assert y == y_hat, f"Expected {y}, but got {y_hat} for grammar {g}"
+
+
+def test_pcfg_apply_to_weights():
+    cfg = CFG("S", {"S": ["A", "B"]})
+    cases = [
+        ((lambda x: x + 1), [1, 1], [2, 2]),
+        ((lambda x: T.log(x)), [1, 1], [0, 0]),
+        ((lambda x: T.log(x)), [0, 0], [-T.inf, -T.inf]),
+        ((lambda x: T.exp(x)), [1, 1], [T.e, T.e]),
+        ((lambda x: T.exp(x)), [-T.inf, -T.inf], [0, 0]),
+    ]
+    for f, w0, wf in cases:
+        w = list(PCFG(cfg, {"S": w0}).apply_to_weights(f).weights["S"])
+        assert wf == w, f"Expected {wf} but got {w}"

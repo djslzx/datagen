@@ -53,13 +53,14 @@ def test_unique():
 def test_approx_eq():
     cases = [
         (1.0, 1.01, 0.1, True),
-        (1.0, 1.01, 0.01, True),
+        (1.0, 1.001, 0.01, True),
         (1.0, 1.01, 0.001, False),
         (T.inf, T.inf, 0.1, True),
         (-T.inf, -T.inf, 0.1, True),
         (T.inf, -T.inf, 0.1, False),
         (-T.inf, T.inf, 0.1, False),
+        ([1, 2, 3, 4], [1.1, 2.1, 3.1, 4.1], 1, True),
     ]
     for a, b, thresh, y in cases:
         out = approx_eq(T.tensor(a), T.tensor(b), thresh)
-        assert y == out, f"Expected {y} but got {out}"
+        assert y == out, f"Expected ({a} == {b}, thresh={thresh}) == {y} but got {out}"

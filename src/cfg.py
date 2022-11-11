@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import math
 import random
 import itertools as it
-from typing import Dict, List, Tuple, Union, Set, Iterable, Iterator
+from typing import Dict, List, Tuple, Set, Iterable, Iterator
 import pdb
 import torch as T
 
@@ -23,7 +25,7 @@ class CFG:
     Eps = 'ε'
     Empty = [Eps]
 
-    def __init__(self, start: str, rules: Dict[str, Iterable[Union[str, Sentence]]]):
+    def __init__(self, start: str, rules: Dict[str, Iterable[str | Sentence]]):
         CFG.check_rep(start, rules)
         self.start = start
         self.rules = {
@@ -77,9 +79,8 @@ class CFG:
                 yield pred, succ
 
     def __eq__(self, other):
-        if not isinstance(other, CFG):
-            return False
-        return (self.start == other.start and
+        return (isinstance(other, CFG) and
+                self.start == other.start and
                 self.nonterminals == other.nonterminals and
                 all(sorted(self.rules[nt]) == sorted(other.rules[nt])
                     for nt in self.nonterminals))
@@ -432,7 +433,7 @@ class CFG:
         return CFG.from_rules(self.start, filtered_rules)
 
 
-class PCFG(T.nn.Module, CFG):
+class PCFG(T.nn.Module):
     """
     A probabilistic context-free grammar.  Terminals and nonterminals are
     represented as strings.  All the rules for a given nonterminal should
@@ -445,54 +446,66 @@ class PCFG(T.nn.Module, CFG):
     This represents a grammar where A expands to B or CD with equal
     probability.
     """
-    def __init__(self,
-                 start: CFG.Word,
-                 rules: Dict[CFG.Word, List[Union[str, CFG.Sentence]]],
-                 weights: Union[str, Dict[CFG.Word, List[float]]] = "uniform",
+    def __init__(self, cfg: CFG,
+                 weights: str | Dict[CFG.Word, List[float] | T.Tensor] = "uniform",
                  log_mode=False):
-        CFG.check_rep(start, rules)
         super(PCFG, self).__init__()
-
-        self.start = start
-        self.rules = {
-            pred: [(succ.split() if isinstance(succ, str) else succ)
-                   for succ in succs]
-            for pred, succs in rules.items()
-        }
-
+        self.cfg = cfg
         self.log_mode = log_mode
-        maybe_log = (lambda x: x.log() if self.log_mode else x)
 
         if weights == "uniform":
             self.weights = T.nn.ParameterDict({
-                k: maybe_log(T.ones(len(v), dtype=T.float64) / len(v))
-                for k, v in rules.items()
+                pred: ((lambda x: x.log() if log_mode else x)
+                       (T.ones(len(succs), dtype=T.float64) / len(succs)))
+                for pred, succs in cfg.rules.items()
             })
         else:
             self.weights = T.nn.ParameterDict({
                 k: (T.tensor(v, dtype=T.float64) if not isinstance(v, T.Tensor)
-                    else v.double())
+                    else v.clone().double())
                 for k, v in weights.items()
             })
+
+    def __len__(self) -> int:
+        return sum(len(succs) for succs in self.cfg.rules.values())
 
     def __eq__(self, other):
         return self.approx_eq(other, threshold=10 ** -2)
 
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __str__(self) -> str:
+        def denote_t_or_nt(xs):
+            return [f"{x}" if self.is_nonterminal(x) else f"`{x}`"
+                    for x in xs]
+
+        rules = "\n  ".join(
+            f"{nt} ->\n    " +
+            "\n    ".join(f"{' '.join(denote_t_or_nt(succ))} @ {weight:.10f}"
+                          for succ, weight in zip(self.cfg.rules[nt],
+                                                  self.weights[nt]))
+            for nt in self.cfg.nonterminals
+        )
+        return ("PCFG: {"
+                f"\n  log_mode={self.log_mode}"
+                f"\n  start={self.cfg.start}"
+                f"\n  rules=\n  {rules}\n}}")
+
+    def is_nonterminal(self, sym: CFG.Word) -> bool:
+        return self.cfg.is_nonterminal(sym)
+
     def approx_eq(self, other, threshold):
         """
-        Checks whether two PCFGs are structurally (not semantically) equivalent
+        Checks whether two PCFGs are syntactically (not semantically) equivalent
         and have roughly the same parameters.
-
-        This does not check whether the grammars produce the same set of
-        strings.
         """
+        print(self, other)
         return isinstance(other, PCFG) and \
-            self.start == other.start and \
+            self.cfg == other.cfg and \
             self.log_mode == other.log_mode and \
-            self.rules == other.rules and \
-            all(util.approx_eq(w1, w2, threshold)
-                for nt in self.rules
-                for w1, w2 in zip(self.weights[nt], other.weights[nt]))
+            all(util.approx_eq(self.weights[nt], other.weights[nt], threshold)
+                for nt in self.cfg.nonterminals)
 
     def normalized(self, c=0.1) -> 'PCFG':
         """
@@ -500,8 +513,7 @@ class PCFG(T.nn.Module, CFG):
         with smoothing constant c.
         """
         return PCFG(
-            start=self.start,
-            rules=self.rules,
+            cfg=self.cfg,
             weights={
                 pred: (ws + c) / T.sum(ws + c)
                 for pred, ws in self.weights.items()
@@ -509,26 +521,23 @@ class PCFG(T.nn.Module, CFG):
         )
 
     def is_normalized(self, tolerance=1e-3) -> bool:
-        for pred, weights in self.weights.items():
+        for weights in self.weights.values():
             if (not self.log_mode and abs(1 - sum(weights)) >= tolerance) or \
                (self.log_mode and abs(T.logsumexp(weights, dim=0).item()) >= tolerance):
                 return False
         return True
 
     def weight(self, pred: CFG.Word, succ: CFG.Sentence) -> T.Tensor:
-        if pred in self.rules:
-            for s, w in zip(self.rules[pred], self.weights[pred]):
+        if pred in self.cfg.nonterminals:
+            for i, s in enumerate(self.cfg.rules[pred]):
                 if s == succ:
-                    return w
+                    return self.weights[pred][i]
         return T.tensor(-T.inf) if self.log_mode else T.tensor(0)
-
-    def __len__(self) -> int:
-        return sum(len(succs) for pred, succs in self.rules.items())
 
     def apply_to_weights(self, f) -> 'PCFG':
         return PCFG.from_weighted_rules(
-            self.start,
-            [(p, s, f(w)) for p, s, w in self.as_rule_list()]
+            self.cfg.start,
+            [(p, s, f(w)) for p, s, w in self.as_weighted_rules()]
         )
 
     def log(self) -> 'PCFG':
@@ -543,49 +552,29 @@ class PCFG(T.nn.Module, CFG):
 
     @staticmethod
     def from_weighted_rules(start: CFG.Word,
-                            rules: Iterable[Tuple[CFG.Word, CFG.Sentence, float]]) -> 'PCFG':
+                            weighted_rules: Iterable[Tuple[CFG.Word, CFG.Sentence, float]]) -> 'PCFG':
         """Construct a PCFG from an iterable of weighted rules"""
-        words = {}
+        rules = {}
         weights = {}
-        for letter, word, weight in sorted(rules, key=lambda x: x[0]):
-            if letter not in words:
-                words[letter] = [word]
-                weights[letter] = [weight]
+        for pred, succ, weight in sorted(weighted_rules, key=lambda x: x[0]):
+            if pred not in rules:
+                rules[pred] = [succ]
+                weights[pred] = [weight]
             else:
-                words[letter].append(word)
-                weights[letter].append(weight)
-        return PCFG(start, words, weights)
+                rules[pred].append(succ)
+                weights[pred].append(weight)
+        return PCFG(CFG(start, rules), weights)
 
-    def as_rule_list(self) -> Iterable[Tuple[CFG.Word, CFG.Sentence, float]]:
+    def as_weighted_rules(self) -> Iterable[Tuple[CFG.Word, CFG.Sentence, float]]:
         """View a PCFG as a list of rules with weights"""
-        for nt in self.rules:
-            for i, succ in enumerate(self.rules[nt]):
+        for nt in self.cfg.nonterminals:
+            for i, succ in enumerate(self.cfg.rules[nt]):
                 yield nt, succ, self.weights[nt][i]
 
-    def __repr__(self) -> str:
-        return str(self)
-
-    def __str__(self) -> str:
-        def denote_t_or_nt(xs):
-            return [f"{x}" if self.is_nonterminal(x) else f"`{x}`"
-                    for x in xs]
-
-        rules = "\n  ".join(
-            f"{pred} ->\n    " +
-            "\n    ".join(f"{' '.join(denote_t_or_nt(succ))} @ {weight:.10f}"
-                          for succ, weight in zip(self.rules[pred],
-                                                  self.weights[pred]))
-            for pred in self.rules
-        )
-        return ("PCFG: {"
-                f"\n  log_mode={self.log_mode}"
-                f"\n  start={self.start}"
-                f"\n  rules=\n  {rules}\n}}")
-
-    def _choose_successor(self, letter: str) -> List[str]:
-        if letter not in self.rules:
-            return [letter]
-        else:
-            return random.choices(population=self.rules[letter],
-                                  weights=self.weights[letter],
-                                  k=1)[0]
+    # def _choose_successor(self, letter: str) -> List[str]:
+    #     if letter not in self.rules:
+    #         return [letter]
+    #     else:
+    #         return random.choices(population=self.rules[letter],
+    #                               weights=self.weights[letter],
+    #                               k=1)[0]
