@@ -504,7 +504,7 @@ class PCFG(T.nn.Module):
         return isinstance(other, PCFG) and \
             self.cfg == other.cfg and \
             self.log_mode == other.log_mode and \
-            all(util.approx_eq(self.weights[nt], other.weights[nt], threshold)
+            all(util.vec_approx_eq(self.weights[nt], other.weights[nt], threshold)
                 for nt in self.cfg.nonterminals)
 
     def normalized(self, c=0.1) -> 'PCFG':

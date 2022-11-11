@@ -784,6 +784,20 @@ def test_weight():
                          f"{pred} -> {succ}\nin\n{pcfg}"
 
 
+def test_normalized():
+    cfg = CFG("S", {"S": ["a", "b", "c"]})
+    cases = [
+        ([1, 1, 1], [1 / 3, 1 / 3, 1 / 3], 0),
+        ([1, 1, 1], [1 / 3, 1 / 3, 1 / 3], 0.1),
+        ([1, 2, 3], [1 / 6, 2 / 6, 3 / 6], 0),
+        ([1, 2, 3], [1.1 / 6.3, 2.1 / 6.3, 3.1 / 6.3], 0.1),
+    ]
+    for w1, w2, c in cases:
+        w_actual = PCFG(cfg, {"S": w1}).normalized(c=c).weights["S"].tolist()
+        assert all(util.approx_eq(x, y) for x, y in zip(w2, w_actual)), \
+            f"Expected {w2}, but got {w_actual} for initial weights {w1}"
+
+
 def test_pcfg_is_normalized():
     cases = [
         (PCFG(CFG("S", {"S": ["a"]}), {"S": [1]}), True),

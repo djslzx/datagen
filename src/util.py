@@ -54,7 +54,11 @@ def unique(vec: List) -> Tuple[bool, Optional[Tuple]]:
     return True, None
 
 
-def approx_eq(a: T.Tensor, b: T.Tensor, threshold=10 ** -4) -> bool:
+def approx_eq(a: float, b: float, threshold=10 ** -6) -> bool:
+    return abs(a - b) <= threshold
+
+
+def vec_approx_eq(a: T.Tensor, b: T.Tensor, threshold=10 ** -4) -> bool:
     inf_mask = T.logical_not(T.isinf(a))
     return T.equal(T.isposinf(a), T.isposinf(b)) and \
         T.equal(T.isneginf(a), T.isneginf(b)) and \
