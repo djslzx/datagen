@@ -51,36 +51,36 @@ def test_outward_diag():
 
 def demo_io():
     cases = [
-        (PCFG(CFG.from_rules("S", [
-                ("S", ["N", "V"]),
-                ("V", ["V", "N"]),
-                ("N", ["N", "P"]),
-                ("P", ["PP", "N"]),
-                ("N", ["She"]),
-                ("V", ["eats"]),
-                ("N", ["pizza"]),
-                ("PP", ["without"]),
-                ("N", ["anchovies"]),
-                ("V", ["V", "N", "P"]),
-                ("N", ["hesitation"]),
+        (PCFG.from_CFG(CFG.from_rules("S", [
+            ("S", ["N", "V"]),
+            ("V", ["V", "N"]),
+            ("N", ["N", "P"]),
+            ("P", ["PP", "N"]),
+            ("N", ["She"]),
+            ("V", ["eats"]),
+            ("N", ["pizza"]),
+            ("PP", ["without"]),
+            ("N", ["anchovies"]),
+            ("V", ["V", "N", "P"]),
+            ("N", ["hesitation"]),
         ]).to_CNF()).normalized(),
          [["She", "eats", "pizza", "without", "anchovies"],
           ["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG(CFG.from_rules("S", [
-                ("S", ["N", "V"]),
-                ("V", ["V", "N"]),
-                ("N", ["N", "P"]),
-                ("P", ["PP", "N"]),
-                ("N", ["She"]),
-                ("V", ["eats"]),
-                ("N", ["pizza"]),
-                ("PP", ["without"]),
-                ("N", ["anchovies"]),
-                ("V", ["V", "N", "P"]),
-                ("N", ["hesitation"]),
+        (PCFG.from_CFG(CFG.from_rules("S", [
+            ("S", ["N", "V"]),
+            ("V", ["V", "N"]),
+            ("N", ["N", "P"]),
+            ("P", ["PP", "N"]),
+            ("N", ["She"]),
+            ("V", ["eats"]),
+            ("N", ["pizza"]),
+            ("PP", ["without"]),
+            ("N", ["anchovies"]),
+            ("V", ["V", "N", "P"]),
+            ("N", ["hesitation"]),
         ]).to_CNF()).normalized(),
          [["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG(CFG("S", {
+        (PCFG.from_CFG(CFG("S", {
             "S": [["A", "A"], ["B", "B"]],
             "A": [["a"]],
             "B": [["b"]],
@@ -101,7 +101,7 @@ def demo_io():
 
 
 def demo_inside():
-    g = PCFG(CFG.from_rules("S", [
+    g = PCFG.from_CFG(CFG.from_rules("S", [
         ("S", ["N", "V"]),
         ("V", ["V", "N"]),
         ("N", ["N", "P"]),
@@ -132,7 +132,7 @@ def test_log_vs_standard():
     is consistent with non-log versions
     """
     grammar_corpus_pairs = [
-        (PCFG(CFG.from_rules("S", [
+        (PCFG.from_CFG(CFG.from_rules("S", [
             ("S", ["N", "V"]),
             ("V", ["V", "N"]),
             ("N", ["N", "P"]),
@@ -147,7 +147,7 @@ def test_log_vs_standard():
         ]).to_CNF()).normalized(),
          [["She", "eats", "pizza", "without", "anchovies"],
           ["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG(CFG.from_rules("S", [
+        (PCFG.from_CFG(CFG.from_rules("S", [
             ("S", ["N", "V"]),
             ("V", ["V", "N"]),
             ("N", ["N", "P"]),
@@ -161,7 +161,7 @@ def test_log_vs_standard():
             ("N", ["hesitation"]),
         ]).to_CNF()).normalized(),
          [["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG(CFG("S", {
+        (PCFG.from_CFG(CFG("S", {
             "S": [["A", "A"], ["B", "B"]],
             "A": [["a"]],
             "B": [["b"]],

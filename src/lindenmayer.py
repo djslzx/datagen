@@ -14,7 +14,7 @@ from cfg import PCFG
 # TODO: define LSYSTEM_MG as a CFG, then turn it into a PCFG when
 #  it's being used so we don't have to worry about immutability
 # TODO: add test cases for the different kinds of expressions we want to cover with this metagrammar
-LSYSTEM_MG = PCFG.new(
+LSYSTEM_MG = PCFG(
     start="L-SYSTEM",
     weights="uniform",
     rules={

@@ -1,4 +1,5 @@
 import pytest
+import math
 from cfg import *
 
 
@@ -414,24 +415,24 @@ def test_term():
                 "F": [["f"]],
             }),
          CFG(
-            start="S",
-            rules={
-                "S": [["A"]],
-                "A": [["B", "C", "D", "E", "F"],
-                      ["D", "E", "F"],
-                      [""]],
-                "B": [["b"]],
-                "C": [["_term_c1_", "_term_c2_", "_term_c3_"],
-                      ["c4"],
-                      [""]],
-                "D": [["D", "_term_d_", "D"]],
-                "E": [["e"]],
-                "F": [["f"]],
-                "_term_c1_": [["c1"]],
-                "_term_c2_": [["c2"]],
-                "_term_c3_": [["c3"]],
-                "_term_d_": [["d"]],
-            })),
+             start="S",
+             rules={
+                 "S": [["A"]],
+                 "A": [["B", "C", "D", "E", "F"],
+                       ["D", "E", "F"],
+                       [""]],
+                 "B": [["b"]],
+                 "C": [["_term_c1_", "_term_c2_", "_term_c3_"],
+                       ["c4"],
+                       [""]],
+                 "D": [["D", "_term_d_", "D"]],
+                 "E": [["e"]],
+                 "F": [["f"]],
+                 "_term_c1_": [["c1"]],
+                 "_term_c2_": [["c2"]],
+                 "_term_c3_": [["c3"]],
+                 "_term_d_": [["d"]],
+             })),
     ]
     for x, y in cases:
         out = x._term()
@@ -516,16 +517,16 @@ def test_del():
                 "B": [["A", "A"], ["A", "C"]],
                 "C": [["b"], ["c"]],
             },
-         ),
+        ),
          CFG(
-            start="S",
-            rules={
-                "S": [["A", "b", "B"], ["C"], ["b", "B"], ["A", "b"], ["b"]],
-                "A": [["a"]],
-                "B": [["A", "A"], ["A", "C"], ["A"], ["C"]],
-                "C": [["b"], ["c"]],
-            },
-        )),
+             start="S",
+             rules={
+                 "S": [["A", "b", "B"], ["C"], ["b", "B"], ["A", "b"], ["b"]],
+                 "A": [["a"]],
+                 "B": [["A", "A"], ["A", "C"], ["A"], ["C"]],
+                 "C": [["b"], ["c"]],
+             },
+         )),
         (CFG(
             start="S",
             rules={
@@ -534,19 +535,19 @@ def test_del():
                 "A1": [["A2"]],
                 "A2": [["a2"], CFG.Empty],
             },
-         ),
+        ),
          CFG(
-            start="S",
-            rules={
-                "S": [["A", "s1"], ["s1"],
-                      ["A1"],
-                      ["A1", "s1"],
-                      ["A2", "A1", "s2"], ["A2", "s2"], ["A1", "s2"], ["s2"]],
-                "A": [["A1"]],
-                "A1": [["A2"]],
-                "A2": [["a2"]]
-            },
-        )),
+             start="S",
+             rules={
+                 "S": [["A", "s1"], ["s1"],
+                       ["A1"],
+                       ["A1", "s1"],
+                       ["A2", "A1", "s2"], ["A2", "s2"], ["A1", "s2"], ["s2"]],
+                 "A": [["A1"]],
+                 "A1": [["A2"]],
+                 "A2": [["a2"]]
+             },
+         )),
     ]
     for x, y in cases:
         out = x._del()
@@ -620,13 +621,13 @@ def test_unit():
                 'A': [['A', 'A']],
                 'B': [['B', 'A']],
             },
-         ), CFG(
-             start='S0',
-             rules={
-                 'S0': [['A', 'A'], ['A', 'B']],
-                 'A': [['A', 'A']],
-                 'B': [['B', 'A']],
-             },
+        ), CFG(
+            start='S0',
+            rules={
+                'S0': [['A', 'A'], ['A', 'B']],
+                'A': [['A', 'A']],
+                'B': [['B', 'A']],
+            },
         )),
     ]
     for x, y in cases:
@@ -680,40 +681,40 @@ def test_is_in_CNF():
     cases = [
         # unit
         ({
-            "S": [["A"]],
-            "A": [["a"]],
-        }, False),
+             "S": [["A"]],
+             "A": [["a"]],
+         }, False),
         ({
-            "S": [["a"]],
-        }, True),
-        # term/nonterm mix
+             "S": [["a"]],
+         }, True),
+        # terminal/nonterminal mix
         ({
-            "S": [["A", "b"]],
-            "A": [["a"]],
-        }, False),
+             "S": [["A", "b"]],
+             "A": [["a"]],
+         }, False),
         ({
-            "S": [["A", "B"]],
-            "A": [["a"]],
-            "B": [["b"]],
-        }, True),
+             "S": [["A", "B"]],
+             "A": [["a"]],
+             "B": [["b"]],
+         }, True),
         ({
-            "S": [["A", "B"], CFG.Empty],
-            "A": [["a"]],
-            "B": [["b"]],
-        }, True),
+             "S": [["A", "B"], CFG.Empty],
+             "A": [["a"]],
+             "B": [["b"]],
+         }, True),
         # three succs
         ({
-            "S": [["A", "B", "C"]],
-            "A": [["a"]],
-            "B": [["b"]],
-            "C": [["c"]],
-        }, False),
+             "S": [["A", "B", "C"]],
+             "A": [["a"]],
+             "B": [["b"]],
+             "C": [["c"]],
+         }, False),
         # empty successor in non-start nonterminal
         ({
-            "S": [["A", "B"]],
-            "A": [["a"], CFG.Empty],
-            "B": [["b"]],
-        }, False),
+             "S": [["A", "B"]],
+             "A": [["a"], CFG.Empty],
+             "B": [["b"]],
+         }, False),
 
     ]
     for rules, y in cases:
@@ -728,27 +729,27 @@ def test_pcfg():
                     "A": ["a"],
                     "B": ["b"]})
     cases = [
-        (PCFG(cfg, "uniform", log_mode=False),
-         PCFG(cfg, {"S": [0.5, 0.5],
-                    "A": [1],
-                    "B": [1]},
-              log_mode=False)),
-        (PCFG(cfg, "uniform", log_mode=True),
-         PCFG(cfg, {"S": T.tensor([0.5, 0.5]).log(),
-                    "A": T.tensor([0]),
-                    "B": T.tensor([0])},
-              log_mode=True)),
-        (PCFG(cfg, "uniform", log_mode=False),
+        (PCFG.from_CFG(cfg, "uniform", log_mode=False),
+         PCFG.from_CFG(cfg, {"S": [0.5, 0.5],
+                             "A": [1],
+                             "B": [1]},
+                       log_mode=False)),
+        (PCFG.from_CFG(cfg, "uniform", log_mode=True),
+         PCFG.from_CFG(cfg, {"S": T.tensor([0.5, 0.5]).log(),
+                             "A": T.tensor([0]),
+                             "B": T.tensor([0])},
+                       log_mode=True)),
+        (PCFG.from_CFG(cfg, "uniform", log_mode=False),
          PCFG.from_weighted_rules("S", [
              ("S", "A", 0.5),
              ("S", "B", 0.5),
              ("A", "a", 1.0),
              ("B", "b", 1.0),
          ])),
-        (PCFG(cfg, "uniform", log_mode=False),
+        (PCFG.from_CFG(cfg, "uniform", log_mode=False),
          PCFG.from_weighted_rules(
              "S",
-             PCFG(cfg, "uniform", log_mode=False).as_weighted_rules()
+             PCFG.from_CFG(cfg, "uniform", log_mode=False).as_weighted_rules()
          )),
     ]
     for a, b in cases:
@@ -756,15 +757,15 @@ def test_pcfg():
 
 
 def test_weight():
-    pcfg = PCFG(CFG("S", {"S": ["A", "B", "C"],
-                          "A": ["a1", "a2"],
-                          "B": ["b1", "b2"],
-                          "C": ["c1", "c2"]}),
-                weights={"S": [0.1, 0.9, 0],
-                         "A": [0.2, 0.8],
-                         "B": [0.3, 0.7],
-                         "C": [0.4, 0.6]},
-                log_mode=False)
+    pcfg = PCFG.from_CFG(CFG("S", {"S": ["A", "B", "C"],
+                                   "A": ["a1", "a2"],
+                                   "B": ["b1", "b2"],
+                                   "C": ["c1", "c2"]}),
+                         weights={"S": [0.1, 0.9, 0],
+                                  "A": [0.2, 0.8],
+                                  "B": [0.3, 0.7],
+                                  "C": [0.4, 0.6]},
+                         log_mode=False)
     cases = [
         ("S", ["A"], 0.1),
         ("S", ["B"], 0.9),
@@ -793,20 +794,20 @@ def test_normalized():
         ([1, 2, 3], [1.1 / 6.3, 2.1 / 6.3, 3.1 / 6.3], 0.1),
     ]
     for w1, w2, c in cases:
-        w_actual = PCFG(cfg, {"S": w1}).normalized(c=c).weights["S"].tolist()
+        w_actual = PCFG.from_CFG(cfg, {"S": w1}).normalized(c=c).weights["S"].tolist()
         assert all(util.approx_eq(x, y) for x, y in zip(w2, w_actual)), \
             f"Expected {w2}, but got {w_actual} for initial weights {w1}"
 
 
 def test_pcfg_is_normalized():
     cases = [
-        (PCFG(CFG("S", {"S": ["a"]}), {"S": [1]}), True),
-        (PCFG(CFG("S", {"S": ["a", "b"]}), {"S": [1 / 2, 1 / 2]}), True),
-        (PCFG(CFG("S", {"S": ["a", "b"]}), {"S": [1, 1]}), False),
-        (PCFG(CFG("S", {"S": ["a"]}), {"S": [0]}, log_mode=True), True),
-        (PCFG(CFG("S", {"S": ["a"]}), {"S": [1]}, log_mode=True), False),
-        (PCFG(CFG("S", {"S": ["a", "b"]}), {"S": [math.log(1 / 2), math.log(1 / 2)]}, log_mode=True), True),
-        (PCFG(CFG("S", {"S": ["a", "b"]}), {"S": [1/2, 1/2]}, log_mode=True), False),
+        (PCFG.from_CFG(CFG("S", {"S": ["a"]}), {"S": [1]}), True),
+        (PCFG.from_CFG(CFG("S", {"S": ["a", "b"]}), {"S": [1 / 2, 1 / 2]}), True),
+        (PCFG.from_CFG(CFG("S", {"S": ["a", "b"]}), {"S": [1, 1]}), False),
+        (PCFG.from_CFG(CFG("S", {"S": ["a"]}), {"S": [0]}, log_mode=True), True),
+        (PCFG.from_CFG(CFG("S", {"S": ["a"]}), {"S": [1]}, log_mode=True), False),
+        (PCFG.from_CFG(CFG("S", {"S": ["a", "b"]}), {"S": [math.log(1 / 2), math.log(1 / 2)]}, log_mode=True), True),
+        (PCFG.from_CFG(CFG("S", {"S": ["a", "b"]}), {"S": [1/2, 1/2]}, log_mode=True), False),
     ]
     for g, y in cases:
         y_hat = g.is_normalized()
@@ -823,5 +824,5 @@ def test_pcfg_apply_to_weights():
         ((lambda x: T.exp(x)), [-T.inf, -T.inf], [0, 0]),
     ]
     for f, w0, wf in cases:
-        w = list(PCFG(cfg, {"S": w0}).apply_to_weights(f).weights["S"])
+        w = list(PCFG.from_CFG(cfg, {"S": w0}).apply_to_weights(f).weights["S"])
         assert wf == w, f"Expected {wf} but got {w}"

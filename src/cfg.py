@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import math
 import random
 import itertools as it
-from typing import Dict, List, Tuple, Set, Iterable, Iterator
-import pdb
+from typing import Dict, List, Tuple, Set, Iterable, Iterator, Collection
 import torch as T
-
 import util
 
 
@@ -170,8 +167,7 @@ class CFG:
         # duplicate annotated rules
         duped_rules = []
         for p, s in rules:
-            # handle nonterminals that never appear in a RHS
-            # by taking max of (1, n)
+            # handle nonterminals that never appear in a RHS by taking max of (1, n)
             n = max(1, nt_counts[p])
             for i in range(1, n+1):
                 duped_rules.append((f"{p}_{i}", s))
@@ -276,7 +272,7 @@ class CFG:
         )
 
     def _term(self) -> 'CFG':
-        """Eliminate rules with nonsolitary terminals"""
+        """Eliminate rules with non-solitary terminals"""
         def nt(c) -> str:
             return f"_term_{c}_"
 
@@ -288,14 +284,14 @@ class CFG:
                 else:
                     # replace all terminals with a nonterminal
                     new_succ = []
-                    for c in succ:
-                        if self.is_terminal(c):
-                            nt_rule = (nt(c), [c])
+                    for word in succ:
+                        if self.is_terminal(word):
+                            nt_rule = (nt(word), [word])
                             if nt_rule not in rules:
                                 rules.append(nt_rule)
-                            new_succ.append(nt(c))
+                            new_succ.append(nt(word))
                         else:
-                            new_succ.append(c)
+                            new_succ.append(word)
                     rules.append((pred, new_succ))
 
         return CFG.from_rules(self.start, rules)
@@ -306,8 +302,8 @@ class CFG:
         Assumes that _term() has been run, so any rules containing terminals
         should only contain a single terminal.
         """
-        def nt(pred, i, j) -> str:
-            return f"_bin_{pred}_{i}_{j}_"
+        def nt(p, i, j) -> str:
+            return f"_bin_{p}_{i}_{j}_"
 
         rules: List[Tuple[CFG.Word, CFG.Sentence]] = []
         for pred, succs in self.rules.items():
@@ -347,9 +343,9 @@ class CFG:
         def is_nullable(letter) -> bool:
             if letter in cache:
                 return cache[letter]
-            cache[letter] = not self.is_terminal(letter) and \
-                            any(all(is_nullable(c) for c in rule if c != letter)
-                                for rule in self.rules[letter])
+            cache[letter] = (not self.is_terminal(letter) and
+                             any(all(is_nullable(c) for c in rule if c != letter)
+                                 for rule in self.rules[letter]))
             return cache[letter]
 
         return {nt for nt in self.rules if is_nullable(nt)}
@@ -358,7 +354,6 @@ class CFG:
         """
         Eliminate rules of the form A -> eps, where A != S.
         """
-        # FIXME: assumes that all nulling patterns are equally likely
         nullable_nts = self.nullables()
         rules = []
 
@@ -446,18 +441,20 @@ class PCFG(T.nn.Module):
     This represents a grammar where A expands to B or CD with equal
     probability.
     """
-    def __init__(self, cfg: CFG,
+    def __init__(self,
+                 start: CFG.Word,
+                 rules: Dict[str, Collection[str | CFG.Sentence]],
                  weights: str | Dict[CFG.Word, List[float] | T.Tensor] = "uniform",
                  log_mode=False):
         super(PCFG, self).__init__()
-        self.cfg = cfg
+        self.cfg = CFG(start, rules)
         self.log_mode = log_mode
 
         if weights == "uniform":
             self.weights = T.nn.ParameterDict({
                 pred: ((lambda x: x.log() if log_mode else x)
                        (T.ones(len(succs), dtype=T.float64) / len(succs)))
-                for pred, succs in cfg.rules.items()
+                for pred, succs in rules.items()
             })
         else:
             self.weights = T.nn.ParameterDict({
@@ -467,11 +464,8 @@ class PCFG(T.nn.Module):
             })
 
     @staticmethod
-    def new(start: CFG.Word,
-            rules: Dict[str, Iterable[str | CFG.Sentence]],
-            weights: str | Dict[CFG.Word, List[float] | T.Tensor] = "uniform",
-            *kvs) -> 'PCFG':
-        return PCFG(CFG(start, rules), weights, *kvs)
+    def from_CFG(cfg: CFG, weights: str | Dict[CFG.Word, List[float] | T.Tensor] = "uniform", **kvs) -> 'PCFG':
+        return PCFG(cfg.start, cfg.rules, weights, **kvs)
 
     def __len__(self) -> int:
         return sum(len(succs) for succs in self.cfg.rules.values())
@@ -526,8 +520,8 @@ class PCFG(T.nn.Module):
         Returns a PCFG with similar relative weights, but normalized
         with smoothing constant c.
         """
-        return PCFG(
-            cfg=self.cfg,
+        return PCFG.from_CFG(
+            self.cfg,
             weights={
                 pred: (ws + c) / T.sum(ws + c)
                 for pred, ws in self.weights.items()
@@ -577,7 +571,7 @@ class PCFG(T.nn.Module):
             else:
                 rules[pred].append(succ)
                 weights[pred].append(weight)
-        return PCFG(CFG(start, rules), weights)
+        return PCFG(start, rules, weights)
 
     def as_weighted_rules(self) -> Iterable[Tuple[CFG.Word, CFG.Sentence, float]]:
         """View a PCFG as a list of rules with weights"""
