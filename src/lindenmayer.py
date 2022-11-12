@@ -1,73 +1,68 @@
+from __future__ import annotations
 import random
 from typing import Dict, List, Iterator, Union, Tuple
 from math import sin, cos, radians
 import numpy as np
 import skimage.draw as skdraw
 import matplotlib.pyplot as plt
-import pdb
 import itertools as it
 import time
+import pdb
 
 import util
-from cfg import PCFG
+from cfg import CFG
 
-# TODO: define LSYSTEM_MG as a CFG, then turn it into a PCFG when
-#  it's being used so we don't have to worry about immutability
 # TODO: add test cases for the different kinds of expressions we want to cover with this metagrammar
-LSYSTEM_MG = PCFG(
-    start="L-SYSTEM",
-    weights="uniform",
-    rules={
-        "L-SYSTEM": [
-            ["AXIOM", ";", "RULES"],
-        ],
-        "AXIOM": [
-            ["NT", "AXIOM_W_NT"],
-            ["NT"],
-            ["T", "AXIOM"],
-        ],
-        "AXIOM_W_NT": [
-            ["NT_OR_T", "AXIOM_W_NT"],
-            ["NT_OR_T"],
-        ],
-        "RULES": [
-            ["RULE", ",", "RULES"],
-            ["RULE"],
-        ],
-        "RULE": [
-            ["LHS", "~", "RHS"],
-        ],
-        "LHS": [
-            ["NT"],
-        ],
-        "RHS": [
-            ["[", "RHS", "]", "RHS"],
-            ["[", "RHS", "]"],
-            ["NT", "RHS_W_NT"],
-            ["NT"],
-            ["T", "RHS"],
-        ],
-        "RHS_W_NT": [
-            ["[", "RHS", "]", "RHS"],
-            ["[", "RHS", "]"],
-            ["NT_OR_T", "RHS_W_NT"],
-            ["NT_OR_T"],
-        ],
-        "NT_OR_T": [
-            ["NT"],
-            ["T"]
-        ],
-        "NT": [
-            ["F"],
-            # ["f"],
-            # ["X"],
-        ],
-        "T": [
-            ["+"],
-            ["-"],
-        ],
-    },
-)
+LSYSTEM_MG = CFG("L-SYSTEM", {
+    "L-SYSTEM": [
+        ["AXIOM", ";", "RULES"],
+    ],
+    "AXIOM": [
+        ["NT", "AXIOM_W_NT"],
+        ["NT"],
+        ["T", "AXIOM"],
+    ],
+    "AXIOM_W_NT": [
+        ["NT_OR_T", "AXIOM_W_NT"],
+        ["NT_OR_T"],
+    ],
+    "RULES": [
+        ["RULE", ",", "RULES"],
+        ["RULE"],
+    ],
+    "RULE": [
+        ["LHS", "~", "RHS"],
+    ],
+    "LHS": [
+        ["NT"],
+    ],
+    "RHS": [
+        ["[", "RHS", "]", "RHS"],
+        ["[", "RHS", "]"],
+        ["NT", "RHS_W_NT"],
+        ["NT"],
+        ["T", "RHS"],
+    ],
+    "RHS_W_NT": [
+        ["[", "RHS", "]", "RHS"],
+        ["[", "RHS", "]"],
+        ["NT_OR_T", "RHS_W_NT"],
+        ["NT_OR_T"],
+    ],
+    "NT_OR_T": [
+        ["NT"],
+        ["T"]
+    ],
+    "NT": [
+        ["F"],
+        # ["f"],
+        # ["X"],
+    ],
+    "T": [
+        ["+"],
+        ["-"],
+    ],
+})
 
 
 class LSystem:
@@ -175,32 +170,22 @@ class S0LSystem(LSystem):
     def __init__(self,
                  axiom: str,
                  productions: Dict[str, List[str]],
-                 distribution: Union[str, Dict[str, List[float]]] = "uniform"):
+                 distribution: str | Dict[str, List[float]] = "uniform"):
         super().__init__()
         self.axiom = axiom
         self.productions = productions
 
         # check if distribution is a string
         if distribution == "uniform":
-            distribution = {
-                pred: [1 / len(succs)] * len(succs)
+            self.distribution = {
+                pred: np.ones(len(succs)) / len(succs)
                 for pred, succs in productions.items()
             }
         else:
-            distribution = {
-                pred: util.normalize(weights)
+            self.distribution = {
+                pred: (lambda x: x / np.sum(x))(np.array(weights))
                 for pred, weights in distribution.items()
             }
-
-        # check that distribution sums to 1 for any predecessor
-        assert all(abs(sum(weights) - 1) < 0.01
-                   for _, weights in distribution.items()), \
-            "All rules with the same predecessor should have" \
-            " probabilities summing to 1"
-        self.distribution = distribution
-
-    def __hash__(self):
-        return hash(" ".join(self.to_sentence()))
 
     def expand(self, s: str) -> str:
         return ''.join(random.choices(population=self.productions.get(c, [c]),
@@ -217,14 +202,18 @@ class S0LSystem(LSystem):
                     f'{pred} -[{weight:.3f}]-> {succ}'
                 )
         return f'axiom: {self.axiom}\n' + \
-            'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
+               'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
 
     def __repr__(self) -> str:
         return str(self)
 
     def __eq__(self, other) -> bool:
-        return (self.axiom, self.productions, self.distribution) == \
-            (other.axiom, other.productions, other.distribution)
+        # doesn't handle different orderings
+        return (isinstance(other, S0LSystem) and
+                self.axiom == other.axiom and
+                self.productions == other.productions and
+                all(np.array_equal(self.distribution[pred], other.distribution[pred])
+                    for pred in self.productions.keys()))
 
     def to_sentence(self) -> List[str]:
         """
@@ -267,146 +256,3 @@ class S0LSystem(LSystem):
                 rules[lhs] = [rhs]
 
         return S0LSystem(axiom, rules, "uniform")
-
-
-def test_from_sentence():
-    cases = [
-        ('F ; F ~ f F'.split(),
-         S0LSystem('F', {'F': ['fF']}, 'uniform')),
-        ('F ; F ~ f F ,'.split(),
-         S0LSystem('F', {'F': ['fF']}, 'uniform')),
-        ('F ; F ~ A , A ~ A b , A ~ b b , A ~ A A'.split(),
-         S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform')),
-        ('F + F ; F ~ f F ,'.split(),
-         S0LSystem('F+F', {'F': ['fF']}, 'uniform')),
-    ]
-    for s, y in cases:
-        out = S0LSystem.from_sentence(s)
-        assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_from_sentence")
-
-
-def test_to_sentence():
-    cases = [
-        (S0LSystem('F', {'F': ['fF']}, 'uniform'),
-         'F ; F ~ f F'.split()),
-        (S0LSystem('F', {'F': ['A'], 'A': ['Ab', 'bb', 'AA']}, 'uniform'),
-         'F ; F ~ A , A ~ A b , A ~ b b , A ~ A A'.split()),
-        (S0LSystem('F-F-F', {'F': ['fF']}, 'uniform'),
-         'F - F - F ; F ~ f F'.split()),
-    ]
-    for g, y in cases:
-        out = g.to_sentence()
-        assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_to_sentence")
-
-
-def draw_systems():
-    systems: Dict[str, LSystem] = {
-        'koch': D0LSystem(
-            axiom='F-F-F-F',
-            productions={
-                'F': 'F-F+F+FF-F-F+F'
-            },
-        ),
-        'islands': D0LSystem(
-            axiom='F+F+F+F',
-            productions={
-                'F': 'F+f-FF+F+FF+Ff+FF-f+FF-F-FF-Ff-FFF',
-                'f': 'ffffff',
-            },
-        ),
-        'branch': D0LSystem(
-            axiom='F',
-            productions={
-                'F': 'F[+F]F[-F]F'
-            },
-        ),
-        'wavy-branch': D0LSystem(
-            axiom='F',
-            productions={
-                'F': 'FF-[-F+F+F]+[+F-F-F]'
-            },
-        ),
-        'stochastic-branch': S0LSystem(
-            axiom='F',
-            productions={
-                'F': ['F[+F]F[-F]F',
-                      'F[+F]F',
-                      'F[-F]F']
-            },
-            distribution={
-                'F': [0.33,
-                      0.33,
-                      0.34]
-            },
-        ),
-        'random-walk': S0LSystem(
-            axiom='A',
-            productions={
-                'A': ['dFA'],
-                'd': ['+', '++', '+++', '++++'],
-                'F': ['F'],
-            },
-            distribution={
-                'A': [1],
-                'd': [0.25, 0.25, 0.25, 0.25],
-                'F': [1],
-            },
-        ),
-        'triplet': S0LSystem(
-            axiom='F',
-            productions={
-                'F': ['FF',
-                      '[-F]F',
-                      '[+F]F'],
-            },
-            distribution='uniform'
-        ),
-    }
-
-    for name, angle, levels, samples in [
-        ('koch', 90, 4, 1),
-        ('islands', 90, 3, 1),
-        ('branch', 25.7, 5, 1),
-        ('branch', 73, 5, 1),
-        ('wavy-branch', 22.5, 5, 1),
-        ('stochastic-branch', 22.5, 5, 5),
-        # ('random-walk', 90, 99, 1),
-        # ('triplet', 35, 5, 6),
-        # ('random', 45, 6, 3),
-    ]:
-        for sample in range(samples):
-            system = systems[name]
-            print(system)
-            for _, word in enumerate(system.expansions(levels)):
-                mat = LSystem.draw(s=word, d=5, theta=angle)
-                plt.imshow(mat)
-                plt.show()
-            print()
-
-
-def test_render():
-    systems = [
-        S0LSystem(axiom="F",
-                  productions={"F": ["F+F", "F-F"]}),
-    ]
-    for system in systems:
-        _, s = system.expand_until(100)
-        time_str = int(time.time())
-        mat = S0LSystem.draw(s, d=3, theta=43, n_rows=512, n_cols=512)
-        plt.imshow(mat)
-        plt.show()
-
-
-if __name__ == '__main__':
-    # if len(sys.argv) != 2:
-    #     print("Usage: lindenmayer.py DIR")
-    #     sys.exit(1)
-
-    # test_to_sticks()
-    # draw_systems(out_dir=sys.argv[1])
-    test_from_sentence()
-    test_to_sentence()
-    draw_systems()
-    test_render()

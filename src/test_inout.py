@@ -185,3 +185,8 @@ def test_log_vs_standard():
                 pdb.set_trace()
 
     print(" [+] passed test_log")
+
+
+if __name__ == '__main__':
+    demo_inside()
+    demo_io()

@@ -74,5 +74,6 @@ def test_vec_approx_eq():
         ([1, 2, 3, 4], [1.1, 2.1, 3.1, 4.1], 1, True),
     ]
     for a, b, thresh, y in cases:
-        out = vec_approx_eq(T.tensor(a), T.tensor(b), thresh)
-        assert y == out, f"Expected ({a} == {b}, thresh={thresh}) == {y} but got {out}"
+        for out in [vec_approx_eq(T.tensor(a), T.tensor(b), thresh),
+                    vec_approx_eq(np.array(a), np.array(b), thresh),]:
+            assert y == out, f"Expected ({a} == {b}, thresh={thresh}) == {y} but got {out}"

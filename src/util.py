@@ -1,3 +1,5 @@
+from __future__ import annotations
+import numpy as np
 import torch as T
 import itertools as it
 from typing import List, Tuple, Iterable, Optional, Set
@@ -58,7 +60,12 @@ def approx_eq(a: float, b: float, threshold=10 ** -6) -> bool:
     return abs(a - b) <= threshold
 
 
-def vec_approx_eq(a: T.Tensor, b: T.Tensor, threshold=10 ** -4) -> bool:
+def vec_approx_eq(a: T.Tensor | np.ndarray, b: T.Tensor | np.ndarray, threshold=10 ** -4) -> bool:
+    if isinstance(a, np.ndarray):
+        a = T.from_numpy(a)
+    if isinstance(b, np.ndarray):
+        b = T.from_numpy(b)
+
     inf_mask = T.logical_not(T.isinf(a))
     return T.equal(T.isposinf(a), T.isposinf(b)) and \
         T.equal(T.isneginf(a), T.isneginf(b)) and \
