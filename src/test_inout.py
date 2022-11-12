@@ -86,7 +86,7 @@ def demo_io():
             "B": [["b"]],
         }).to_CNF()).normalized(),
          [["a", "a"]]),
-        (LSYSTEM_MG.apply_to_weights(lambda x: x).to_CNF().normalized(),
+        (PCFG.from_CFG(LSYSTEM_MG.to_CNF()).normalized(),
          [sys.to_sentence() for sys in zoo.simple_zoo_systems]),
     ]
     for g, corpus in cases:

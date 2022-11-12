@@ -1,18 +1,14 @@
 from __future__ import annotations
 import random
-from typing import Dict, List, Iterator, Union, Tuple
+from typing import Dict, List, Iterator, Tuple
 from math import sin, cos, radians
 import numpy as np
-import skimage.draw as skdraw
-import matplotlib.pyplot as plt
+import skimage.draw
 import itertools as it
-import time
 import pdb
 
-import util
 from cfg import CFG
 
-# TODO: add test cases for the different kinds of expressions we want to cover with this metagrammar
 LSYSTEM_MG = CFG("L-SYSTEM", {
     "L-SYSTEM": [
         ["AXIOM", ";", "RULES"],
@@ -116,7 +112,7 @@ class LSystem:
             if char == 'F':
                 r1 = r + int(d * sin(radians(heading)))
                 c1 = c + int(d * cos(radians(heading)))
-                rs, cs, val = skdraw.line_aa(r, c, r1, c1)
+                rs, cs, val = skimage.draw.line_aa(r, c, r1, c1)
                 # mask out out-of-bounds indices
                 mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)
                 rs, cs, val = rs[mask], cs[mask], val[mask]

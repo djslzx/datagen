@@ -715,13 +715,41 @@ def test_is_in_CNF():
              "A": [["a"], CFG.Empty],
              "B": [["b"]],
          }, False),
-
     ]
     for rules, y in cases:
         g = CFG("S", rules)
         out = g.is_in_CNF()
         assert out == y, \
             f"Failed test_is_in_CNF for {g}: Expected {y}, but got {out}"
+
+
+def test_cfg_can_generate():
+    cases = [
+        (CFG("S", {"S": ["a"]}),
+         [["a"]], [["b"]]),
+        (CFG("S", {"S": ["a", "b", "c"]}),
+         [["a"], ["b"], ["c"]],
+         [["d"], ["e"]]),
+        (CFG("S", {"S": ["A", "B"],
+                   "A": ["a"],
+                   "B": ["b"]}),
+         [["a"], ["b"]],
+         [["a", "b"], ["c"]]),
+        (CFG("S", {"S": ["AXIOM ; RULES"],
+                   "AXIOM": ["F AXIOM", "F"],
+                   "RULES": ["RULE , RULES", "RULE"],
+                   "RULE": ["A -> B"]}),
+         ["F F F ; A -> B".split(" "),
+          "F F F ; A -> B , A -> B".split(" ")],
+         ["F + F ; A -> B".split(" "),
+          "F + F ; A -> BB".split(" "),
+          "F + F ; C -> D".split(" ")]),
+    ]
+    for cfg, in_sentences, out_sentences in cases:
+        for sentence in in_sentences:
+            assert cfg.can_generate(sentence), f"Expected {cfg} to generate {sentence}"
+        for sentence in out_sentences:
+            assert not cfg.can_generate(sentence), f"Expected {cfg} not to generate {sentence}"
 
 
 def test_pcfg():

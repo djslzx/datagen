@@ -24,8 +24,8 @@ class CFG:
 
     def __init__(self, start: str, rules: Dict[str, Iterable[str | Sentence]]):
         CFG.check_rep(start, rules)
-        self.start = start
-        self.rules = {
+        self.start: CFG.Word = start
+        self.rules: Dict[str, List[CFG.Sentence]] = {
             pred: [(succ.split() if isinstance(succ, str) else succ)
                    for succ in succs]
             for pred, succs in rules.items()
@@ -138,6 +138,22 @@ class CFG:
             if s == cache:
                 break
         return s
+
+    def can_generate(self, sentence: Sentence) -> bool:
+        """Checks whether the grammar can produce a given sentence."""
+        def has_parses(G: CFG, nt: CFG.Word, tgt: CFG.Sentence) -> bool:
+            for succ in G.rules[nt]:
+                if len(succ) == 1 and succ == tgt:
+                    return True
+                elif len(succ) == 2:
+                    a, b = succ
+                    for i in range(1, len(tgt)):
+                        if has_parses(G, a, tgt[:i]) and has_parses(G, b, tgt[i:]):
+                            return True
+            return False
+
+        g = self.to_CNF()
+        return any(has_parses(g, nt, sentence) for nt in g.nonterminals)
 
     def to_bigram(self) -> 'CFG':
         """

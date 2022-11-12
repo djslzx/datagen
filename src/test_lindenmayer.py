@@ -1,6 +1,8 @@
 import pytest
 from lindenmayer import *
+import matplotlib.pyplot as plt
 import util
+from book_zoo import simple_zoo_systems
 
 
 def test_D0L_expand():
@@ -37,7 +39,7 @@ def test_S0L_expand():
     cases = [
         (S0LSystem("F", {"F": ["F"]}), {"F"}),
         (S0LSystem("F", {"F": ["FF", "FFF"]}), {"FF", "FFF"}),
-        (S0LSystem("FF", {"F": ["FF", "FFF"]}), {"FFFF", "FFFFFF"}),
+        (S0LSystem("FF", {"F": ["F", "FF"]}), {"FF", "FFF", "FFFF"}),
     ]
     for sys, s in cases:
         out = sys.expand(sys.axiom)
@@ -97,6 +99,13 @@ def test_S0L_to_sentence():
     for g, y in cases:
         out = g.to_sentence()
         assert out == y, f"Expected {y}, but got {out}"
+
+
+def test_LSYSTEM_MG_coverage():
+    """Check that LSYSTEM_MG covers the book examples"""
+    for sys in simple_zoo_systems:
+        ex = sys.to_sentence()
+        assert LSYSTEM_MG.can_generate(ex), f"Expected {LSYSTEM_MG} to generate {ex}"
 
 
 def demo_draw():
