@@ -82,7 +82,7 @@ class CFG:
                 all(sorted(self.rules[nt]) == sorted(other.rules[nt])
                     for nt in self.nonterminals))
 
-    def __str__(self):
+    def __str__(self):  # pragma: no cover
         rules = "\n  ".join(
             f"{pred} -> {succs}"
             for pred, succs in self.rules.items())
@@ -98,7 +98,7 @@ class CFG:
     def nonterminals(self) -> Iterable[Word]:
         return self.rules.keys()
 
-    def _choose_successor(self, nt: Word) -> Sentence:
+    def successor(self, nt: Word) -> Sentence:
         return random.choice(self.rules[nt])
 
     def step(self, sentence: List[str]) -> Sentence:
@@ -113,16 +113,16 @@ class CFG:
             return sentence
         index = random.choice(nonterminals)
         nt = sentence[index]
-        expansion = self._choose_successor(nt)
+        expansion = self.successor(nt)
         return sentence[:index] + expansion + sentence[index + 1:]
 
     def iterate_fully(self, debug=False) -> Sentence:
         s = [self.start]
-        if debug:
+        if debug:  # pragma: no cover
             print(s)
         while any(self.is_nonterminal(w) for w in s):
             s = self.step(s)
-            if debug:
+            if debug:  # pragma: no cover
                 print(" ".join(s))
         return s
 
@@ -274,7 +274,7 @@ class CFG:
         g = self
         for name, op in ops.items():
             g_new = op(g)
-            if debug:
+            if debug:  # pragma: no cover
                 print(f"Performing {name} on\n{g}\n"
                       f"yielded\n{g_new}")
             g = g_new
@@ -464,6 +464,8 @@ class PCFG(T.nn.Module):
                  log_mode=False):
         super(PCFG, self).__init__()
         self.cfg = CFG(start, rules)
+        # use PCFG's successor function without subclassing CFG
+        self.cfg.successor = lambda nt: self.successor(nt)
         self.log_mode = log_mode
 
         if weights == "uniform":
@@ -483,13 +485,24 @@ class PCFG(T.nn.Module):
     def from_CFG(cfg: CFG, weights: str | Dict[CFG.Word, List[float] | T.Tensor] = "uniform", **kvs) -> 'PCFG':
         return PCFG(cfg.start, cfg.rules, weights, **kvs)
 
+    def successor(self, letter: str) -> List[str]:
+        return random.choices(population=self.cfg.rules[letter],
+                              weights=self.weights[letter],
+                              k=1)[0]
+
+    def iterate_fully(self) -> CFG.Sentence:
+        return self.cfg.iterate_fully()
+
+    def iterate_until(self, length: int) -> CFG.Sentence:
+        return self.cfg.iterate_until(length)
+
     def __len__(self) -> int:
         return sum(len(succs) for succs in self.cfg.rules.values())
 
     def __eq__(self, other):
         return self.approx_eq(other, threshold=10 ** -2)
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # pragma: no cover
         return str(self)
 
     def __str__(self) -> str:
@@ -594,11 +607,3 @@ class PCFG(T.nn.Module):
         for nt in self.cfg.nonterminals:
             for i, succ in enumerate(self.cfg.rules[nt]):
                 yield nt, succ, self.weights[nt][i]
-
-    # def _choose_successor(self, letter: str) -> List[str]:
-    #     if letter not in self.rules:
-    #         return [letter]
-    #     else:
-    #         return random.choices(population=self.rules[letter],
-    #                               weights=self.weights[letter],
-    #                               k=1)[0]

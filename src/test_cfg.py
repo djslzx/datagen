@@ -1,6 +1,7 @@
 import pytest
 import math
 from cfg import *
+from typing import Callable
 
 
 def test_cfg_check_rep():
@@ -854,3 +855,60 @@ def test_pcfg_apply_to_weights():
     for f, w0, wf in cases:
         w = list(PCFG.from_CFG(cfg, {"S": w0}).apply_to_weights(f).weights["S"])
         assert wf == w, f"Expected {wf} but got {w}"
+
+
+def test_pcfg_iterate_until():
+    cases = [
+        (PCFG("S", {"S": ["A"], "A": ["a"]}),
+         [(1, [["S"]])]),
+        (PCFG("S", {"S": ["A"], "A": ["A a", "a"]}),
+         [(1, [["S"]]),
+          (2, ["A a".split(), "a".split()]),
+          (3, ["A a a".split(), "a a".split(), "A a".split(), "a".split()]),
+          (4, ["A a a a".split(),
+               "a a a".split(), "A a a".split(),
+               "a a".split(), "A a".split(),
+               "a".split()])]),
+        (PCFG("S", {"S": ["A", "B"],
+                    "A": ["A a", "a"],
+                    "B": ["B B", "b"]}),
+         [(1, [["S"]]),
+          (2, ["A a".split(), "a".split(), "B B".split(), "b".split()]),
+          (3, ["A a a".split(), "a a a".split(), "a a".split(), "a".split(),
+               "B B B".split(), "B B b".split(), "b B B".split(),
+               "b b b".split(), "b b".split(), "b".split()]),
+          ]),
+    ]
+    for _ in range(100):
+        for sys, xs in cases:
+            for length, strings in xs:
+                out = sys.iterate_until(length)
+                assert out in strings, f"Expected to get string in {strings}, but got {out}" \
+                                       f"for L-system {sys}"
+
+
+def test_pcfg_iterate_fully():
+    cases: List[Tuple[PCFG, Callable]] = [
+        (PCFG("S", {"S": ["A"], "A": ["a"]}),
+         lambda s: s == ["a"]),
+        (PCFG("S", {"S": ["A"], "A": ["A a", "a"]}),
+         lambda s: all(x == "a" for x in s[1:]) and s[0] in ["A", "a"]),
+        (PCFG("S",
+              {"S": ["B"],
+               "B": ["B B", "b"]},
+              {"S": [1],
+               "B": [0.1, 0.9]}),
+         lambda s: all(x in ["B", "b"] for x in s)),
+        (PCFG("S",
+              {"S": ["A", "B"],
+               "A": ["A a", "a"],
+               "B": ["B B", "b"]},
+              {"S": [0.5, 0.5],
+               "A": [0.5, 0.5],
+               "B": [0.1, 0.9]}),
+         lambda s: (all(x == "a" for x in s[1:]) and s[0] in ["A", "a"] or
+                    all(x in ["B", "b"] for x in s))),
+    ]
+    for g, predicate in cases:
+        out = g.iterate_fully()
+        assert predicate(out), f"{out} did not satisfy predicate for {g}"
