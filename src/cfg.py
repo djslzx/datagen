@@ -515,6 +515,9 @@ class PCFG(T.nn.Module):
     def __repr__(self) -> str:  # pragma: no cover
         return str(self)
 
+    def __hash__(self):
+        return hash(str(self))
+
     def __str__(self) -> str:
         def denote_t_or_nt(xs):
             return [f"{x}" if self.is_nonterminal(x) else f"`{x}`"
@@ -594,6 +597,11 @@ class PCFG(T.nn.Module):
     def exp(self) -> 'PCFG':
         g = self.apply_to_weights(T.exp)
         g.log_mode = False
+        return g
+
+    def copy(self) -> 'PCFG':
+        g = self.apply_to_weights(lambda x: x)
+        g.log_mode = self.log_mode
         return g
 
     @staticmethod

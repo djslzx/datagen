@@ -95,21 +95,23 @@ def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict[Tuple[int, int, CFG.Word], f
     return alpha, beta
 
 
-def autograd_log_io(G: PCFG, corpus: List[CFG.Sentence], iters, log=False):
+def autograd_io(G: PCFG, corpus: List[CFG.Sentence], iters) -> PCFG:
     """
     Uses automatic differentiation to implement Inside-Outside.
     """
-    optimizer = T.optim.Adam(G.parameters())
+    assert G.is_in_CNF()
+    assert G.is_normalized()
+
+    g = G.copy()
+    optimizer = T.optim.Adam(g.parameters())
     for i in range(iters):
-        if log:  # pragma: no cover
-            print(f"[{i}/{iters}]")
         for word in corpus:
-            alpha = log_alpha(G, word)
-            z = alpha[0, len(word) - 1, G.start]
+            alpha = inside(g, word)
+            z = alpha[0, len(word) - 1, g.start]
             loss = -z
             loss.backward()
             optimizer.step()
-    G.normalize_weights_()
+    return g.normalized()
 
 
 def compute_counts(G: PCFG, corpus: List[CFG.Sentence], verbose=False) -> Dict[Tuple[CFG.Word, Tuple[str]], float]:

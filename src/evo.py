@@ -8,7 +8,7 @@ import torch as T
 from torchvision.models import resnet50, ResNet50_Weights
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
-from typing import List, Dict, Set, Tuple, Iterator, Iterable, Callable, Collection
+from typing import *
 import math
 import time
 import random
@@ -16,7 +16,6 @@ import os
 from pprint import pp
 import pdb
 
-from cfg import PCFG
 from lindenmayer import S0LSystem, LSYSTEM_MG
 from inout import log_dirio_step, log_io
 from book_zoo import zoo_systems, simple_zoo_systems
