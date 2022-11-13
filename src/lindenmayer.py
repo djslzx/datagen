@@ -66,11 +66,11 @@ class LSystem:
     def __init__(self):
         pass
 
-    def expand(self, s: str) -> str:
+    def expand(self, s: str) -> str:  # pragma: no cover
         assert False, f"Should be implemented in child {type(self).__name__}"
 
     def expansions(self, iters: int) -> Iterator[str]:
-        """Returns a generator over `iters` expansions."""
+        """Returns a generator over the 0-th through `iters`-th expansions."""
         word = self.axiom
         yield word
         for _ in range(iters):
@@ -99,7 +99,7 @@ class LSystem:
         return depth, word
 
     @staticmethod
-    def draw(s: str, d: float, theta: float, n_rows: int = 512, n_cols: int = 512) -> np.ndarray:
+    def draw(s: str, d: float, theta: float, n_rows: int = 512, n_cols: int = 512) -> np.ndarray:  # pragma: no cover
         """
         Draw the turtle interpretation of the string `s` onto a `n_rows` x `n_cols` array,
         using scikit-image's drawing library (with anti-aliasing).
@@ -143,7 +143,7 @@ class D0LSystem(LSystem):
         self.axiom = axiom
         self.productions = productions
 
-    def __str__(self) -> str:
+    def __str__(self) -> str:  # pragma: no cover
         rules = []
         for pred, succs in self.productions.items():
             for i, succ in enumerate(succs):
@@ -162,6 +162,8 @@ class S0LSystem(LSystem):
     A stochastic context-free Lindenmayer system
     where the alphabet is the collection of ASCII characters
     """
+
+    # TODO: add check-rep?
 
     def __init__(self,
                  axiom: str,
@@ -189,7 +191,7 @@ class S0LSystem(LSystem):
                                       k=1)[0]
                        for c in s)
 
-    def __str__(self) -> str:
+    def __str__(self) -> str:  # pragma: no cover
         rules = []
         for pred, succs in self.productions.items():
             for i, succ in enumerate(succs):
@@ -200,7 +202,7 @@ class S0LSystem(LSystem):
         return f'axiom: {self.axiom}\n' + \
                'rules: [\n  ' + '\n  '.join(rules) + '\n]\n'
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> str:  # pragma: no cover
         return str(self)
 
     def __eq__(self, other) -> bool:
