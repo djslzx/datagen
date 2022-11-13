@@ -78,10 +78,21 @@ def test_io_pizza_2():
     g = PCFG.from_CFG(pizza_cfg).normalized()
     g_anchovies = inside_outside(g, [["She", "eats", "pizza", "without", "anchovies"]])
     g_hesitation = inside_outside(g, [["She", "eats", "pizza", "without", "hesitation"]])
-
     print(g_anchovies)
     print(g_hesitation)
+    compare_pizza_cfgs(g, g_anchovies, g_hesitation)
 
+
+def test_log_io_pizza():
+    g_log = PCFG.from_CFG(pizza_cfg).normalized().log()
+    g_log_anchovies = log_io(g_log, [["She", "eats", "pizza", "without", "anchovies"]])
+    g_log_hesitation = log_io(g_log, [["She", "eats", "pizza", "without", "hesitation"]])
+    print(g_log_anchovies)
+    print(g_log_hesitation)
+    compare_pizza_cfgs(g_log, g_log_anchovies, g_log_hesitation)
+
+
+def compare_pizza_cfgs(g: PCFG, g_anchovies: PCFG, g_hesitation: PCFG):
     assert g_anchovies.weight("N", ["anchovies"]) > g_anchovies.weight("N", ["hesitation"])
     assert g_hesitation.weight("N", ["hesitation"]) > g_hesitation.weight("N", ["anchovies"])
     assert util.vec_approx_eq(g_anchovies.weight("N", ["anchovies"]),
@@ -102,21 +113,23 @@ def test_io_pizza_2():
                 f"Unexpected weight variation for nonterminal {nt}: {w1} != {w2}"
 
 
+def test_io_small():
+    g = PCFG.from_CFG(CFG("S", {
+            "S": [["A", "A"], ["B", "B"]],
+            "A": [["a"], ["x"]],
+            "B": [["b"]],
+        }).to_CNF()).normalized()
+    g_a = inside_outside(g, [["a", "a"]])
+    assert g_a.weight("S", ["B", "B"]) < 0.1
+    assert g_a.weight("S", ["A", "A"]) > 0.9
+    assert g_a.weight("A", ["x"]) < 0.1
+    assert g_a.weight("A", ["a"]) > 0.9
+
+
 def demo_io():  # pragma: no cover
     cases = [
-        (PCFG.from_CFG(pizza_cfg).normalized(),
-         [["She", "eats", "pizza", "without", "anchovies"],
-          ["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG.from_CFG(pizza_cfg).normalized(),
-         [["She", "eats", "pizza", "without", "hesitation"]]),
-        (PCFG.from_CFG(CFG("S", {
-            "S": [["A", "A"], ["B", "B"]],
-            "A": [["a"]],
-            "B": [["b"]],
-        }).to_CNF()).normalized(),
-         [["a", "a"]]),
-        # (PCFG.from_CFG(LSYSTEM_MG.to_CNF()).normalized(),
-        #  [sys.to_sentence() for sys in zoo.simple_zoo_systems]),
+        (PCFG.from_CFG(LSYSTEM_MG.to_CNF()).normalized(),
+         [sys.to_sentence() for sys in zoo.simple_zoo_systems]),
     ]
     for g, corpus in cases:
         print(corpus, '\n', g, '\n')
@@ -129,7 +142,7 @@ def demo_io():  # pragma: no cover
         # autograd_io(g, corpus)
 
 
-def test_log_vs_standard_io():
+def test_log_io_matches_standard_io():
     """
     Check that the behavior of log versions of functions
     is consistent with non-log versions
@@ -142,19 +155,41 @@ def test_log_vs_standard_io():
          [["She", "eats", "pizza", "without", "hesitation"]]),
         (PCFG.from_CFG(CFG("S", {
             "S": [["A", "A"], ["B", "B"]],
-            "A": [["a"]],
+            "A": [["a"], ["x"]],
             "B": [["b"]],
         }).to_CNF()).normalized(),
          [["a", "a"]]),
     ]
+    threshold = 0.0001
     for g, corpus in grammar_corpus_pairs:
         g_log = g.log()
+
+        # inside
         a = inside(g, corpus)
         log_a = log_alpha(g_log, corpus)
         for i, j, A in a.keys():
             a_val = a[i, j, A]
             log_a_val = log_a[i, j, A]
-            assert (a_val - log_a_val.exp()).abs() <= 0.01
+            assert (a_val - log_a_val.exp()).abs() <= threshold
+
+        # outside
+        a, b = outside(g, corpus)
+        log_a, log_b = log_alpha_beta(g_log, corpus)
+        for i, j, A in a.keys():
+            a_val = a[i, j, A]
+            log_a_val = log_a[i, j, A]
+            assert (a_val - log_a_val.exp()).abs() <= threshold
+
+        for i, j, A in b.keys():
+            b_val = b[i, j, A]
+            log_b_val = log_b[i, j, A]
+            assert (b_val - log_b_val.exp()).abs() <= threshold
+
+        # inside-outside
+        g_fit = inside_outside(g, corpus)
+        g_log_exp_fit = log_io(g_log, corpus).exp()
+        assert g_fit.approx_eq(g_log_exp_fit, 0.1), \
+            f"Found mismatched grammars: {g_fit}, {g_log_exp_fit}"
 
 
 if __name__ == '__main__':  # pragma: no cover

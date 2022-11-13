@@ -4,6 +4,7 @@ Implementation of the inside-outside algorithm for CFGs
 alpha(i, j, A, w, G) = P(phi, A -> w_i...w_j)
 beta(i, j, A, w, G) = P(phi, S -> w1 ... w_i-1 . A . w_j+1 ... w_n)
 """
+from __future__ import annotations
 import time
 from typing import Dict, Tuple, List, Iterable
 from pprint import pp
@@ -42,7 +43,7 @@ def outward_diag(n: int, start=None) -> Iterable[Tuple[int, int]]:
             yield j, i + j
 
 
-def inside(G: PCFG, s: CFG.Sentence) -> Dict:
+def inside(G: PCFG, s: CFG.Sentence) -> Dict[Tuple[int, int, CFG.Word], float]:
     assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
     alpha = {}
     n = len(s)
@@ -68,7 +69,8 @@ def inside(G: PCFG, s: CFG.Sentence) -> Dict:
     return alpha
 
 
-def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict, Dict]:
+def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict[Tuple[int, int, CFG.Word], float],
+                                               Dict[Tuple[int, int, CFG.Word], float]]:
     assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
     alpha = inside(G, s)
     beta = {}
@@ -110,7 +112,7 @@ def autograd_log_io(G: PCFG, corpus: List[CFG.Sentence], iters, log=False):
     G.normalize_weights_()
 
 
-def compute_counts(G: PCFG, corpus: List[CFG.Sentence], verbose=False):
+def compute_counts(G: PCFG, corpus: List[CFG.Sentence], verbose=False) -> Dict[Tuple[CFG.Word, Tuple[str]], float]:
     """
     Count the number of times any rule A -> x is used in the corpus.
     """
@@ -185,7 +187,7 @@ def inside_outside(G: PCFG, corpus: List[CFG.Sentence],
     return g
 
 
-def log_alpha(G: PCFG, s: CFG.Sentence) -> Dict:
+def log_alpha(G: PCFG, s: CFG.Sentence) -> Dict[Tuple[int, int, CFG.Word], T.Tensor]:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
@@ -215,7 +217,8 @@ def log_alpha(G: PCFG, s: CFG.Sentence) -> Dict:
     return log_a
 
 
-def log_alpha_beta(G: PCFG, s: CFG.Sentence) -> Tuple[Dict, Dict]:
+def log_alpha_beta(G: PCFG, s: CFG.Sentence) -> Tuple[Dict[Tuple[int, int, CFG.Word], T.Tensor],
+                                                      Dict[Tuple[int, int, CFG.Word], T.Tensor]]:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
@@ -246,7 +249,7 @@ def log_alpha_beta(G: PCFG, s: CFG.Sentence) -> Tuple[Dict, Dict]:
     return log_a, log_b
 
 
-def log_counts(G: PCFG, corpus: List[CFG.Sentence]) -> Dict:
+def log_counts(G: PCFG, corpus: List[CFG.Sentence]) -> Dict[Tuple[CFG.Word, Tuple[str]], T.Tensor]:
     assert G.is_in_CNF()
     assert G.log_mode
     assert G.is_normalized()
