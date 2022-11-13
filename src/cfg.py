@@ -485,6 +485,16 @@ class PCFG(T.nn.Module):
     def from_CFG(cfg: CFG, weights: str | Dict[CFG.Word, List[float] | T.Tensor] = "uniform", **kvs) -> 'PCFG':
         return PCFG(cfg.start, cfg.rules, weights, **kvs)
 
+    @property
+    def start(self) -> CFG.Word:
+        return self.cfg.start
+
+    def rules(self) -> Iterable[Tuple[CFG.Word, List[CFG.Sentence]]]:
+        return self.cfg.rules.items()
+
+    def successors(self, nt: CFG.Word) -> Iterable[CFG.Sentence]:
+        return self.cfg.rules[nt]
+
     def successor(self, letter: str) -> List[str]:
         return random.choices(population=self.cfg.rules[letter],
                               weights=self.weights[letter],
@@ -537,7 +547,6 @@ class PCFG(T.nn.Module):
         Checks whether two PCFGs are syntactically (not semantically) equivalent
         and have roughly the same parameters.
         """
-        print(self, other)
         return isinstance(other, PCFG) and \
             self.cfg == other.cfg and \
             self.log_mode == other.log_mode and \

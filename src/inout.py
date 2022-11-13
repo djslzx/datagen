@@ -5,7 +5,7 @@ alpha(i, j, A, w, G) = P(phi, A -> w_i...w_j)
 beta(i, j, A, w, G) = P(phi, S -> w1 ... w_i-1 . A . w_j+1 ... w_n)
 """
 import time
-from typing import Dict, Tuple, List, Iterable, Callable, Optional
+from typing import Dict, Tuple, List, Iterable
 from pprint import pp
 import numpy as np
 import scipy.stats as stats
@@ -14,17 +14,6 @@ import math
 import pdb
 
 from cfg import CFG, PCFG
-
-
-def print_map(alpha: Dict, precision=4):
-    for k, v in alpha.items():
-        if v > 10 ** -precision:
-            print(k, f'{v:.{precision}f}')
-    print()
-
-
-def lookup_map(d: Dict, p: Callable) -> List:
-    return [(k, v) for k, v in d.items() if p(*k) and v > 0]
 
 
 def inward_diag(n: int, start=0) -> Iterable[Tuple[int, int]]:
@@ -104,42 +93,21 @@ def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict, Dict]:
     return alpha, beta
 
 
-def autograd_io(G: PCFG, corpus: List[CFG.Sentence], iters=1000,
-                callback=None, log=False):
+def autograd_log_io(G: PCFG, corpus: List[CFG.Sentence], iters, log=False):
     """
     Uses automatic differentiation to implement Inside-Outside.
     """
-    def ins(g: PCFG, w: CFG.Sentence) -> float:
-        alpha = inside(g, w)
-        z = alpha[0, len(w) - 1, g.start]
-        return z
-
-    def diff(plist1: List[T.Tensor], plist2: List[T.Tensor]) -> float:
-        return T.stack([(x - y).abs().sum()
-                        for x, y in zip(plist1, plist2)]).sum()
-
-    def eq(plist1, plist2) -> bool:
-        return all(T.eq(x, y)
-                   for x, y in zip(plist1, plist2))
-
     optimizer = T.optim.Adam(G.parameters())
-    # prev = None
-    # while prev is None or not eq(prev, G.parameters()):  # diff(prev, G.parameters()) > 1e-10:
     for i in range(iters):
-        # prev = list([p.clone() for p in G.parameters()])
-        if log:
+        if log:  # pragma: no cover
             print(f"[{i}/{iters}]")
         for word in corpus:
-            z = ins(G, word)    # TODO: log pr
+            alpha = log_alpha(G, word)
+            z = alpha[0, len(word) - 1, G.start]
             loss = -z
             loss.backward()
             optimizer.step()
-        if callback:
-            callback(i, G)
-
     G.normalize_weights_()
-    # d = diff(prev, G.parameters())
-    # print(prev, list(G.parameters()), d)
 
 
 def compute_counts(G: PCFG, corpus: List[CFG.Sentence], verbose=False):
@@ -151,7 +119,7 @@ def compute_counts(G: PCFG, corpus: List[CFG.Sentence], verbose=False):
     for A, succ, _ in G.as_weighted_rules():
         counts[A, tuple(succ)] = 0
     for i, W in enumerate(corpus, 1):
-        if verbose:
+        if verbose:  # pragma: no cover
             print(f"Processing word {i}/{len(corpus)}: {W}...")
 
         alpha, beta = outside(G, W)
@@ -184,12 +152,37 @@ def inside_outside_step(G: PCFG, corpus: List[CFG.Sentence],
     counts = compute_counts(G, corpus, verbose=verbose)
     counts = {k: v + smoothing for k, v in counts.items()}
     sums = {A: sum(counts[A, tuple(succ)] for succ in succs)
-            for A, succs in G.rules.items()}
+            for A, succs in G.rules()}
     rules = []
     for A, succ, _ in G.as_weighted_rules():
         weight = counts[A, tuple(succ)] / sums[A]
         rules.append((A, succ, weight))
     return PCFG.from_weighted_rules(G.start, rules)
+
+
+def inside_outside(G: PCFG, corpus: List[CFG.Sentence],
+                   smoothing=0.1, verbose=False) -> PCFG:
+    """
+    Perform inside-outside until the grammar converges.
+    """
+    assert G.is_in_CNF(), "Inside-outside requires the grammar to be in CNF"
+    assert G.is_normalized()
+
+    def step(g: PCFG, corpus: List[CFG.Sentence]) -> PCFG:
+        return inside_outside_step(g, corpus, smoothing, verbose=verbose)
+
+    g = G.normalized()
+    i = 1
+    while True:
+        g_prev, g = g, step(g, corpus)
+        if verbose:  # pragma: no cover
+            print(f"IO step {i}:\n"
+                  f"prev: {g_prev}\n"
+                  f"current: {g}")
+            i += 1
+        if g.approx_eq(g_prev, threshold=1e-7):
+            break
+    return g
 
 
 def log_alpha(G: PCFG, s: CFG.Sentence) -> Dict:
@@ -298,7 +291,7 @@ def log_io_step(G: PCFG, corpus: List[CFG.Sentence], alpha=0.1) -> PCFG:
     alpha = T.tensor(alpha)
     log_c = log_counts(G, corpus)
     rules = []
-    for A, succs in G.rules.items():
+    for A, succs in G.rules():
         n = T.tensor(len(succs))
         denom = T.logaddexp(T.logsumexp(T.tensor([log_c[A, tuple(succ)] for succ in succs]), dim=0),
                             T.log(alpha * n))
@@ -315,7 +308,7 @@ def log_dirio_step(G: PCFG, corpus: List[CFG.Sentence], alpha) -> PCFG:
 
     log_c = log_counts(G, corpus)
     rules = []
-    for A, succs in G.rules.items():
+    for A, succs in G.rules():
         n = T.tensor(len(succs))
         a = np.repeat(alpha, n)
         c = np.array([log_c[A, tuple(succ)].exp().detach() for succ in succs])
@@ -335,36 +328,11 @@ def log_io(G: PCFG, corpus: List[CFG.Sentence], smoothing=0.1, verbose=False) ->
     t = time.time()
     while True:
         g_prev, g = g, log_io_step(G, corpus, smoothing)
-        if verbose:
+        if verbose:  # pragma: no cover
             duration = time.time() - t
             print(f"IO step {i} took {duration}s")
             i += 1
             t = time.time()
         if g.approx_eq(g_prev, threshold=1e-8):
-            break
-    return g
-
-
-def inside_outside(G: PCFG, corpus: List[CFG.Sentence],
-                   smoothing=0.1, verbose=False) -> PCFG:
-    """
-    Perform inside-outside until the grammar converges.
-    """
-    assert G.is_in_CNF(), "Inside-outside requires the grammar to be in CNF"
-    assert G.is_normalized()
-
-    def step(g: PCFG, corpus: List[CFG.Sentence]) -> PCFG:
-        return inside_outside_step(g, corpus, smoothing, verbose=verbose)
-
-    g = G.normalized()
-    i = 1
-    while True:
-        g_prev, g = g, step(g, corpus)
-        if verbose:
-            print(f"IO step {i}:\n"
-                  f"prev: {g_prev}\n"
-                  f"current: {g}")
-            i += 1
-        if g.approx_eq(g_prev, threshold=1e-7):
             break
     return g

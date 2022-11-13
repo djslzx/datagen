@@ -232,7 +232,7 @@ def test_LSYSTEM_MG_coverage():
         assert LSYSTEM_MG.can_generate(ex), f"Expected {LSYSTEM_MG} to generate {ex}"
 
 
-def demo_draw():
+def demo_draw():  # pragma: no cover
     systems: Dict[str, LSystem] = {
         'koch': D0LSystem(
             axiom='F-F-F-F',
@@ -292,5 +292,5 @@ def demo_draw():
             print()
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     demo_draw()
