@@ -55,17 +55,14 @@ def inside(G: PCFG, s: CFG.Sentence) -> Dict[Tuple[int, int, CFG.Word], float]:
 
     # recurse on other diagonals, proceeding inwards
     for i, j in inward_diag(n, start=1):
-        # init each cell to 0
         for A in G.nonterminals:
             alpha[i, j, A] = 0
-        # add up weights of rules
         for A, succ, w in G.as_weighted_rules():
             if len(succ) != 2:
                 continue
             B, C = succ
             for k in range(i, j):
-                a = w * alpha[i, k, B] * alpha[k+1, j, C]
-                alpha[i, j, A] += a
+                alpha[i, j, A] += w * alpha[i, k, B] * alpha[k+1, j, C]
     return alpha
 
 
@@ -95,7 +92,7 @@ def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict[Tuple[int, int, CFG.Word], f
     return alpha, beta
 
 
-def autograd_io(G: PCFG, corpus: List[CFG.Sentence], iters) -> PCFG:
+def autograd_outside(G: PCFG, corpus: List[CFG.Sentence], iters) -> PCFG:
     """
     Uses automatic differentiation to implement Inside-Outside.
     """
@@ -106,9 +103,8 @@ def autograd_io(G: PCFG, corpus: List[CFG.Sentence], iters) -> PCFG:
     optimizer = T.optim.Adam(g.parameters())
     for i in range(iters):
         for word in corpus:
-            alpha = inside(g, word)
-            z = alpha[0, len(word) - 1, g.start]
-            loss = -z
+            z = T.tensor(inside(g, word)[0, len(word) - 1, g.start])
+            loss = -T.log(z)
             loss.backward()
             optimizer.step()
     return g.normalized()

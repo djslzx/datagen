@@ -94,8 +94,8 @@ def test_log_io_pizza():
 
 def test_autograd_io_pizza():
     g = PCFG.from_CFG(pizza_cfg).normalized()
-    g_ag_anchovies = autograd_io(g, [["She", "eats", "pizza", "without", "anchovies"]], iters=3)
-    g_ag_hesitation = autograd_io(g, [["She", "eats", "pizza", "without", "hesitation"]], iters=3)
+    g_ag_anchovies = autograd_outside(g, [["She", "eats", "pizza", "without", "anchovies"]], iters=3)
+    g_ag_hesitation = autograd_outside(g, [["She", "eats", "pizza", "without", "hesitation"]], iters=3)
     print(g_ag_anchovies)
     print(g_ag_hesitation)
     compare_pizza_cfgs(g, g_ag_anchovies, g_ag_hesitation)

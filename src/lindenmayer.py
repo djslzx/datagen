@@ -205,6 +205,9 @@ class S0LSystem(LSystem):
     def __repr__(self) -> str:  # pragma: no cover
         return str(self)
 
+    def __hash__(self):
+        return hash(str(self))
+
     def __eq__(self, other) -> bool:
         # doesn't handle different orderings
         return (isinstance(other, S0LSystem) and
