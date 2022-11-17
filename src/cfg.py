@@ -578,9 +578,11 @@ class PCFG(T.nn.Module):
 
     def weight(self, pred: CFG.Word, succ: CFG.Sentence) -> T.Tensor:
         if pred in self.cfg.nonterminals:
-            for i, s in enumerate(self.cfg.rules[pred]):
-                if s == succ:
-                    return self.weights[pred][i]
+            try:
+                i = self.cfg.rules[pred].index(succ)
+                return self.weights[pred][i]
+            except ValueError:
+                pass
         return T.tensor(-T.inf) if self.log_mode else T.tensor(0)
 
     def apply_to_weights(self, f) -> 'PCFG':
@@ -619,7 +621,7 @@ class PCFG(T.nn.Module):
                 weights[pred].append(weight)
         return PCFG(start, rules, weights)
 
-    def as_weighted_rules(self) -> Iterable[Tuple[CFG.Word, CFG.Sentence, float]]:
+    def as_weighted_rules(self) -> Iterable[Tuple[CFG.Word, CFG.Sentence, T.Tensor]]:
         """View a PCFG as a list of rules with weights"""
         for nt in self.cfg.nonterminals:
             for i, succ in enumerate(self.cfg.rules[nt]):

@@ -12,6 +12,7 @@ import numpy as np
 import scipy.stats as stats
 import torch as T
 import math
+import sys
 import pdb
 
 from cfg import CFG, PCFG
@@ -43,7 +44,7 @@ def outward_diag(n: int, start=None) -> Iterable[Tuple[int, int]]:
             yield j, i + j
 
 
-def inside(G: PCFG, s: CFG.Sentence) -> Dict[Tuple[int, int, CFG.Word], float]:
+def inside(G: PCFG, s: CFG.Sentence) -> Dict[Tuple[int, int, CFG.Word], T.Tensor]:
     assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
     alpha = {}
     n = len(s)
@@ -56,18 +57,18 @@ def inside(G: PCFG, s: CFG.Sentence) -> Dict[Tuple[int, int, CFG.Word], float]:
     # recurse on other diagonals, proceeding inwards
     for i, j in inward_diag(n, start=1):
         for A in G.nonterminals:
-            alpha[i, j, A] = 0
-        for A, succ, w in G.as_weighted_rules():
-            if len(succ) != 2:
-                continue
-            B, C = succ
-            for k in range(i, j):
-                alpha[i, j, A] += w * alpha[i, k, B] * alpha[k+1, j, C]
+            alpha[i, j, A] = T.tensor(0, dtype=T.float64)
+            for succ in G.successors(A):
+                if len(succ) != 2:
+                    continue
+                B, C = succ
+                for k in range(i, j):
+                    alpha[i, j, A] += G.weight(A, succ) * alpha[i, k, B] * alpha[k+1, j, C]
     return alpha
 
 
-def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict[Tuple[int, int, CFG.Word], float],
-                                               Dict[Tuple[int, int, CFG.Word], float]]:
+def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict[Tuple[int, int, CFG.Word], T.Tensor],
+                                               Dict[Tuple[int, int, CFG.Word], T.Tensor]]:
     assert G.is_in_CNF(), "Inside-outside requires G to be in CNF"
     alpha = inside(G, s)
     beta = {}
@@ -75,12 +76,12 @@ def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict[Tuple[int, int, CFG.Word], f
 
     # start with inner diagonal (singleton)
     for A in G.nonterminals:
-        beta[0, n-1, A] = int(A == G.start)
+        beta[0, n-1, A] = T.tensor(int(A == G.start))
 
     # recurse on other diagonals, proceeding outwards
     for i, j in outward_diag(n, start=n-1):
         for A in G.nonterminals:
-            beta[i, j, A] = 0
+            beta[i, j, A] = T.tensor(0, dtype=T.float64)
         for A, succ, w in G.as_weighted_rules():
             if len(succ) != 2:
                 continue
@@ -90,6 +91,33 @@ def outside(G: PCFG, s: CFG.Sentence) -> Tuple[Dict[Tuple[int, int, CFG.Word], f
             for k in range(i):  # k < i < j
                 beta[i, j, C] += w * beta[k, j, A] * alpha[k, i-1, B]
     return alpha, beta
+
+
+def autograd_inside(G: PCFG, s: CFG.Sentence) -> T.Tensor:
+    assert G.is_in_CNF()
+    n = len(s)
+    alpha = np.empty((n, n), dtype=object)
+
+    # initialize outermost diagonal
+    for i in range(n):
+        alpha[i, i] = {}
+        for A in G.nonterminals:
+            alpha[i, i][A] = G.weight(A, [s[i]])
+
+    # recurse on other diagonals, proceeding inwards
+    for i, j in inward_diag(n, start=1):
+        alpha[i, j] = {}
+        for A in G.nonterminals:
+            alpha[i, j][A] = T.tensor(0, dtype=T.float64)
+            for succ in G.successors(A):
+                if len(succ) != 2:
+                    continue
+                B, C = succ
+                for k in range(i, j):
+                    alpha[i, j][A] += G.weight(A, succ) * alpha[i, k][B] * alpha[k + 1, j][C]
+    # depth = max(len(succs) for succs in G.rules())
+    # print(f"alpha has size {sys.getsizeof(alpha)} for grid of size {n} x {n} x {depth}")
+    return alpha[0, len(s) - 1][G.start]
 
 
 def autograd_outside(G: PCFG, corpus: List[CFG.Sentence], iters) -> PCFG:
@@ -102,11 +130,14 @@ def autograd_outside(G: PCFG, corpus: List[CFG.Sentence], iters) -> PCFG:
     g = G.copy()
     optimizer = T.optim.Adam(g.parameters())
     for i in range(iters):
+        print(f"[IO iteration {i}]")
         for word in corpus:
-            z = T.tensor(inside(g, word)[0, len(word) - 1, g.start])
-            loss = -T.log(z)
+            t_start = time.time()
+            print(f"Fitting to word {word} of length {len(word)}...")
+            loss = -T.log(autograd_inside(g, word))
             loss.backward()
             optimizer.step()
+            print(f"  Took {time.time() - t_start}s")
     return g.normalized()
 
 

@@ -127,7 +127,7 @@ def random_lsystems(n_systems: int) -> List[S0LSystem]:
 
 def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: int,
                    featurizer: Featurizer, smoothing: float, p_arkv: float, n_neighbors: int,
-                   verbose=False) -> Set[S0LSystem]:
+                   verbose=False) -> Set[Iterable[str]]:
     """
     Runs novelty search.
 
@@ -150,8 +150,8 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
         # generate next gen
         if verbose: print("Fitting metagrammar...")
         # metagrammar = log_io_step(meta_PCFG.copy().log(), popn).exp()
-        metagrammar = inside_outside_step(meta_PCFG.copy(), popn, alpha=smoothing)
-        # metagrammar = autograd_outside(meta_PCFG.copy(), popn, iters=1)
+        # metagrammar = inside_outside_step(meta_PCFG.copy(), popn, smoothing)
+        metagrammar = autograd_outside(meta_PCFG, popn, iters=10)
 
         if verbose: print("Generating next gen...")
         next_gen = np.empty(n_next_gen, dtype=object)
@@ -190,6 +190,7 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
         popn = next_gen[:max_popn_size]  # take indices of top `max_popn_size` agents
 
         # plot generation with selection markings
+        if verbose: print("Plotting...")
         scores = scores[indices]
         min_score = scores[max_popn_size - 1]
         labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
@@ -271,8 +272,8 @@ def demo_ns():
     }
     params = {
         'init_popn': popn,
-        'iters': 10,
-        'featurizer': DummyFeaturizer,
+        'iters': 2,
+        f'featurizer': DummyFeaturizer(),
         'max_popn_size': 16,
         'n_neighbors': 5,
         'smoothing': 1,
