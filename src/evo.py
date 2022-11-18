@@ -4,8 +4,6 @@ Test out evolutionary search algorithms for data augmentation.
 import pickle
 import itertools as it
 import numpy as np
-import torch as T
-from torchvision.models import resnet50, ResNet50_Weights
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 from typing import *
@@ -18,6 +16,7 @@ import pdb
 from cfg import CFG, PCFG
 from lindenmayer import S0LSystem, LSYSTEM_MG
 from inout import log_io, autograd_outside, inside_outside_step, log_io_step
+from featurizers import DummyFeaturizer, ResnetFeaturizer, Featurizer
 from book_zoo import zoo_systems
 
 # Set up file paths
@@ -39,66 +38,6 @@ THETA = 43
 N_ROWS = 64
 N_COLS = 64
 ROLLOUT_DEPTH = 3
-
-
-class Featurizer:
-    def apply(self, img: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
-
-    @property
-    def n_features(self) -> int:
-        raise NotImplementedError
-
-
-class ResnetFeaturizer(Featurizer):
-
-    def __init__(self, disable_last_layer=False):
-        weights = ResNet50_Weights.DEFAULT
-        resnet = resnet50(weights=weights)
-        self.disable_last_layer = disable_last_layer
-        if disable_last_layer:
-            # disable last layer in resnet
-            self.model = T.nn.Sequential(*list(resnet.children())[:-1])
-        else:
-            self.model = resnet
-        self.model.eval()
-        self.preprocess = weights.transforms()
-
-    def apply(self, img: np.ndarray) -> np.ndarray:
-        tensor = T.from_numpy(np.repeat(img[None, ...], 3, axis=0))  # stack array over RGB channels
-        batch = self.preprocess(tensor).unsqueeze(0)
-        features = self.model(batch).squeeze().softmax(0)
-        return features.detach().numpy()
-
-    @property
-    def n_features(self) -> int:
-        return 2048 if self.disable_last_layer else 1000
-
-
-class DummyFeaturizer(Featurizer):
-
-    def __init__(self):
-        pass
-
-    def apply(self, img: np.ndarray) -> np.ndarray:
-        return np.array([np.mean(img), np.var(img)])
-
-    @property
-    def n_features(self) -> int:
-        return 2
-
-
-class SyntacticSemanticFeaturizer(Featurizer):
-
-    def __init__(self):
-        raise NotImplementedError
-
-    def apply(self, img: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
-
-    @property
-    def n_features(self) -> int:
-        raise NotImplementedError
 
 
 def sample_images(system: S0LSystem, n_samples: int, d: int, theta: float,
@@ -166,6 +105,7 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
         popn_features = np.empty((len(popn), n_features * n_samples))
         for i, s in enumerate(popn):  # parallel
             sys = S0LSystem.from_sentence(s)
+            # TODO: simplify this using np.reshape
             for j in range(n_samples):
                 bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **draw_kvs)
                 popn_features[i, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
@@ -177,6 +117,7 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
         for i, s in enumerate(next_gen):  # parallel
             sys = S0LSystem.from_sentence(s)
             features = np.empty((1, n_features * n_samples))
+            # TODO: simplify this using np.reshape
             for j in range(n_samples):
                 bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **draw_kvs)
                 features[0, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
