@@ -35,7 +35,7 @@ def check_resnet_featurizer():  # pragma: no cover
     """
     Make sure that the k nearest neighbors of each L-system look reasonable
     """
-    featurizer = ResnetFeaturizer(disable_last_layer=True, softmax=False)
+    featurizer = ResnetFeaturizer(disable_last_layer=True, softmax=False)  # softmax or not?
     n = len(zoo)
     n_samples = 3
     images = np.empty((n, n_samples, 128, 128))

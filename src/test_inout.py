@@ -1,6 +1,6 @@
 from inout import *
 import util
-from lindenmayer import LSYSTEM_MG
+from lindenmayer import LSYSTEM_MG, S0LSystem
 import book_zoo as zoo
 
 
@@ -201,5 +201,28 @@ def test_log_io_matches_standard_io():
             f"Found mismatched grammars: {g_fit}, {g_log_exp_fit}"
 
 
+def demo_autograd_outside_pizza():
+    g = PCFG.from_CFG(pizza_cfg)
+    corpus = [["She", "eats", "pizza", "without", "anchovies"]]
+    g_fit = autograd_outside(g, corpus, iters=1000)
+    print(g, g_fit)
+
+
+def demo_autograd_outside_lsystem():
+    g = PCFG.from_CFG(LSYSTEM_MG.to_CNF())
+    corpus = [
+        s.to_sentence()
+        for s in [
+            S0LSystem("F", {"F": ["F+F", "F-F"]}),
+            S0LSystem("F", {"F": ["FF"]}),
+            S0LSystem("F", {"F": ["F++F", "FF"]}),
+        ]
+    ]
+    g_fit = autograd_outside(g, corpus, iters=100)
+    print(g, g_fit)
+
+
 if __name__ == '__main__':  # pragma: no cover
-    demo_io()
+    # demo_io()
+    # demo_autograd_outside_pizza()
+    demo_autograd_outside_lsystem()

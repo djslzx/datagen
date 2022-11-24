@@ -1,21 +1,18 @@
 """
 Test out evolutionary search algorithms for data augmentation.
 """
-import pickle
-import itertools as it
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 from typing import *
-import joblib
-import time
-import os
+from os import mkdir
 from pprint import pp
+import time
 import pdb
 
 from cfg import CFG, PCFG
 from lindenmayer import S0LSystem, LSYSTEM_MG
-from inout import log_io, autograd_outside, inside_outside_step, log_io_step
+from inout import log_io, autograd_outside, inside_outside_step, log_io_step, log_dirio_step, inside_outside
 from featurizers import DummyFeaturizer, ResnetFeaturizer, Featurizer
 from book_zoo import zoo_systems
 
@@ -28,7 +25,7 @@ for directory in [".cache/", ".cache/imgs/"]:
         open(directory, "r")
     except FileNotFoundError:
         print(f"{directory} directory not found, making dir...")
-        os.mkdir(directory)
+        mkdir(directory)
     except IsADirectoryError:
         pass
 
@@ -38,48 +35,25 @@ THETA = 43
 N_ROWS = 64
 N_COLS = 64
 ROLLOUT_DEPTH = 3
+SENTENCE_LEN_LIMIT = 30
 
 
-def sample_images(system: S0LSystem, n_samples: int, d: int, theta: float,
-                  rollout_depth: int, n_rows: int, n_cols: int) -> Iterator[np.ndarray]:
-    for _ in range(n_samples):
-        rollout = system.nth_expansion(rollout_depth)
-        yield S0LSystem.draw(rollout, d, theta, n_rows, n_cols)
-
-
-def random_lsystems(n_systems: int) -> List[S0LSystem]:
-    try:
-        with open(f"{PCFG_CACHE_PREFIX}-zoo.pcfg", "rb") as f:
-            mg = pickle.load(f)
-        print(f"Loaded pickled zoo meta-grammar from {PCFG_CACHE_PREFIX}-zoo.pcfg")
-    except FileNotFoundError:
-        print(f"Could not find pickled zoo meta-grammar, fitting...")
-        mg = LSYSTEM_MG.apply_to_weights(lambda x: x)
-        corpus = [sys.to_sentence() for sys in zoo_systems]
-        mg = log_io(mg, corpus, smoothing=1)
-        with open(f"{PCFG_CACHE_PREFIX}-zoo.pcfg", "wb") as f:
-            pickle.dump(mg, f)
-
-    return [S0LSystem.from_sentence(mg.iterate_fully())
-            for _ in range(n_systems)]
-
-
-def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: int,
+def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: int, io_iters: int,
                    featurizer: Featurizer, smoothing: float, p_arkv: float, n_neighbors: int,
                    verbose=False) -> Set[Iterable[str]]:
-    """
-    Runs novelty search.
-
-    Uses multiple renders of each stochastic L-system and concatenates them together.
-    """
-    popn = [x.to_sentence() for x in init_popn]
+    popn = init_popn
     arkv = set()
     t = int(time.time())
     n_next_gen = max_popn_size * 4
-    n_samples = 2
+    n_samples = 3
     n_features = featurizer.n_features
     meta_PCFG = PCFG.from_CFG(LSYSTEM_MG.to_CNF())
-    draw_kvs = {'d': 5, 'theta': 43, 'n_rows': 256, 'n_cols': 256}
+
+    # TODO: to avoid extraneous computation w/ archives,
+    #  - store the feature vectors of elts in the archive
+    #  - measure the effect of more sampling (should be cheap in theory)
+    #  - reconsider archiving entirely
+    #  - log all generated specimens on disk instead of keeping in RAM
 
     for iter in range(iters):
         if verbose:
@@ -88,15 +62,24 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
 
         # generate next gen
         if verbose: print("Fitting metagrammar...")
-        # metagrammar = log_io_step(meta_PCFG.copy().log(), popn).exp()
+        # metagrammar = inside_outside(meta_PCFG, popn, smoothing, verbose=True)
+        metagrammar = autograd_outside(meta_PCFG, popn, iters=io_iters)
+        # metagrammar = log_dirio_step(meta_PCFG.log(), popn, smoothing, verbose=True)
+        # metagrammar = log_io_step(meta_PCFG.log(), popn).exp()
         # metagrammar = inside_outside_step(meta_PCFG.copy(), popn, smoothing)
-        metagrammar = autograd_outside(meta_PCFG, popn, iters=10)
 
         if verbose: print("Generating next gen...")
         next_gen = np.empty(n_next_gen, dtype=object)
         for i in range(n_next_gen):  # parallel
-            sentence = tuple(metagrammar.iterate_fully())
-            next_gen[i] = sentence
+            while True:
+                j = 0
+                sentence = tuple(metagrammar.iterate_fully())
+                next_gen[i] = sentence
+                if len(sentence) < SENTENCE_LEN_LIMIT:
+                    break
+                else:
+                    j += 1
+                    print(f"\r{j}-th try", end='')
             if np.random.random() < p_arkv:
                 arkv.add(sentence)
 
@@ -107,7 +90,7 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
             sys = S0LSystem.from_sentence(s)
             # TODO: simplify this using np.reshape
             for j in range(n_samples):
-                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **draw_kvs)
+                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
                 popn_features[i, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
         knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(init_popn))).fit(popn_features)
 
@@ -119,10 +102,10 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
             features = np.empty((1, n_features * n_samples))
             # TODO: simplify this using np.reshape
             for j in range(n_samples):
-                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **draw_kvs)
+                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
                 features[0, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
             distances, _ = knn.kneighbors(features)
-            scores[i] = distances.sum(axis=1).item()
+            scores[i] = distances.sum(axis=1).item() / len(s)
 
         # cull popn
         if verbose: print("Culling popn...")
@@ -178,8 +161,9 @@ def plot_agents(agents: Collection[CFG.Sentence], labels: Collection[str], n_sam
     axes: List[plt.Axes] = ax.flat
     for agent, label in zip(agents, labels):
         sys = S0LSystem.from_sentence(agent)
-        for bmp in sample_images(sys, n_samples_per_agent, d=D, theta=THETA,
-                                 rollout_depth=ROLLOUT_DEPTH, n_rows=N_ROWS, n_cols=N_COLS):
+        for _ in range(n_samples_per_agent):
+            expansion = sys.nth_expansion(ROLLOUT_DEPTH)
+            bmp = S0LSystem.draw(expansion, d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
             axis = axes[i]
             axis.imshow(bmp)
             axis.set_title(label, fontsize=4, pad=4)
@@ -201,32 +185,34 @@ def demo_plot():
                 saveto=f"{IMG_CACHE_PREFIX}test-plot.png")
 
 
-def demo_ns():
-    popn = {
-        S0LSystem("F", {"F": ["F+F", "F-F"]}),
-        S0LSystem("F", {"F": ["FF"]}),
-        S0LSystem("F", {"F": ["F++F", "FF"]}),
-        # S0LSystem(
-        #     "F-F-F-F",
-        #     {"F": ["F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"]}
-        # ),
-    }
+if __name__ == '__main__':
+    # demo_mutate_agents()
+    # demo_measure_novelty()
+    # demo_plot()
+    popn = [
+        x.to_sentence()
+        for x in [
+            S0LSystem("F", {"F": ["F+F", "F-F"]}),
+            S0LSystem("F", {"F": ["FF"]}),
+            S0LSystem("F", {"F": ["F++F", "FF"]}),
+            # S0LSystem(
+            #     "F-F-F-F",
+            #     {"F": ["F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"]}
+            # ),
+        ]
+    ]
+    popn_size = 36
     params = {
         'init_popn': popn,
-        'iters': 2,
-        f'featurizer': DummyFeaturizer(),
-        'max_popn_size': 16,
-        'n_neighbors': 5,
+        'iters': 10,
+        'io_iters': 20,
+        'featurizer': DummyFeaturizer(),
+        'max_popn_size': popn_size,
+        'n_neighbors': 6,
         'smoothing': 1,
-        'p_arkv': 1/4,
+        'p_arkv': 4/popn_size,
         'verbose': True,
     }
     print(f"Running novelty search with parameters: {params}")
     novelty_search(**params)
 
-
-if __name__ == '__main__':
-    # demo_mutate_agents()
-    # demo_measure_novelty()
-    # demo_plot()
-    demo_ns()
