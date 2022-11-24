@@ -14,7 +14,7 @@ from cfg import CFG, PCFG
 from lindenmayer import S0LSystem, LSYSTEM_MG
 from inout import log_io, autograd_outside, inside_outside_step, log_io_step, log_dirio_step, inside_outside
 from featurizers import DummyFeaturizer, ResnetFeaturizer, Featurizer
-from book_zoo import zoo_systems
+from book_zoo import zoo_systems, simple_zoo_systems
 
 # Set up file paths
 PCFG_CACHE_PREFIX = ".cache/pcfg-"
@@ -31,9 +31,9 @@ for directory in [".cache/", ".cache/imgs/"]:
 
 # Hyper-parameters
 D = 3
-THETA = 43
-N_ROWS = 64
-N_COLS = 64
+THETA = 45
+N_ROWS = 128
+N_COLS = 128
 ROLLOUT_DEPTH = 3
 SENTENCE_LEN_LIMIT = 30
 
@@ -186,31 +186,31 @@ def demo_plot():
 
 
 if __name__ == '__main__':
-    # demo_mutate_agents()
-    # demo_measure_novelty()
     # demo_plot()
     popn = [
         x.to_sentence()
-        for x in [
-            S0LSystem("F", {"F": ["F+F", "F-F"]}),
-            S0LSystem("F", {"F": ["FF"]}),
-            S0LSystem("F", {"F": ["F++F", "FF"]}),
-            # S0LSystem(
-            #     "F-F-F-F",
-            #     {"F": ["F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"]}
-            # ),
-        ]
+        for x in simple_zoo_systems
+        # [
+        #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
+        #     S0LSystem("F", {"F": ["FF"]}),
+        #     S0LSystem("F", {"F": ["F++F", "FF"]}),
+        #     # S0LSystem(
+        #     #     "F-F-F-F",
+        #     #     {"F": ["F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"]}
+        #     # ),
+        # ]
     ]
-    popn_size = 36
+    popn_size = 49
+    arkv_growth_rate = 4
     params = {
         'init_popn': popn,
-        'iters': 10,
-        'io_iters': 20,
-        'featurizer': DummyFeaturizer(),
+        'iters': 50,
+        'io_iters': 30,
+        'featurizer': ResnetFeaturizer(),
         'max_popn_size': popn_size,
-        'n_neighbors': 6,
+        'n_neighbors': popn_size//3,
         'smoothing': 1,
-        'p_arkv': 4/popn_size,
+        'p_arkv': arkv_growth_rate/popn_size,
         'verbose': True,
     }
     print(f"Running novelty search with parameters: {params}")
