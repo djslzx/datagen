@@ -35,7 +35,7 @@ THETA = 45
 N_ROWS = 128
 N_COLS = 128
 ROLLOUT_DEPTH = 3
-SENTENCE_LEN_LIMIT = 30
+SENTENCE_LEN_LIMIT = 50
 
 
 def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: int, io_iters: int,
@@ -74,12 +74,14 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
             while True:
                 j = 0
                 sentence = tuple(metagrammar.iterate_fully())
-                next_gen[i] = sentence
-                if len(sentence) < SENTENCE_LEN_LIMIT:
+                if len(sentence) <= SENTENCE_LEN_LIMIT and \
+                   sentence not in next_gen:
                     break
                 else:
                     j += 1
-                    print(f"\r{j}-th try", end='')
+                    print(f"[next gen {i}] \r{j}-th try", end='') 
+            print()
+            next_gen[i] = sentence
             if np.random.random() < p_arkv:
                 arkv.add(sentence)
 
@@ -200,11 +202,11 @@ if __name__ == '__main__':
         #     # ),
         # ]
     ]
-    popn_size = 49
+    popn_size = 16
     arkv_growth_rate = 4
     params = {
         'init_popn': popn,
-        'iters': 50,
+        'iters': 1,
         'io_iters': 30,
         'featurizer': ResnetFeaturizer(),
         'max_popn_size': popn_size,

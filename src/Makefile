@@ -2,7 +2,7 @@ DIR := '../out/io-samples'
 ZOO_DIR := '../out/zoo'
 
 evo:
-	python3 -u evo.py
+	python3 -u -m scalene --outfile evo-profile_3.json evo.py
 
 lindenmayer:
 	python3 -u lindenmayer.py $(DIR)
