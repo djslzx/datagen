@@ -4,6 +4,7 @@ Test out evolutionary search algorithms for data augmentation.
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
+from math import ceil
 from typing import *
 from os import mkdir
 from pprint import pp
@@ -124,7 +125,7 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
         min_score = scores[max_popn_size - 1]
         labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
                   for score in scores]
-        plot_agents(next_gen, labels, 2, f"{IMG_CACHE_PREFIX}/{t}-popn-{iter}.png")
+        plot_agents_batched(next_gen, labels, n_samples_per_agent=2, n_imgs_per_plot=25, save_prefix=f"{IMG_CACHE_PREFIX}/{t}-popn-{iter}")
 
         if verbose:
             t_taken = time.time() - t_start
@@ -139,12 +140,41 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
             pp([''.join(x) for x in arkv])
             print("====================")
 
-    plot_agents(arkv, ["" for _ in range(len(arkv))], 2, f"{IMG_CACHE_PREFIX}/{t}-arkv.png")
     save_agents(arkv, f"{PCFG_CACHE_PREFIX}{t}.txt")
+    plot_agents_batched(arkv, None, n_samples_per_agent=2, n_imgs_per_plot=25, save_prefix=f"{IMG_CACHE_PREFIX}/{t}-arkv")
+
     return arkv
 
 
-def plot_agents(agents: Collection[CFG.Sentence], labels: Collection[str], n_samples_per_agent: int, saveto: str):
+def plot_agents_batched(agents: Collection[CFG.Sentence],
+                        labels: Optional[Collection[str]],
+                        n_samples_per_agent: int,
+                        n_imgs_per_plot: int,
+                        save_prefix: str):
+    if not labels:
+        labels = [""] * len(agents)
+
+    assert len(agents) == len(labels), \
+        f"Found mismatched lengths of agents ({len(agents)}) and labels ({len(labels)})"
+
+    n_agents = len(agents)
+    n_iters = ceil(n_agents/n_imgs_per_plot)
+    for i in range(n_iters):
+        agent_batch = agents[i * n_imgs_per_plot: (i+1) * n_imgs_per_plot]
+        label_batch = labels[i * n_imgs_per_plot: (i+1) * n_imgs_per_plot]
+        plot_agents(agents=agent_batch,
+                    labels=label_batch,
+                    n_samples_per_agent=n_samples_per_agent,
+                    saveto=f"{save_prefix}-{i}.png")
+
+
+def plot_agents(agents: Collection[CFG.Sentence],
+                labels: Optional[Collection[str]],
+                n_samples_per_agent: int,
+                saveto: str):
+    if not labels:
+        labels = [""] * len(agents)
+
     assert len(agents) == len(labels), \
         f"Found mismatched lengths of agents ({len(agents)}) and labels ({len(labels)})"
 
@@ -194,21 +224,21 @@ if __name__ == '__main__':
     # demo_plot()
     popn = [
         x.to_sentence()
-        for x in  # simple_zoo_systems
-        [
-            S0LSystem("F", {"F": ["F+F", "F-F"]}),
-            S0LSystem("F", {"F": ["FF"]}),
-        ]
+        for x in simple_zoo_systems
+        # [
+        #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
+        #     S0LSystem("F", {"F": ["FF"]}),
+        # ]
     ]
-    popn_size = 6
-    arkv_growth_rate = 4
+    popn_size = 100
+    arkv_growth_rate = 10
     params = {
         'init_popn': popn,
-        'iters': 1,
-        'io_iters': 1,
+        'iters': 100,
+        'io_iters': 50,
         'featurizer': ResnetFeaturizer(),
         'max_popn_size': popn_size,
-        'n_neighbors': popn_size//2,
+        'n_neighbors': popn_size//4,
         'smoothing': 1,
         'p_arkv': arkv_growth_rate/popn_size,
         'verbose': True,
