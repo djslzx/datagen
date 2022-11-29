@@ -232,10 +232,10 @@ class S0LSystem(LSystem):
     @staticmethod
     def from_sentence(s: List[str]) -> 'S0LSystem':
         """
-        Accepts a list of strings, or a single string with spaces between
-        distinct tokens, and outputs an L-system. The list should have the
-        form 'AXIOM; RULE, RULE, ...', where RULE has the form 'LHS ~ RHS'.
+        Accepts a single string with spaces between distinct tokens, and outputs an L-system.
+        The list should have the form 'AXIOM; RULE, RULE, ...', where RULE has the form 'LHS ~ RHS'.
         """
+        assert isinstance(s, list)
         s = " ".join(s)
         s_axiom, s_rules = s.strip().split(';')
         axiom = s_axiom.replace(' ', '')

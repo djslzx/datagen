@@ -37,6 +37,7 @@ N_ROWS = 128
 N_COLS = 128
 ROLLOUT_DEPTH = 3
 SENTENCE_LEN_LIMIT = 50
+N_AGENTS_PER_PLOT = 9
 
 
 def gen_next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float) -> Tuple[np.ndarray, Set]:
@@ -48,7 +49,7 @@ def gen_next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float) -> Tuple[np.
         while True:
             sentence = tuple(metagrammar.iterate_fully())
             if len(sentence) <= SENTENCE_LEN_LIMIT and \
-                    sentence not in next_gen:
+                all(sentence != stored for stored in next_gen[:i]):
                 break
             j += 1
             if retried: print(j, end=', ')
@@ -97,7 +98,8 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
         for i, s in enumerate(popn):  # parallel
             sys = S0LSystem.from_sentence(s)
             for j in range(n_samples):
-                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
+                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH),
+                               d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
                 popn_features[i, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
         knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(init_popn))).fit(popn_features)
 
@@ -108,7 +110,8 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
             features = np.empty((1, n_features * n_samples))
             sys = S0LSystem.from_sentence(s)
             for j in range(n_samples):
-                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
+                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH),
+                               d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
                 features[0, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
             distances, _ = knn.kneighbors(features)
             scores[i] = distances.sum(axis=1).item() / len(s)
@@ -125,7 +128,10 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
         min_score = scores[max_popn_size - 1]
         labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
                   for score in scores]
-        plot_agents_batched(next_gen, labels, n_samples_per_agent=2, n_imgs_per_plot=25, save_prefix=f"{IMG_CACHE_PREFIX}/{t}-popn-{iter}")
+        plot_agents_batched(next_gen, labels,
+                            n_samples_per_agent=2,
+                            n_agents_per_plot=N_AGENTS_PER_PLOT,
+                            save_prefix=f"{IMG_CACHE_PREFIX}/{t}-popn-{iter}")
 
         if verbose:
             t_taken = time.time() - t_start
@@ -141,7 +147,10 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
             print("====================")
 
     save_agents(arkv, f"{PCFG_CACHE_PREFIX}{t}.txt")
-    plot_agents_batched(arkv, None, n_samples_per_agent=2, n_imgs_per_plot=25, save_prefix=f"{IMG_CACHE_PREFIX}/{t}-arkv")
+    plot_agents_batched(list(arkv), None,
+                        n_samples_per_agent=2,
+                        n_agents_per_plot=N_AGENTS_PER_PLOT,
+                        save_prefix=f"{IMG_CACHE_PREFIX}/{t}-arkv")
 
     return arkv
 
@@ -149,7 +158,7 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
 def plot_agents_batched(agents: Collection[CFG.Sentence],
                         labels: Optional[Collection[str]],
                         n_samples_per_agent: int,
-                        n_imgs_per_plot: int,
+                        n_agents_per_plot: int,
                         save_prefix: str):
     if not labels:
         labels = [""] * len(agents)
@@ -158,10 +167,10 @@ def plot_agents_batched(agents: Collection[CFG.Sentence],
         f"Found mismatched lengths of agents ({len(agents)}) and labels ({len(labels)})"
 
     n_agents = len(agents)
-    n_iters = ceil(n_agents/n_imgs_per_plot)
+    n_iters = ceil(n_agents / n_agents_per_plot)
     for i in range(n_iters):
-        agent_batch = agents[i * n_imgs_per_plot: (i+1) * n_imgs_per_plot]
-        label_batch = labels[i * n_imgs_per_plot: (i+1) * n_imgs_per_plot]
+        agent_batch = agents[i * n_agents_per_plot: (i + 1) * n_agents_per_plot]
+        label_batch = labels[i * n_agents_per_plot: (i + 1) * n_agents_per_plot]
         plot_agents(agents=agent_batch,
                     labels=label_batch,
                     n_samples_per_agent=n_samples_per_agent,
