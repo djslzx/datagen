@@ -1,6 +1,14 @@
 from util import *
 
 
+def test_scale_image():
+    raise NotImplementedError
+
+
+def test_stack_repeat():
+    raise NotImplementedError
+
+
 def test_split_list():
     cases = [
         (["aa", "bb", "cc"], "x", [["aa", "bb", "cc"]]),

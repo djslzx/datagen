@@ -12,7 +12,7 @@ def check_resnet_classifier(popn: List[Tuple[S0LSystem, float]], n_samples: int)
     """
     Make sure that resnet classes for each L-system render look reasonable
     """
-    classifier = ResnetFeaturizer(disable_last_layer=False, softmax=True)
+    classifier = ResnetFeaturizer(disable_last_layer=False, softmax=True, scaling_factor=10)
     n = len(popn)
     images = np.empty((n, n_samples, 128, 128))
     labels = np.empty((n, n_samples), dtype=object)
@@ -20,8 +20,8 @@ def check_resnet_classifier(popn: List[Tuple[S0LSystem, float]], n_samples: int)
         for j in range(n_samples):
             img = sys.draw(sys.nth_expansion(3), d=3, theta=angle, n_rows=128, n_cols=128)
             images[i, j] = img
-            tensor_img = classifier.np_to_tensor(img)
-            class_labels = classifier.top_k_classes(tensor_img, k=3)
+            features = classifier.apply(img)
+            class_labels = classifier.top_k_classes(features, k=3)
             labels[i, j] = "\n".join(class_labels)
 
     # check resnet classes
@@ -35,8 +35,10 @@ def check_resnet_with_images(dirpath: str):  # pragma: no cover
     """
     classifier = ResnetFeaturizer(disable_last_layer=False, softmax=True)
     for img_file in listdir(dirpath):
-        img = read_image(f"{dirpath}/{img_file}")
-        labels = classifier.top_k_classes(img, 3)
+        print(f"Testing image {img_file}")
+        img = read_image(f"{dirpath}/{img_file}").numpy()
+        features = classifier.apply(img)
+        labels = classifier.top_k_classes(features, 3)
         plot([img[0]], shape=(1, 1), labels=["\n".join(labels)])
 
 
@@ -44,7 +46,7 @@ def check_resnet_featurizer(popn: List[Tuple[S0LSystem, float]], n_samples: int)
     """
     Make sure that the k nearest neighbors of each L-system look reasonable
     """
-    featurizer = ResnetFeaturizer(disable_last_layer=True, softmax=False)  # softmax or not?
+    featurizer = ResnetFeaturizer(disable_last_layer=True, softmax=False, scaling_factor=2)  # softmax or not?
     n = len(popn)
     images = np.empty((n, n_samples, 128, 128))
     features = np.empty((n, n_samples, featurizer.n_features))
@@ -224,10 +226,10 @@ if __name__ == '__main__':  # pragma: no cover
             "F--;F~F[[F+]]F",
             "F--;F~FF,F~[[[+F-]F]]F",
             "FF;F~[F+[F]FF-]",
-        ]
+        ][:5]
     ]
 
     check_resnet_with_images("../resnet-test/")
-    # check_resnet_preprocess(popn=popn, n_samples=1)
     check_resnet_classifier(popn=popn, n_samples=1)
+    # check_resnet_preprocess(popn=popn, n_samples=1)
     # check_resnet_featurizer(popn=popn, n_samples=1)

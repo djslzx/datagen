@@ -2,7 +2,15 @@ from __future__ import annotations
 import numpy as np
 import torch as T
 import itertools as it
-from typing import List, Tuple, Iterable, Optional, Set
+from typing import *
+
+
+def scale_image(img: np.ndarray, k: int) -> np.ndarray:
+    return np.kron(img, np.ones((k, k)))
+
+
+def stack_repeat(array: np.ndarray, k) -> np.ndarray:
+    return np.repeat(array[None, ...], k, axis=0)
 
 
 def split_list(s: List[str], t: str) -> List[List[str]]:
