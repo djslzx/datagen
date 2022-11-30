@@ -1,10 +1,9 @@
-import pdb
-
 import torch as T
 import numpy as np
 from torchvision.models import resnet50, ResNet50_Weights
 from torchvision.transforms import GaussianBlur
 from typing import *
+from sys import stderr
 import util
 
 
@@ -19,12 +18,11 @@ class Featurizer:
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, disable_last_layer=False, softmax=True, scaling_factor=1):
-        self.disable_last_layer = disable_last_layer
-        self.scaling_factor = scaling_factor
+    def __init__(self, disable_last_layer=False, softmax=True):
         weights = ResNet50_Weights.DEFAULT
-        self.preprocess = weights.transforms()
         resnet = resnet50(weights=weights)
+        self.preprocess = weights.transforms()
+        self.disable_last_layer = disable_last_layer
         if disable_last_layer:
             self.model = T.nn.Sequential(*list(resnet.children())[:-1])
         else:
@@ -39,15 +37,20 @@ class ResnetFeaturizer(Featurizer):
 
     def apply(self, img: np.ndarray) -> np.ndarray:
         assert len(img.shape) <= 3
-        if self.scaling_factor != 1:
-            img = util.scale_image(img, self.scaling_factor)
+        assert isinstance(img, np.ndarray), f"Expected ndarray, but got {type(img)}"
 
-        # handle alpha channels, grayscale images
+        # resnet only plays nice with uint8 matrices
+        if img.dtype != np.uint8:
+            print(f"WARNING: casting image of type {img.dtype} to uint8", file=stderr)
+            img = img.astype(np.uint8)
+
+        # handle alpha channels, grayscale images -> rgb
         if len(img.shape) == 2:
             img = util.stack_repeat(img, 3)
         elif img.shape[0] != 3:
             img = util.stack_repeat(img[0], 3)
 
+        # run resnet
         batch = self.preprocess(T.from_numpy(img)).unsqueeze(0)
         features = self.model(batch).squeeze()
         if self.softmax:
@@ -56,7 +59,7 @@ class ResnetFeaturizer(Featurizer):
 
     def top_k_classes(self, features: np.ndarray, k: int) -> List[str]:
         top_class_ids = [int(x) for x in (-features).argsort()[:k]]
-        labels = [f"{self.classify(class_id)}: {features[class_id].item(): .4e}"
+        labels = [f"{self.classify(class_id)}: {features[class_id].item(): .4f}"
                   for class_id in top_class_ids]
         return labels
 

@@ -1,6 +1,8 @@
+import pdb
+
 from featurizers import *
 from book_zoo import zoo
-from torchvision.io import read_image
+from torchvision.io import read_image, ImageReadMode
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 from typing import *
@@ -12,7 +14,7 @@ def check_resnet_classifier(popn: List[Tuple[S0LSystem, float]], n_samples: int)
     """
     Make sure that resnet classes for each L-system render look reasonable
     """
-    classifier = ResnetFeaturizer(disable_last_layer=False, softmax=True, scaling_factor=10)
+    classifier = ResnetFeaturizer(disable_last_layer=False, softmax=True)
     n = len(popn)
     images = np.empty((n, n_samples, 128, 128))
     labels = np.empty((n, n_samples), dtype=object)
@@ -33,10 +35,11 @@ def check_resnet_with_images(dirpath: str):  # pragma: no cover
     """
     Make sure that resnet gives reasonable answers to stock images
     """
-    classifier = ResnetFeaturizer(disable_last_layer=False, softmax=True)
+    classifier = ResnetFeaturizer()
     for img_file in listdir(dirpath):
         print(f"Testing image {img_file}")
-        img = read_image(f"{dirpath}/{img_file}").numpy()
+        img = read_image(f"{dirpath}/{img_file}", mode=ImageReadMode.GRAY).numpy()
+        print(f"  shape: {img.shape}")
         features = classifier.apply(img)
         labels = classifier.top_k_classes(features, 3)
         plot([img[0]], shape=(1, 1), labels=["\n".join(labels)])
@@ -46,7 +49,7 @@ def check_resnet_featurizer(popn: List[Tuple[S0LSystem, float]], n_samples: int)
     """
     Make sure that the k nearest neighbors of each L-system look reasonable
     """
-    featurizer = ResnetFeaturizer(disable_last_layer=True, softmax=False, scaling_factor=2)  # softmax or not?
+    featurizer = ResnetFeaturizer(disable_last_layer=True, softmax=False)  # softmax or not?
     n = len(popn)
     images = np.empty((n, n_samples, 128, 128))
     features = np.empty((n, n_samples, featurizer.n_features))
@@ -229,7 +232,7 @@ if __name__ == '__main__':  # pragma: no cover
         ][:5]
     ]
 
-    check_resnet_with_images("../resnet-test/")
-    check_resnet_classifier(popn=popn, n_samples=1)
     # check_resnet_preprocess(popn=popn, n_samples=1)
+    # check_resnet_with_images("../resnet-test/screenshots")
+    check_resnet_classifier(popn=popn, n_samples=1)
     # check_resnet_featurizer(popn=popn, n_samples=1)

@@ -107,7 +107,7 @@ class LSystem:
         r, c = n_rows//2, n_cols//2  # start at center of canvas
         heading = 90  # start facing up (logo)
         stack = []
-        canvas = np.zeros((n_rows, n_cols))
+        canvas = np.zeros((n_rows, n_cols), dtype=np.uint8)
         for char in s:
             if char == 'F':
                 r1 = r + int(d * sin(radians(heading)))
@@ -230,12 +230,12 @@ class S0LSystem(LSystem):
         return "".join(self.to_sentence())
 
     @staticmethod
-    def from_sentence(s: List[str]) -> 'S0LSystem':
+    def from_sentence(s: List[str] | Tuple[str]) -> 'S0LSystem':
         """
         Accepts a single string with spaces between distinct tokens, and outputs an L-system.
         The list should have the form 'AXIOM; RULE, RULE, ...', where RULE has the form 'LHS ~ RHS'.
         """
-        assert isinstance(s, list)
+        assert isinstance(s, List) or isinstance(s, Tuple), f"Expected list/tuple of strings but found {type(s)}"
         s = " ".join(s)
         s_axiom, s_rules = s.strip().split(';')
         axiom = s_axiom.replace(' ', '')
