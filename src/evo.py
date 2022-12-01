@@ -4,7 +4,7 @@ Test out evolutionary search algorithms for data augmentation.
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
-from math import ceil
+from math import ceil, sqrt
 from typing import *
 from os import mkdir
 from pprint import pp
@@ -16,6 +16,7 @@ from lindenmayer import S0LSystem, LSYSTEM_MG
 from inout import autograd_outside
 from featurizers import DummyFeaturizer, ResnetFeaturizer, Featurizer
 from book_zoo import zoo_systems, simple_zoo_systems
+import util
 
 # Set up file paths
 PCFG_CACHE_PREFIX = ".cache/pcfg-"
@@ -31,10 +32,12 @@ for directory in [".cache/", ".cache/imgs/"]:
         pass
 
 # Hyper-parameters
-D = 3
-THETA = 45
-N_ROWS = 128
-N_COLS = 128
+DRAW_ARGS = {
+    'd': 3,
+    'theta': 45,
+    'n_rows': 128,
+    'n_cols': 128,
+}
 ROLLOUT_DEPTH = 3
 SENTENCE_LEN_LIMIT = 50
 N_AGENTS_PER_PLOT = 9
@@ -64,12 +67,11 @@ def gen_next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float) -> Tuple[np.
 
 
 def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, io_iters: int,
-                   featurizer: Featurizer, smoothing: float, p_arkv: float, n_neighbors: int,
+                   featurizer: Featurizer, n_samples: int, p_arkv: float, n_neighbors: int,
                    verbose=False) -> Set[Iterable[str]]:
     popn = np.array(init_popn, dtype=object)
     arkv = set()
     n_next_gen = max_popn_size * 4
-    n_samples = 3
     n_features = featurizer.n_features
     meta_PCFG = PCFG.from_CFG(LSYSTEM_MG.to_CNF())
     t = int(time.time())
@@ -98,8 +100,7 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
         for i, s in enumerate(popn):  # parallel
             sys = S0LSystem.from_sentence(s)
             for j in range(n_samples):
-                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH),
-                               d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
+                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
                 popn_features[i, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
         knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(popn))).fit(popn_features)
 
@@ -110,14 +111,13 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
             features = np.empty((1, n_features * n_samples))
             sys = S0LSystem.from_sentence(s)
             for j in range(n_samples):
-                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH),
-                               d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
+                bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
                 features[0, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
             distances, indices = knn.kneighbors(features)
             # neighbors = popn[indices[0]]
             # labels = ["".join(x) for x in neighbors]
             # print(f"Closest neighbors to {''.join(s)} are {labels}")
-            # util.plot([sys.draw(S0LSystem.from_sentence(x).nth_expansion(ROLLOUT_DEPTH), D, THETA, N_ROWS, N_COLS)
+            # util.plot([sys.draw(S0LSystem.from_sentence(x).nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
             #            for x in neighbors],
             #           shape=(1, len(neighbors)),
             #           labels=labels)
@@ -136,10 +136,10 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
         min_score = scores[max_popn_size - 1]
         labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
                   for score in scores]
-        plot_agents_batched(next_gen, labels,
-                            n_samples_per_agent=2,
-                            n_agents_per_plot=N_AGENTS_PER_PLOT,
-                            save_prefix=f"{IMG_CACHE_PREFIX}/{t}-popn-{iter}")
+        # plot_agents_batched(next_gen, labels,
+        #                     n_samples_per_agent=2,
+        #                     n_agents_per_plot=N_AGENTS_PER_PLOT,
+        #                     save_prefix=f"{IMG_CACHE_PREFIX}/{t}-popn-{iter}")
 
         if verbose:
             t_taken = time.time() - t_start
@@ -154,11 +154,11 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
             pp([''.join(x) for x in arkv])
             print("====================")
 
-    save_agents(arkv, f"{PCFG_CACHE_PREFIX}{t}.txt")
-    plot_agents_batched(list(arkv), None,
-                        n_samples_per_agent=2,
-                        n_agents_per_plot=N_AGENTS_PER_PLOT,
-                        save_prefix=f"{IMG_CACHE_PREFIX}/{t}-arkv")
+    save_agents(arkv, f"{PCFG_CACHE_PREFIX}{t}-arkv.txt")
+    # plot_agents_batched(list(arkv), None,
+    #                     n_samples_per_agent=2,
+    #                     n_agents_per_plot=N_AGENTS_PER_PLOT,
+    #                     save_prefix=f"{IMG_CACHE_PREFIX}/{t}-arkv")
 
     return arkv
 
@@ -215,7 +215,7 @@ def plot_agents(agents: Collection[CFG.Sentence],
         sys = S0LSystem.from_sentence(agent)
         for _ in range(n_samples_per_agent):
             expansion = sys.nth_expansion(ROLLOUT_DEPTH)
-            bmp = S0LSystem.draw(expansion, d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
+            bmp = S0LSystem.draw(expansion, **DRAW_ARGS)
             axis = axes[i]
             axis.imshow(bmp)
             axis.set_title(label, fontsize=4, pad=4)
@@ -237,35 +237,65 @@ def demo_plot():
                 saveto=f"{IMG_CACHE_PREFIX}test-plot.png")
 
 
-if __name__ == '__main__':
-    # demo_plot()
+def plot_outputs(filename: str):
+    with open(filename, "r") as f:
+        imgs = []
+        labels = []
+        for line in f.readlines():
+            sys_str, score = line.split(' : ')
+            sys = S0LSystem.from_sentence(list(sys_str))
+            img = S0LSystem.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
+            imgs.append(img)
+            labels.append(f"{sys_str}\n{score}")
+
+            if len(imgs) == 25:
+                util.plot(imgs, shape=(5, 5), labels=labels)
+                imgs = []
+                labels = []
+
+        # plot remaining imgs
+        if imgs:
+            if len(imgs) % 2 == 0:
+                util.plot(imgs, shape=(2, len(imgs)//2), labels=labels)
+            else:
+                util.plot(imgs, shape=(1, len(imgs)), labels=labels)
+
+
+def main():
     popn = [
         x.to_sentence()
-        for x in  # simple_zoo_systems
-        [
-            S0LSystem("F", {"F": ["F+F", "F-F"]}),
-            S0LSystem("F", {"F": ["FF", "F-F"]}),
-            S0LSystem("F", {"F": ["F"]}),
-            S0LSystem("F", {"F": ["FF"]}),
-            S0LSystem("F", {"F": ["FFF"]}),
-            S0LSystem("F+F", {"F": ["FF"]}),
-            S0LSystem("F-F", {"F": ["FF"]}),
-        ]
+        for x in simple_zoo_systems
+        # [
+        #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
+        #     S0LSystem("F", {"F": ["FF", "F-F"]}),
+        #     S0LSystem("F", {"F": ["F"]}),
+        #     S0LSystem("F", {"F": ["FF"]}),
+        #     S0LSystem("F", {"F": ["FFF"]}),
+        #     S0LSystem("F+F", {"F": ["FF"]}),
+        #     S0LSystem("F-F", {"F": ["FF"]}),
+        # ]
     ]
     popn_size = 25
     arkv_growth_rate = 5
-    n_neighbors = 10
     params = {
         'init_popn': popn,
         'iters': 10,
         'io_iters': 10,
-        'featurizer': ResnetFeaturizer(disable_last_layer=True, softmax=True),
+        'featurizer': ResnetFeaturizer(disable_last_layer=True, softmax_outputs=True),
         'max_popn_size': popn_size,
-        'n_neighbors': n_neighbors,
-        'smoothing': 1,
-        'p_arkv': arkv_growth_rate/popn_size,
+        'n_neighbors': 10,
+        'n_samples': 3,
+        'p_arkv': arkv_growth_rate / popn_size,
         'verbose': True,
     }
     print(f"Running novelty search with parameters: {params}")
     novelty_search(**params)
 
+
+if __name__ == '__main__':
+    # demo_plot()
+    # main()
+    print("Gen 1")
+    plot_outputs("../out/ns/pcfg-1669883736-gen-0.txt")
+    print("Gen 2")
+    plot_outputs("../out/ns/pcfg-1669883736-gen-1.txt")

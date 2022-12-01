@@ -18,7 +18,7 @@ class Featurizer:
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, disable_last_layer=False, softmax=True):
+    def __init__(self, disable_last_layer=False, softmax_outputs=True):
         weights = ResNet50_Weights.DEFAULT
         resnet = resnet50(weights=weights)
         self.preprocess = weights.transforms()
@@ -29,7 +29,7 @@ class ResnetFeaturizer(Featurizer):
             self.model = resnet
             self.categories = weights.meta["categories"]
         self.model.eval()
-        self.softmax = softmax
+        self.softmax_outputs = softmax_outputs
 
     @property
     def n_features(self) -> int:
@@ -53,7 +53,7 @@ class ResnetFeaturizer(Featurizer):
         # run resnet
         batch = self.preprocess(T.from_numpy(img)).unsqueeze(0)
         features = self.model(batch).squeeze()
-        if self.softmax:
+        if self.softmax_outputs:
             features = features.softmax(0)
         return features.detach().numpy()
 
