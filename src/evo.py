@@ -63,10 +63,10 @@ def gen_next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float) -> Tuple[np.
     return next_gen, arkv
 
 
-def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: int, io_iters: int,
+def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, io_iters: int,
                    featurizer: Featurizer, smoothing: float, p_arkv: float, n_neighbors: int,
                    verbose=False) -> Set[Iterable[str]]:
-    popn = init_popn
+    popn = np.array(init_popn, dtype=object)
     arkv = set()
     n_next_gen = max_popn_size * 4
     n_samples = 3
@@ -101,7 +101,7 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
                 bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH),
                                d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
                 popn_features[i, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
-        knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(init_popn))).fit(popn_features)
+        knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(popn))).fit(popn_features)
 
         # score next gen via novelty
         if verbose: print("Scoring next generation...")
@@ -113,8 +113,16 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
                 bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH),
                                d=D, theta=THETA, n_rows=N_ROWS, n_cols=N_COLS)
                 features[0, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
-            distances, _ = knn.kneighbors(features)
-            scores[i] = distances.sum(axis=1).item() / len(s)
+            distances, indices = knn.kneighbors(features)
+            # neighbors = popn[indices[0]]
+            # labels = ["".join(x) for x in neighbors]
+            # print(f"Closest neighbors to {''.join(s)} are {labels}")
+            # util.plot([sys.draw(S0LSystem.from_sentence(x).nth_expansion(ROLLOUT_DEPTH), D, THETA, N_ROWS, N_COLS)
+            #            for x in neighbors],
+            #           shape=(1, len(neighbors)),
+            #           labels=labels)
+            scores[i] = distances.mean(axis=1).item()
+            # scores[i] /= len(s)  # prioritize shorter agents
 
         # cull popn
         if verbose: print("Culling popn...")
@@ -137,7 +145,7 @@ def novelty_search(init_popn: Collection[S0LSystem], max_popn_size: int, iters: 
             t_taken = time.time() - t_start
             print("====================")
             print(f"Completed iteration {iter} in {t_taken:.2f}s.")
-            print(f"New generation {n_next_gen}:")
+            print(f"New generation ({n_next_gen}):")
             for agent, label in zip(next_gen, labels):
                 print(f"  {''.join(agent)} - {label}")
             print(f"Population ({len(popn)}):")
@@ -233,21 +241,27 @@ if __name__ == '__main__':
     # demo_plot()
     popn = [
         x.to_sentence()
-        for x in simple_zoo_systems
-        # [
-        #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
-        #     S0LSystem("F", {"F": ["FF"]}),
-        # ]
+        for x in  # simple_zoo_systems
+        [
+            S0LSystem("F", {"F": ["F+F", "F-F"]}),
+            S0LSystem("F", {"F": ["FF", "F-F"]}),
+            S0LSystem("F", {"F": ["F"]}),
+            S0LSystem("F", {"F": ["FF"]}),
+            S0LSystem("F", {"F": ["FFF"]}),
+            S0LSystem("F+F", {"F": ["FF"]}),
+            S0LSystem("F-F", {"F": ["FF"]}),
+        ]
     ]
-    popn_size = 100
-    arkv_growth_rate = 10
+    popn_size = 25
+    arkv_growth_rate = 5
+    n_neighbors = 10
     params = {
         'init_popn': popn,
-        'iters': 100,
-        'io_iters': 50,
-        'featurizer': ResnetFeaturizer(),
+        'iters': 10,
+        'io_iters': 10,
+        'featurizer': ResnetFeaturizer(disable_last_layer=True, softmax=True),
         'max_popn_size': popn_size,
-        'n_neighbors': popn_size//4,
+        'n_neighbors': n_neighbors,
         'smoothing': 1,
         'p_arkv': arkv_growth_rate/popn_size,
         'verbose': True,

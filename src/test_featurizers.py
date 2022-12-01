@@ -4,10 +4,10 @@ from featurizers import *
 from book_zoo import zoo
 from torchvision.io import read_image, ImageReadMode
 from sklearn.neighbors import NearestNeighbors
-import matplotlib.pyplot as plt
 from typing import *
 from lindenmayer import S0LSystem
 from os import listdir
+import util
 
 
 def check_resnet_classifier(popn: List[Tuple[S0LSystem, float]], n_samples: int):  # pragma: no cover
@@ -28,7 +28,7 @@ def check_resnet_classifier(popn: List[Tuple[S0LSystem, float]], n_samples: int)
 
     # check resnet classes
     for i in range(n):
-        plot(images[i], shape=(1, n_samples), labels=labels[i])
+        util.plot(imgs=images[i], shape=(1, n_samples), labels=labels[i])
 
 
 def check_resnet_with_images(dirpath: str):  # pragma: no cover
@@ -42,7 +42,7 @@ def check_resnet_with_images(dirpath: str):  # pragma: no cover
         print(f"  shape: {img.shape}")
         features = classifier.apply(img)
         labels = classifier.top_k_classes(features, 3)
-        plot([img[0]], shape=(1, 1), labels=["\n".join(labels)])
+        util.plot(imgs=[img[0]], shape=(1, 1), labels=["\n".join(labels)])
 
 
 def check_resnet_featurizer(popn: List[Tuple[S0LSystem, float]], n_samples: int):  # pragma: no cover
@@ -69,8 +69,9 @@ def check_resnet_featurizer(popn: List[Tuple[S0LSystem, float]], n_samples: int)
         neighbor_indices = indices[distances.argsort()]
         all_imgs = np.concatenate((images[i].reshape(1, n_samples, 128, 128),
                                    images[neighbor_indices]), axis=0).reshape((-1, 128, 128))
-        plot(all_imgs, shape=(n_neighbors + 1, n_samples),
-             labels=[f"{x:.4e}" for x in [0.0] * n_samples + np.repeat(distances, n_samples).tolist()])
+        util.plot(imgs=all_imgs,
+                  shape=(n_neighbors + 1, n_samples),
+                  labels=[f"{x:.4e}" for x in [0.0] * n_samples + np.repeat(distances, n_samples).tolist()])
 
 
 def check_resnet_preprocess(popn: List[Tuple[S0LSystem, float]], n_samples: int):  # pragma: no cover
@@ -82,35 +83,9 @@ def check_resnet_preprocess(popn: List[Tuple[S0LSystem, float]], n_samples: int)
             tensor_img = T.from_numpy(np.repeat(img[None, ...], 3, axis=0))  # stack array over RGB channels
             processed_img = classifier.preprocess(tensor_img)[0]
             blurred_img = blur_classifier.gaussian_blur(tensor_img)[0]
-            plot([img, processed_img, blurred_img], shape=(1, 3), labels=["Raw", "Processed", "Blurred"])
-
-
-def plot(imgs: List[np.array], shape: Tuple[int, int], labels: Optional[List[str]] = None):  # pragma: no cover
-    assert len(imgs) == shape[0] * shape[1], f"Received {len(imgs)} with shape {shape}"
-    assert labels is None or len(imgs) == len(labels), f"Received {len(imgs)} images and {len(labels)} labels"
-
-    fig, ax = plt.subplots(*shape)
-    if shape == (1, 1):
-        ax.imshow(imgs[0])
-        if labels is not None:
-            ax.set_title(labels[0], pad=3, fontsize=6)
-    else:
-        # clear axis ticks
-        for axis in ax.flat:
-            axis.get_xaxis().set_visible(False)
-            axis.get_yaxis().set_visible(False)
-
-        # plot bitmaps
-        axes: List[plt.Axes] = ax.flat
-        for i, img in enumerate(imgs):
-            axis = axes[i]
-            axis.imshow(img)
-            if labels is not None:
-                axis.set_title(labels[i], pad=3, fontsize=6)
-
-    plt.tight_layout(pad=0.3, w_pad=0.1, h_pad=0.1)
-    plt.show()
-    plt.close()
+            util.plot(imgs=[img, processed_img, blurred_img],
+                      shape=(1, 3),
+                      labels=["Raw", "Processed", "Blurred"])
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -121,118 +96,11 @@ if __name__ == '__main__':  # pragma: no cover
             "F;F~F+[F]F[FF][F][-[F]]",
             "FF;F~[[F]],F~-F[FF[F[[[[FF-]F][+[[F-]]]]]]]",
             "+F;F~F-F[+++F+[-F]F[F-+[---+FF-]F]F++-][[F]],F~F",
-            "+FF;F~F+[[[[+[+[F[F+][F]-F[+[FF]]]]]F]+[F]-F-]]",
-            "F;F~F",
-            "+F;F~F",
-            "F;F~+F",
             "-F;F~F",
-            "+F+;F~F[F]-F",
-            "F+;F~F",
-            "F;F~F+",
-            "F-;F~F",
-            "F;F~F[F]-[F]F",
-            "F-;F~+F",
-            "-F-;F~F",
-            "+F+;F~F",
-            "-F+;F~F",
-            "F+;F~F+",
-            "FF;F~",
-            "-F;F~[F]",
-            "+F++;F~F",
-            "F;F~+[F]",
-            "F+;F~[F]",
-            "F;F~[+F+]",
-            "F+;F~[[F[-F-]F][[++F-]]F]F+",
-            "+F-F;F~FF",
-            "F;F~F,F~F",
-            "+-FF;F~F",
-            "F;F~[[+F]]",
-            "F;F~F+,F~F",
-            "-F;F~-[F]F",
-            "FFF;F~F",
-            "+FF+;F~",
-            "+F+;F~F,F~F",
-            "++F;F~F,F~F",
-            "+F+;F~+[F+]",
-            "F+;F~--[F+]",
-            "F;F~-+[[F]]",
-            "+F;F~[[-F[+F][F+]F-]]F",
-            "F-;F~-F,F~-F",
-            "FF;F~[F-]F",
-            "-FF+F;F~F",
-            "F;F~F+,F~[F]",
-            "F;F~[-F[F]]",
-            "-FF;F~F,F~F",
-            "--F;F~+[FF]F[F+]+[[F]+++[+-F-]][[F]]F",
-            "F;F~F[[F]-[F][+[F[[F][F+]F]]]]F,F~-[-F-]F+",
-            "F;F~F,F~F,F~F",
-            "F+-;F~F++,F~F",
-            "+-F;F~[[[F]]F]",
-            "F--;F~-+F,F~F+",
-            "-F;F~[++-FF]",
-            "-F;F~[F]F,F~[F]",
-            "F+;F~F,F~F,F~-F",
-            "F;F~F,F~F+,F~-F",
-            "F+;F~[+F]F",
-            "F-;F~[[[[FFF][-F--]]]][F]F+,F~F",
-            "F+;F~-[F]F[FFF],F~F",
-            "F;F~F,F~F[F[[F]][F[FF-]]F][-F],F~F,F~-",
-            "FF;F~F+,F~[[F]]",
-            "F+;F~F,F~[[[F]F]]",
-            "+F;F~-[[F[[[-[[F-]]F[[F]F]][F]+-F]]]F-+]",
-            "F+;F~[-F][[F+[-FF]FF][F[-+FF]F]F[F+]]",
-            "F-+;F~[[[FF]]F]",
-            "F;F~[[+[-[F]]]]F",
-            "F;F~[F],F~FF,F~F+",
-            "F+;F~[[[F][FF]]]",
-            "FFF;F~++[F],F~F",
-            "F;F~+F,F~F+F,F~F",
-            "-F-;F~FF,F~",
-            "F;F~+[F[[-[[F-][FF]]]]][[--F]]",
-            "-F+;F~F[F+],F~[F][F+]",
-            "F;F~FF,F~F",
-            "F+;F~--[[[F[F-][F]-[F]]]]",
-            "-F;F~[F]FF[[F-]]",
-            "F+;F~[[F]FF++],F~F+",
-            "+-F;F~F-,F~[[[+F]]],F~F,F~[+F]",
-            "F+;F~+[[++FF][-+[-F]F]F]",
-            "FF;F~[[F]],F~F,F~+FF",
-            "-F--;F~[F+F][[+F-]F[-F][F+]-F]",
-            "F+F;F~[[F[[F][[[[F[FF]]]]]]]],F~FF,F~-FF,F~F",
-            "++FF;F~[[[[F][F[F-]F]][F]]]",
-            "F;F~[[[[F]]F+]+[[F]]F+]",
-            "--F;F~[[-F][[[F+-]]]F]",
-            "+-F;F~-+[+[F-][[++[F]]]]",
-            "-F;F~FF",
-            "-+F+;F~F,F~F,F~[F]FFF,F~F,F~++F+",
-            "-F-;F~F+,F~+[[[-F[[-+FF]]]]FF]",
-            "F;F~+F[F],F~[[F]+[-F-]F],F~F,F~F",
-            "F+;F~--FF",
-            "-F+;F~F,F~F[-[FF][F][F]]",
-            "FF;F~[F]-F",
-            "F;F~F,F~+F[+F[[-+F]]],F~F,F~+F,F~[[F]F]",
-            "F-++--;F~+F+,F~[[F]F][[F-]]+F+F",
-            "F;F~F,F~F[[F[FF+][[FF][F][F]]]]",
-            "F;F~F,F~FF,F~[[[[+F]]]]F+F",
-            "+F;F~F+,F~[+[[-[[F]]]F]],F~+[[-FF]F+F]",
-            "F;F~-F,F~F[F++-],F~-F[[[[[F][+F]F]]]]",
-            "F+;F~FF,F~[F-F]",
-            "-F+;F~[[FF]]-[[F]]",
-            "F;F~F[[F[FF]][[[F-]]]][F]",
-            "+FF;F~[[F]F[F-][+[-F[F-]]]],F~[--F]",
-            "+F-;F~--F+,F~FFF,F~FF",
-            "F;F~+F[+-[-F]]",
-            "-F-;F~+F[[[[[F]]F]]]",
-            "+F;F~-F+F",
-            "+F;F~[+[F[[F]]]],F~[F[FF]-+F-],F~F,F~[-F]-[F+][-F]",
-            "-F-;F~[F[[[-+F]]][[F-]-F]],F~[[F[[[[FF]-[F]]]]]]",
-            "F--;F~F[[F+]]F",
-            "F--;F~FF,F~[[[+F-]F]]F",
-            "FF;F~[F+[F]FF-]",
-        ][:5]
+        ]
     ]
 
     # check_resnet_preprocess(popn=popn, n_samples=1)
     # check_resnet_with_images("../resnet-test/screenshots")
     check_resnet_classifier(popn=popn, n_samples=1)
-    # check_resnet_featurizer(popn=popn, n_samples=1)
+    # check_resnet_featurizer(popn=zoo, n_samples=1)

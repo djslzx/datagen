@@ -3,6 +3,35 @@ import numpy as np
 import torch as T
 import itertools as it
 from typing import *
+import matplotlib.pyplot as plt
+
+
+def plot(imgs: List[np.array], shape: Tuple[int, int], labels: Optional[List[str]] = None):  # pragma: no cover
+    assert len(imgs) == shape[0] * shape[1], f"Received {len(imgs)} with shape {shape}"
+    assert labels is None or len(imgs) == len(labels), f"Received {len(imgs)} images and {len(labels)} labels"
+
+    fig, ax = plt.subplots(*shape)
+    if shape == (1, 1):
+        ax.imshow(imgs[0])
+        if labels is not None:
+            ax.set_title(labels[0], pad=3, fontsize=6)
+    else:
+        # clear axis ticks
+        for axis in ax.flat:
+            axis.get_xaxis().set_visible(False)
+            axis.get_yaxis().set_visible(False)
+
+        # plot bitmaps
+        axes: List[plt.Axes] = ax.flat
+        for i, img in enumerate(imgs):
+            axis = axes[i]
+            axis.imshow(img)
+            if labels is not None:
+                axis.set_title(labels[i], pad=3, fontsize=6)
+
+    plt.tight_layout(pad=0.3, w_pad=0.1, h_pad=0.1)
+    plt.show()
+    plt.close()
 
 
 def scale_image(img: np.ndarray, k: int) -> np.ndarray:
