@@ -3,13 +3,10 @@ Test out evolutionary search algorithms for data augmentation.
 """
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-import matplotlib.pyplot as plt
-from math import ceil, sqrt
 from typing import *
 from os import mkdir
 from pprint import pp
 import time
-import pdb
 
 from cfg import CFG, PCFG
 from lindenmayer import S0LSystem, LSYSTEM_MG
@@ -39,7 +36,8 @@ DRAW_ARGS = {
     'n_cols': 128,
 }
 ROLLOUT_DEPTH = 3
-SENTENCE_LEN_LIMIT = 100
+SENTENCE_LEN_LIMIT = 30
+LENGTH_PADDING = 10
 
 
 def gen_next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float) -> Tuple[np.ndarray, Set]:
@@ -67,34 +65,33 @@ def gen_next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float) -> Tuple[np.
 
 def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, io_iters: int,
                    featurizer: Featurizer, n_samples: int, p_arkv: float, n_neighbors: int,
-                   verbose=False) -> Set[Iterable[str]]:
-    popn = np.array(init_popn, dtype=object)
+                   next_gen_ratio: int, id: str = "") -> Set[Iterable[str]]:
     arkv = set()
-    n_next_gen = max_popn_size * 4
+    popn = np.array(init_popn, dtype=object)
+    n_next_gen = max_popn_size * next_gen_ratio
     n_features = featurizer.n_features
     meta_PCFG = PCFG.from_CFG(LSYSTEM_MG.to_CNF())
-    t = int(time.time())
-
-    # TODO: to avoid extraneous computation w/ archives,
-    #  - store the feature vectors of elts in the archive
-    #  - measure the effect of more sampling (should be cheap in theory)
-    #  - reconsider archiving entirely
-    #  - log all generated specimens on disk instead of keeping in RAM
+    t = f"{int(time.time())}-{id}"
 
     for iter in range(iters):
-        if verbose: print(f"[NS iter {iter}]")
+        print(f"[NS iter {iter}]")
         t_start = time.time()
 
         # generate next gen
-        if verbose: print("Fitting metagrammar...")
-        metagrammar = autograd_outside(meta_PCFG, popn, iters=io_iters)
+        print("Fitting metagrammar...")
+        t_io = time.time()
+        metagrammar = autograd_outside(meta_PCFG, popn, iters=io_iters, verbose=False)
+        print(f"Fitting took {time.time() - t_io}s.")
 
-        if verbose: print("Generating next gen...")
+        print("Generating next gen...")
+        t_gen = time.time()
         next_gen, next_arkv = gen_next_gen(metagrammar, n_next_gen, p_arkv)
         arkv |= next_arkv
+        print(f"Generating took {time.time() - t_gen}s.")
 
         # compute popn features and build knn data structure
-        if verbose: print("Featurizing population...")
+        print("Featurizing population...")
+        t_feat = time.time()
         popn_features = np.empty((len(popn), n_features * n_samples))
         for i, s in enumerate(popn):  # parallel
             sys = S0LSystem.from_sentence(s)
@@ -102,9 +99,11 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
                 bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
                 popn_features[i, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
         knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(popn))).fit(popn_features)
+        print(f"Featurizing took {time.time() - t_feat}s.")
 
         # score next gen via novelty
-        if verbose: print("Scoring next generation...")
+        print("Scoring next generation...")
+        t_score = time.time()
         scores = np.empty(n_next_gen)
         for i, s in enumerate(next_gen):  # parallel
             features = np.empty((1, n_features * n_samples))
@@ -114,32 +113,37 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
                 features[0, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
             distances, indices = knn.kneighbors(features)
             scores[i] = distances.mean(axis=1).item()
-            # scores[i] /= len(s)  # prioritize shorter agents
+            # scores[i] /= LENGTH_PADDING + len(s)  # prioritize shorter agents
+        print(f"Scoring took {time.time() - t_score}s.")
 
         # cull popn
-        if verbose: print("Culling popn...")
+        print("Culling popn...")
+        t_cull = time.time()
         indices = np.argsort(-scores)  # sort descending: higher mean distances first
         next_gen = next_gen[indices]
         popn = next_gen[:max_popn_size]  # take indices of top `max_popn_size` agents
+        print(f"Culling took {time.time() - t_cull}s.")
 
-        if verbose:
-            if verbose: print("Logging...")
-            scores = scores[indices]
-            min_score = scores[max_popn_size - 1]
-            labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
-                      for score in scores]
-            t_taken = time.time() - t_start
+        # make labels
+        print("Logging...")
+        t_log = time.time()
+        scores = scores[indices]
+        min_score = scores[max_popn_size - 1]
+        labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
+                  for score in scores]
+        t_taken = time.time() - t_start
+        print(f"Logging took {time.time() - t_log}s.")
 
-            print("====================")
-            print(f"Completed iteration {iter} in {t_taken:.2f}s.")
-            print(f"New generation ({n_next_gen}):")
-            for agent, label in zip(next_gen, labels):
-                print(f"  {''.join(agent)} - {label}")
-            print(f"Population ({len(popn)}):")
-            pp([''.join(x) for x in popn])
-            print(f"Archive: ({len(arkv)})")
-            pp([''.join(x) for x in arkv])
-            print("====================")
+        print("====================")
+        print(f"Completed iteration {iter} in {t_taken:.2f}s.")
+        print(f"New generation ({n_next_gen}):")
+        for agent, label in zip(next_gen, labels):
+            print(f"  {''.join(agent)} - {label}")
+        print(f"Population ({len(popn)}):")
+        pp([''.join(x) for x in popn])
+        print(f"Archive: ({len(arkv)})")
+        pp([''.join(x) for x in arkv])
+        print("====================")
 
         # save gen
         with open(f"{PCFG_CACHE_PREFIX}{t}-gen-{iter}.txt", "w") as f:
@@ -154,138 +158,33 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
     return arkv
 
 
-def plot_agents_batched(agents: Collection[CFG.Sentence],
-                        labels: Optional[Collection[str]],
-                        n_samples_per_agent: int,
-                        n_agents_per_plot: int,
-                        save_prefix: str):
-    if not labels:
-        labels = [""] * len(agents)
-
-    assert len(agents) == len(labels), \
-        f"Found mismatched lengths of agents ({len(agents)}) and labels ({len(labels)})"
-
-    n_agents = len(agents)
-    n_iters = ceil(n_agents / n_agents_per_plot)
-    for i in range(n_iters):
-        agent_batch = agents[i * n_agents_per_plot: (i + 1) * n_agents_per_plot]
-        label_batch = labels[i * n_agents_per_plot: (i + 1) * n_agents_per_plot]
-        plot_agents(agents=agent_batch,
-                    labels=label_batch,
-                    n_samples_per_agent=n_samples_per_agent,
-                    saveto=f"{save_prefix}-{i}.png")
-
-
-def plot_agents(agents: Collection[CFG.Sentence],
-                labels: Optional[Collection[str]],
-                n_samples_per_agent: int,
-                saveto: str):
-    if not labels:
-        labels = [""] * len(agents)
-
-    assert len(agents) == len(labels), \
-        f"Found mismatched lengths of agents ({len(agents)}) and labels ({len(labels)})"
-
-    n_bmps = n_samples_per_agent * len(agents)
-    n_rows = int(np.sqrt(n_bmps))
-    n_cols = n_bmps // n_rows
-    if n_rows * n_cols < n_bmps:
-        n_rows += 1
-    dpi = 96 * (n_cols // 3 + 1)
-
-    fig, ax = plt.subplots(n_rows, n_cols)
-    # clear axis ticks
-    for axis in ax.flat:
-        axis.get_xaxis().set_visible(False)
-        axis.get_yaxis().set_visible(False)
-
-    # plot bitmaps
-    i = 0
-    axes: List[plt.Axes] = ax.flat
-    for agent, label in zip(agents, labels):
-        sys = S0LSystem.from_sentence(agent)
-        for _ in range(n_samples_per_agent):
-            expansion = sys.nth_expansion(ROLLOUT_DEPTH)
-            bmp = S0LSystem.draw(expansion, **DRAW_ARGS)
-            axis = axes[i]
-            axis.imshow(bmp)
-            axis.set_title(label, fontsize=4, pad=4)
-            i += 1
-    plt.tight_layout(pad=0.3, w_pad=0.1, h_pad=0.1)
-    plt.savefig(saveto, dpi=dpi)
-    plt.close()
-
-
-def save_agents(agents: Iterable[CFG.Sentence], saveto: str):
-    with open(saveto, "w") as f:
-        for agent in agents:
-            f.write(''.join(agent) + "\n")
-
-
-def demo_plot():
-    agents = [S0LSystem("F", {"F": ["F+F", "F-F"]})] * 36
-    plot_agents(agents, labels=[agent.to_code() for agent in agents], n_samples_per_agent=2,
-                saveto=f"{IMG_CACHE_PREFIX}test-plot.png")
-
-
-def plot_outputs(filename: str):
-    with open(filename, "r") as f:
-        imgs = []
-        labels = []
-        for line in f.readlines():
-            sys_str, score = line.split(' : ')
-            sys = S0LSystem.from_sentence(list(sys_str))
-            img = S0LSystem.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
-            imgs.append(img)
-            labels.append(f"{sys_str}\n{score}")
-
-            if len(imgs) == 25:
-                util.plot(imgs, shape=(5, 5), labels=labels)
-                imgs = []
-                labels = []
-
-        # plot remaining imgs
-        if imgs:
-            if len(imgs) % 2 == 0:
-                util.plot(imgs, shape=(2, len(imgs)//2), labels=labels)
-            else:
-                util.plot(imgs, shape=(1, len(imgs)), labels=labels)
-
-
-def main():
-    popn = [
+if __name__ == '__main__':
+    seed = [
         x.to_sentence()
-        for x in simple_zoo_systems
-        # [
-        #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
-        #     S0LSystem("F", {"F": ["FF", "F-F"]}),
-        #     S0LSystem("F", {"F": ["F"]}),
-        #     S0LSystem("F", {"F": ["FF"]}),
-        #     S0LSystem("F", {"F": ["FFF"]}),
-        #     S0LSystem("F+F", {"F": ["FF"]}),
-        #     S0LSystem("F-F", {"F": ["FF"]}),
-        # ]
+        for x in [
+            S0LSystem("F", {"F": ["F+F", "F-F"]}),
+            S0LSystem("F", {"F": ["FF", "F-F"]}),
+            S0LSystem("F", {"F": ["F"]}),
+            S0LSystem("F", {"F": ["FF"]}),
+            S0LSystem("F", {"F": ["FFF"]}),
+            S0LSystem("F+F", {"F": ["FF"]}),
+            S0LSystem("F-F", {"F": ["FF"]}),
+        ]
     ]
-    popn_size = 100
+    popn_size = 20
     arkv_growth_rate = 5
     params = {
-        'init_popn': popn,
-        'iters': 100,
+        'id': 'ignore-length',
+        'init_popn': seed,
+        'iters': 5,
         'io_iters': 10,
         'featurizer': RawFeaturizer(DRAW_ARGS['n_rows'], DRAW_ARGS['n_cols']),
         # ResnetFeaturizer(disable_last_layer=True, softmax_outputs=True),
         'max_popn_size': popn_size,
         'n_neighbors': 10,
         'n_samples': 3,
+        'next_gen_ratio': 5,
         'p_arkv': arkv_growth_rate / popn_size,
-        'verbose': True,
     }
     print(f"Running novelty search with parameters: {params}")
     novelty_search(**params)
-
-
-if __name__ == '__main__':
-    main()
-    # demo_plot()
-    # plot_outputs("../out/ns/pcfg-1669883736-gen-0.txt")
-    # plot_outputs("../out/ns/pcfg-1669883736-gen-1.txt")

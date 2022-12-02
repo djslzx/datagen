@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 
 def plot(imgs: List[np.array], shape: Tuple[int, int], labels: Optional[List[str]] = None):  # pragma: no cover
-    assert len(imgs) == shape[0] * shape[1], f"Received {len(imgs)} with shape {shape}"
+    assert len(imgs) <= shape[0] * shape[1], f"Received {len(imgs)} with shape {shape}"
     assert labels is None or len(imgs) == len(labels), f"Received {len(imgs)} images and {len(labels)} labels"
 
     fig, ax = plt.subplots(*shape)

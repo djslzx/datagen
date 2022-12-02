@@ -116,7 +116,7 @@ def autograd_inside(G: PCFG, s: CFG.Sentence) -> T.Tensor:
     return alpha[0, len(s) - 1][G.start]
 
 
-def autograd_outside(G: PCFG, corpus: List[CFG.Sentence], iters) -> PCFG:
+def autograd_outside(G: PCFG, corpus: List[CFG.Sentence], iters, verbose=False) -> PCFG:
     """
     Uses automatic differentiation to implement Inside-Outside.
     """
@@ -126,14 +126,16 @@ def autograd_outside(G: PCFG, corpus: List[CFG.Sentence], iters) -> PCFG:
     g = G.copy()
     optimizer = T.optim.Adam(g.parameters())
     for i in range(iters):
-        print(f"[IO iteration {i}]")
+        print(f"[Inside-outside: iter {i}]", end="")
         for word in corpus:
-            print(f"  Fitting to word {''.join(word)} of length {len(word)}...")
+            if verbose: print(f"  Fitting to word {''.join(word)} of length {len(word)}...")
+            else: print(".", end="")
             t_start = time.time()
             loss = -T.log(autograd_inside(g, word))
             loss.backward()
             optimizer.step()
-            print(f"    took {time.time() - t_start}s")
+            if verbose: print(f"    took {time.time() - t_start}s")
+        print()
     return g.normalized()
 
 
