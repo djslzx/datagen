@@ -14,7 +14,7 @@ import pdb
 from cfg import CFG, PCFG
 from lindenmayer import S0LSystem, LSYSTEM_MG
 from inout import autograd_outside
-from featurizers import DummyFeaturizer, ResnetFeaturizer, Featurizer
+from featurizers import DummyFeaturizer, ResnetFeaturizer, Featurizer, RawFeaturizer
 from book_zoo import zoo_systems, simple_zoo_systems
 import util
 
@@ -114,13 +114,6 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
                 bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
                 features[0, j * n_features: (j+1) * n_features] = featurizer.apply(bmp)
             distances, indices = knn.kneighbors(features)
-            # neighbors = popn[indices[0]]
-            # labels = ["".join(x) for x in neighbors]
-            # print(f"Closest neighbors to {''.join(s)} are {labels}")
-            # util.plot([sys.draw(S0LSystem.from_sentence(x).nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
-            #            for x in neighbors],
-            #           shape=(1, len(neighbors)),
-            #           labels=labels)
             scores[i] = distances.mean(axis=1).item()
             # scores[i] /= len(s)  # prioritize shorter agents
 
@@ -130,19 +123,14 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
         next_gen = next_gen[indices]
         popn = next_gen[:max_popn_size]  # take indices of top `max_popn_size` agents
 
-        # plot generation with selection markings
-        if verbose: print("Plotting...")
-        scores = scores[indices]
-        min_score = scores[max_popn_size - 1]
-        labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
-                  for score in scores]
-        # plot_agents_batched(next_gen, labels,
-        #                     n_samples_per_agent=2,
-        #                     n_agents_per_plot=N_AGENTS_PER_PLOT,
-        #                     save_prefix=f"{IMG_CACHE_PREFIX}/{t}-popn-{iter}")
-
         if verbose:
+            if verbose: print("Logging...")
+            scores = scores[indices]
+            min_score = scores[max_popn_size - 1]
+            labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
+                      for score in scores]
             t_taken = time.time() - t_start
+
             print("====================")
             print(f"Completed iteration {iter} in {t_taken:.2f}s.")
             print(f"New generation ({n_next_gen}):")
@@ -155,10 +143,6 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
             print("====================")
 
     save_agents(arkv, f"{PCFG_CACHE_PREFIX}{t}-arkv.txt")
-    # plot_agents_batched(list(arkv), None,
-    #                     n_samples_per_agent=2,
-    #                     n_agents_per_plot=N_AGENTS_PER_PLOT,
-    #                     save_prefix=f"{IMG_CACHE_PREFIX}/{t}-arkv")
 
     return arkv
 
@@ -264,16 +248,16 @@ def plot_outputs(filename: str):
 def main():
     popn = [
         x.to_sentence()
-        for x in simple_zoo_systems
-        # [
-        #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
-        #     S0LSystem("F", {"F": ["FF", "F-F"]}),
-        #     S0LSystem("F", {"F": ["F"]}),
-        #     S0LSystem("F", {"F": ["FF"]}),
-        #     S0LSystem("F", {"F": ["FFF"]}),
-        #     S0LSystem("F+F", {"F": ["FF"]}),
-        #     S0LSystem("F-F", {"F": ["FF"]}),
-        # ]
+        for x in  # simple_zoo_systems
+        [
+            S0LSystem("F", {"F": ["F+F", "F-F"]}),
+            S0LSystem("F", {"F": ["FF", "F-F"]}),
+            S0LSystem("F", {"F": ["F"]}),
+            S0LSystem("F", {"F": ["FF"]}),
+            S0LSystem("F", {"F": ["FFF"]}),
+            S0LSystem("F+F", {"F": ["FF"]}),
+            S0LSystem("F-F", {"F": ["FF"]}),
+        ]
     ]
     popn_size = 25
     arkv_growth_rate = 5
@@ -281,7 +265,8 @@ def main():
         'init_popn': popn,
         'iters': 10,
         'io_iters': 10,
-        'featurizer': ResnetFeaturizer(disable_last_layer=True, softmax_outputs=True),
+        'featurizer': RawFeaturizer(DRAW_ARGS['n_rows'], DRAW_ARGS['n_cols']),
+        # ResnetFeaturizer(disable_last_layer=True, softmax_outputs=True),
         'max_popn_size': popn_size,
         'n_neighbors': 10,
         'n_samples': 3,
@@ -293,9 +278,7 @@ def main():
 
 
 if __name__ == '__main__':
+    main()
     # demo_plot()
-    # main()
-    print("Gen 1")
-    plot_outputs("../out/ns/pcfg-1669883736-gen-0.txt")
-    print("Gen 2")
-    plot_outputs("../out/ns/pcfg-1669883736-gen-1.txt")
+    # plot_outputs("../out/ns/pcfg-1669883736-gen-0.txt")
+    # plot_outputs("../out/ns/pcfg-1669883736-gen-1.txt")

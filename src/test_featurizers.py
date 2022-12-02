@@ -71,7 +71,7 @@ def check_featurizer(featurizer: Featurizer, popn: List[Tuple[S0LSystem, float]]
     features = get_features(featurizer, images)
 
     # check feature neighbors
-    n_neighbors = 5
+    n_neighbors = n
     features = features.reshape((n, n_samples * featurizer.n_features))
     features_knn = NearestNeighbors(n_neighbors=n_neighbors).fit(features)
     for i in range(n):
@@ -85,32 +85,25 @@ def check_featurizer(featurizer: Featurizer, popn: List[Tuple[S0LSystem, float]]
                   labels=[f"{x:.4e}" for x in [0.0] * n_samples + np.repeat(distances, n_samples).tolist()])
 
 
-def check_resnet_preprocess(popn: List[Tuple[S0LSystem, float]], n_samples: int):  # pragma: no cover
-    classifier = ResnetFeaturizer()
-    blur_classifier = BlurredResnetFeaturizer(classifier, 5)
-    for i, (sys, angle) in enumerate(popn):
-        for j in range(n_samples):
-            img = sys.draw(sys.nth_expansion(3), d=4, theta=angle, n_rows=128, n_cols=128)
-            tensor_img = T.from_numpy(np.repeat(img[None, ...], 3, axis=0))  # stack array over RGB channels
-            processed_img = classifier.preprocess(tensor_img)[0]
-            blurred_img = blur_classifier.gaussian_blur(tensor_img)[0]
-            util.plot(imgs=[img, processed_img, blurred_img],
-                      shape=(1, 3),
-                      labels=["Raw", "Processed", "Blurred"])
-
-
 if __name__ == '__main__':  # pragma: no cover
     seed = [
         (S0LSystem.from_sentence(list(string)), 45)
         for string in [
-            "F;F~[[+[-+[FF]+F[F]][F-][[F-]F]F]-F][F-]FF",
+            # "F;F~[[+[-+[FF]+F[F]][F-][[F-]F]F]-F][F-]FF",
             "F;F~F+[F]F[FF][F][-[F]]",
-            "FF;F~[[F]],F~-F[FF[F[[[[FF-]F][+[[F-]]]]]]]",
-            "+F;F~F-F[+++F+[-F]F[F-+[---+FF-]F]F++-][[F]],F~F",
+            # "FF;F~[[F]],F~-F[FF[F[[[[FF-]F][+[[F-]]]]]]]",
+            # "+F;F~F-F[+++F+[-F]F[F-+[---+FF-]F]F++-][[F]],F~F",
             "-F;F~F",
+            "F;F~F",
+            "F;F~F+",
+            "F;F~F-",
+            "F+F;F~F",
+            "F+F;F~FF",
+            "F+F;F~FFF",
         ]
     ]
-
     # check_resnet_with_images("../resnet-test/screenshots")
     # check_resnet_classifier(popn=seed, n_samples=1)
-    check_featurizer(popn=zoo, n_samples=1)
+    # check_featurizer(featurizer=ResnetFeaturizer(disable_last_layer=True, softmax_outputs=False),
+    #                  popn=seed, n_samples=1)
+    check_featurizer(featurizer=RawFeaturizer(N_ROWS, N_COLS), popn=seed, n_samples=1)

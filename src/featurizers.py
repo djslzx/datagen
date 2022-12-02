@@ -1,7 +1,6 @@
 import torch as T
 import numpy as np
 from torchvision.models import resnet50, ResNet50_Weights
-from torchvision.transforms import GaussianBlur
 from typing import *
 from sys import stderr
 import util
@@ -72,20 +71,27 @@ class ResnetFeaturizer(Featurizer):
             return self.categories[class_id]
 
 
-class BlurredResnetFeaturizer(Featurizer):
-
-    def __init__(self, resnet: ResnetFeaturizer, kernel_size: int):
-        self.resnet = resnet
-        self.gaussian_blur = GaussianBlur(kernel_size)
-
-    def apply(self, img: np.ndarray) -> np.ndarray:
-        tensor = T.from_numpy(np.repeat(img[None, ...], 3, axis=0))  # stack array over RGB channels
-        blurred = self.gaussian_blur(tensor)
-        return self.resnet.apply_to_tensor(blurred).detach().numpy()
+class RawFeaturizer(Featurizer):
+    """
+    Treat each input image as a feature vector
+    """
+    def __init__(self, n_rows: int, n_cols: int):
+        self.n_rows = n_rows
+        self.n_cols = n_cols
 
     @property
     def n_features(self) -> int:
-        return self.resnet.n_features
+        return self.n_rows * self.n_cols
+
+    def apply(self, img: np.ndarray) -> np.ndarray:
+        assert img.shape == (self.n_rows, self.n_cols), \
+            f"Found image of shape {img.shape}, but expected [{self.n_rows}, {self.n_cols}]"
+
+        # reshape img to column vector
+        vec = img.reshape(self.n_rows * self.n_cols)
+
+        # map values to [0, 1]
+        return vec / 255
 
 
 class DummyFeaturizer(Featurizer):
