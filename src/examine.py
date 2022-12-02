@@ -9,28 +9,27 @@ def plot_outputs(filename: str):
         imgs = []
         labels = []
         for line in f.readlines():
-            sys_str, score = line.split(' : ')
-            if not score.strip().endswith('*'): continue  # skip unselected children
+            if ':' in line:
+                sys_str, score = line.split(' : ')
+                if not score.strip().endswith('*'): continue  # skip unselected children
+            else:
+                sys_str = line
+                score = ""
+
             sys = S0LSystem.from_sentence(list(sys_str))
             img = S0LSystem.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
             imgs.append(img)
             labels.append(f"{sys_str}\n{score}")
 
-            if len(imgs) == 25:
-                util.plot(imgs, shape=(5, 5), labels=labels)
-                imgs = []
-                labels = []
-
-        # plot remaining imgs
-        if imgs:
-            n_rows = int(sqrt(len(imgs)))
-            n_cols = ceil(len(imgs)//n_rows)
-            util.plot(imgs, shape=(n_rows, n_cols), labels=labels)
+    n_cols = ceil(sqrt(len(imgs)))
+    n_rows = ceil(len(imgs)/n_cols)
+    util.plot(title=filename, imgs=imgs, shape=(n_rows, n_cols), labels=labels, saveto=f"{filename}.png")
 
 
 if __name__ == '__main__':
-    for i in range(10):
-        fname = f"../out/ns/nolen50/pcfg-1669947420-nolen-gen-{i}.txt"
-        # fname = f".cache/pcfg-1669943468-ignore-length-gen-{i}.txt"
+    for i in range(5):
+        # fname = f"../out/ns/nolen50/pcfg-1669947420-nolen-gen-{i}.txt"
+        fname = f".cache/pcfg-1669965929-nolen-gen-{i}.txt"
         print(f"Plotting {fname}")
         plot_outputs(fname)
+    plot_outputs(".cache/pcfg-1669965929-nolen-arkv.txt")
