@@ -29,7 +29,8 @@ def plot_outputs(filename: str):
 
 
 if __name__ == '__main__':
-    for i in [0, 1, 2, 3, 4]:
-        fname = f".cache/pcfg-1669943468-ignore-length-gen-{i}.txt"
+    for i in range(10):
+        fname = f"../out/ns/nolen50/pcfg-1669947420-nolen-gen-{i}.txt"
+        # fname = f".cache/pcfg-1669943468-ignore-length-gen-{i}.txt"
         print(f"Plotting {fname}")
         plot_outputs(fname)

@@ -11,7 +11,7 @@ import time
 from cfg import CFG, PCFG
 from lindenmayer import S0LSystem, LSYSTEM_MG
 from inout import autograd_outside
-from featurizers import DummyFeaturizer, ResnetFeaturizer, Featurizer, RawFeaturizer
+from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
 from book_zoo import zoo_systems, simple_zoo_systems
 import util
 

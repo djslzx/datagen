@@ -30,6 +30,10 @@ class ResnetFeaturizer(Featurizer):
         self.model.eval()
         self.softmax_outputs = softmax_outputs
 
+    def __repr__(self) -> str:
+        return ("<ResnetFeaturizer: "
+                f"disable_last_layer={self.disable_last_layer}, softmax_outputs={self.softmax_outputs}>")
+
     @property
     def n_features(self) -> int:
         return 2048 if self.disable_last_layer else 1000
@@ -79,6 +83,9 @@ class RawFeaturizer(Featurizer):
         self.n_rows = n_rows
         self.n_cols = n_cols
 
+    def __repr__(self) -> str:
+        return f"<RawFeaturizer: shape=[{self.n_rows}, {self.n_cols}]>"
+
     @property
     def n_features(self) -> int:
         return self.n_rows * self.n_cols
@@ -105,16 +112,3 @@ class DummyFeaturizer(Featurizer):
     @property
     def n_features(self) -> int:
         return 2
-
-
-class SyntacticSemanticFeaturizer(Featurizer):
-
-    def __init__(self):
-        raise NotImplementedError
-
-    def apply(self, img: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
-
-    @property
-    def n_features(self) -> int:
-        raise NotImplementedError
