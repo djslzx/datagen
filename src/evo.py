@@ -36,8 +36,7 @@ THETA = 45
 N_ROWS = 128
 N_COLS = 128
 ROLLOUT_DEPTH = 3
-SENTENCE_LEN_LIMIT = 50
-N_AGENTS_PER_PLOT = 9
+SENTENCE_LEN_LIMIT = 100
 
 
 def gen_next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float) -> Tuple[np.ndarray, Set]:
@@ -126,7 +125,7 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
 
         # cull popn
         if verbose: print("Culling popn...")
-        indices = np.argsort(-scores)  # sort descending
+        indices = np.argsort(-scores)  # sort descending: higher mean distances first
         next_gen = next_gen[indices]
         popn = next_gen[:max_popn_size]  # take indices of top `max_popn_size` agents
 
@@ -136,10 +135,6 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
         min_score = scores[max_popn_size - 1]
         labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
                   for score in scores]
-        plot_agents_batched(next_gen, labels,
-                            n_samples_per_agent=2,
-                            n_agents_per_plot=N_AGENTS_PER_PLOT,
-                            save_prefix=f"{IMG_CACHE_PREFIX}/{t}-popn-{iter}")
 
         if verbose:
             t_taken = time.time() - t_start
@@ -154,11 +149,15 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
             pp([''.join(x) for x in arkv])
             print("====================")
 
-    save_agents(arkv, f"{PCFG_CACHE_PREFIX}{t}.txt")
-    plot_agents_batched(list(arkv), None,
-                        n_samples_per_agent=2,
-                        n_agents_per_plot=N_AGENTS_PER_PLOT,
-                        save_prefix=f"{IMG_CACHE_PREFIX}/{t}-arkv")
+        # save gen
+        with open(f"{PCFG_CACHE_PREFIX}{t}-gen-{iter}.txt", "w") as f:
+            for agent, label in zip(next_gen, labels):
+                f.write("".join(agent) + f" : {label}\n")
+
+    # save arkv
+    with open(f"{PCFG_CACHE_PREFIX}{t}-arkv.txt", "w") as f:
+        for agent in arkv:
+            f.write(''.join(agent) + "\n")
 
     return arkv
 
@@ -241,23 +240,23 @@ if __name__ == '__main__':
     # demo_plot()
     popn = [
         x.to_sentence()
-        for x in  # simple_zoo_systems
-        [
-            S0LSystem("F", {"F": ["F+F", "F-F"]}),
-            S0LSystem("F", {"F": ["FF", "F-F"]}),
-            S0LSystem("F", {"F": ["F"]}),
-            S0LSystem("F", {"F": ["FF"]}),
-            S0LSystem("F", {"F": ["FFF"]}),
-            S0LSystem("F+F", {"F": ["FF"]}),
-            S0LSystem("F-F", {"F": ["FF"]}),
-        ]
+        for x in simple_zoo_systems
+        # [
+        #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
+        #     S0LSystem("F", {"F": ["FF", "F-F"]}),
+        #     S0LSystem("F", {"F": ["F"]}),
+        #     S0LSystem("F", {"F": ["FF"]}),
+        #     S0LSystem("F", {"F": ["FFF"]}),
+        #     S0LSystem("F+F", {"F": ["FF"]}),
+        #     S0LSystem("F-F", {"F": ["FF"]}),
+        # ]
     ]
-    popn_size = 25
+    popn_size = 100
     arkv_growth_rate = 5
     n_neighbors = 10
     params = {
         'init_popn': popn,
-        'iters': 10,
+        'iters': 100,
         'io_iters': 10,
         'featurizer': ResnetFeaturizer(disable_last_layer=True, softmax=True),
         'max_popn_size': popn_size,
