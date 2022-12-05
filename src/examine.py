@@ -4,7 +4,7 @@ from lindenmayer import S0LSystem
 import util
 
 
-def plot_outputs(filename: str):
+def plot_outputs(filename: str, batch_size=36):
     with open(filename, "r") as f:
         imgs = []
         labels = []
@@ -19,17 +19,26 @@ def plot_outputs(filename: str):
             sys = S0LSystem.from_sentence(list(sys_str))
             img = S0LSystem.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
             imgs.append(img)
-            labels.append(f"{sys_str}\n{score}")
+            labels.append(f"{score}")
 
-    n_cols = ceil(sqrt(len(imgs)))
-    n_rows = ceil(len(imgs)/n_cols)
-    util.plot(title=filename, imgs=imgs, shape=(n_rows, n_cols), labels=labels, saveto=f"{filename}.png")
+    n_cols = ceil(sqrt(batch_size))
+    n_rows = ceil(batch_size / n_cols)
+    n_batches = ceil(len(imgs) / batch_size)
+    for i in range(n_batches):
+        img_batch = imgs[i * batch_size: (i+1) * batch_size]
+        label_batch = labels[i * batch_size: (i+1) * batch_size]
+        util.plot(title=filename,
+                  imgs=img_batch,
+                  shape=(n_rows, n_cols),
+                  labels=label_batch,
+                  saveto=f"{filename}-{i}.png")
 
 
 if __name__ == '__main__':
-    for i in range(5):
-        # fname = f"../out/ns/nolen50/pcfg-1669947420-nolen-gen-{i}.txt"
-        fname = f".cache/pcfg-1669965929-nolen-gen-{i}.txt"
-        print(f"Plotting {fname}")
-        plot_outputs(fname)
-    plot_outputs(".cache/pcfg-1669965929-nolen-arkv.txt")
+    # for i in range(50):
+    #     fname = f"../out/ns/nolen-1669947420/pcfg-1669947420-nolen-gen-{i}.txt"
+    #     # fname = f"../out/ns/nolen50/pcfg-1669947420-nolen-gen-{i}.txt"
+    #     # fname = f".cache/pcfg-1669965929-nolen-gen-{i}.txt"
+    #     print(f"Plotting {fname}")
+    #     plot_outputs(fname)
+    plot_outputs("../out/ns/nolen-1669947420/pcfg-1669947420-nolen-arkv.txt")
