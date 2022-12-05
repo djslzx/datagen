@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import torch as T
+import numpy as np
 import random
 import itertools as it
-from typing import Dict, List, Tuple, Set, Iterable, Iterator, Collection
-import torch as T
+from typing import *
 import util
 
 
@@ -626,3 +627,170 @@ class PCFG(T.nn.Module):
         for nt in self.cfg.nonterminals:
             for i, succ in enumerate(self.cfg.rules[nt]):
                 yield nt, succ, self.weights[nt][i]
+
+
+class Grammar:
+
+    def __init__(self, rules: Dict[Hashable, List[Tuple[float, Tuple | Hashable]]]):
+        """
+        Probabilistic Context Free Grammar (PCFG) over program expressions
+
+        rules: mapping from non-terminal symbol to list of productions
+        each production is a tuple of (log probability, form)
+        where log probability is a float corresponding to the log of the probability that generating from that nonterminal symbol will use that production
+        form is either : a tuple of the form (constructor, non-terminal-1, non-terminal-2, ...). `constructor` should be a component in the DSL, such as '+' or '*', which takes arguments
+                       : just `constructor`, where `constructor` should be a component in the DSL, such as '0' or 'x', which takes no arguments
+        non-terminals can be anything that can be hashed and compared for equality, such as strings, integers, and tuples of strings/integers
+        """
+        self.rules = rules
+
+    def pretty_print(self):
+        pretty = ""
+        for symbol, productions in self.rules.items():
+            for probability, form in productions:
+                pretty += f"{symbol} ::= "
+                if isinstance(form, tuple):
+                    pretty += "constructor='" + form[0] + "', args=" + ",".join(map(str, form[1:]))
+                else:
+                    pretty += "constructor=" + form
+                pretty += "\tw.p. " + str(probability) + "\n"
+        return pretty
+
+    @staticmethod
+    def from_components(components, gram):
+        """
+        Builds and returns a `Grammar` (ie PCFG) from typed DSL components
+        You should initialize the probabilities to be the same for every single rule
+        Also takes as input whether we are doing bigrams or unigrams for conditioning the probabilities
+
+        gram=1: unigram
+        gram=2: bigram
+        """
+        assert gram in [1, 2]
+        symbols = {tp for component_type in components.values() for tp in component_type}
+
+        if gram == 1:
+            def make_form(name, tp):
+                if len(tp) == 1: return name
+                assert len(tp) > 1
+                return tuple([name] + list(tp[:-1]))
+
+            rules = {symbol: [(0., make_form(component_name, component_type))
+                              for component_name, component_type in
+                              components.items() if component_type[-1] == symbol]
+                     for symbol in symbols}
+
+        if gram == 2:
+            for parent, parent_type in components.items():
+                if len(parent_type) == 1: continue  # this is not a function, so cannot be a parent
+                for argument_index, argument_type in enumerate(parent_type[:-1]):
+                    symbols.add((parent, argument_index, argument_type))
+
+            rules = {}
+            for symbol in symbols:
+                rules[symbol] = []
+                if isinstance(symbol, tuple):
+                    return_type = symbol[-1]
+                else:
+                    return_type = symbol
+
+                for component, component_type in components.items():
+                    if component_type[-1] == return_type:
+                        if len(component_type) == 1:
+                            form = component
+                        else:
+                            form = tuple([component] + [(component, argument_index, argument_type)
+                                                        for argument_index, argument_type in
+                                                        enumerate(component_type[:-1])])
+                        rules[symbol].append((0., form))
+
+        return Grammar(rules)
+
+    def normalize(self):
+        """
+        Destructively modifies grammar so that all the probabilities sum to one
+        Has some extra logic so that if the log probabilities are coming from a neural network,
+         everything is handled properly, but you don't have to worry about that
+        """
+
+        def norm(productions):
+            z, _ = productions[0]
+            if isinstance(z, T.Tensor):
+                z = T.logsumexp(T.stack([log_probability for log_probability, _ in productions]), 0)
+            else:
+                for log_probability, _ in productions[1:]:
+                    z = np.logaddexp(z, log_probability)
+
+            return [(log_probability - z, production) for log_probability, production in productions]
+
+        self.rules = {symbol: norm(productions)
+                      for symbol, productions in self.rules.items()}
+
+        return self
+
+    def uniform(self):
+        """
+        Destructively modifies grammar so that all the probabilities are uniform across each nonterminal symbol
+        """
+        self.rules = {symbol: [(0., form) for _, form in productions]
+                      for symbol, productions in self.rules.items()}
+        return self.normalize()
+
+    @property
+    def n_parameters(self):
+        """
+        Returns the number of real-valued parameters in the probabilistic grammar
+        (technically, this is not equal to the number of degrees of freedom,
+        because we have extra constraints that the probabilities must sum to one
+        across each nonterminal symbol)
+        """
+        return sum(len(productions) for productions in self.rules.values())
+
+    def from_tensor(self, tensor):
+        """
+        Destructively modifies grammar so that the continuous parameters come from the provided pytorch tensor
+        """
+        assert tensor.shape[0] == self.n_parameters
+        index = 0
+        for symbol in sorted(self.rules.keys(), key=str):
+            for i in range(len(self.rules[symbol])):
+                _, form = self.rules[symbol][i]
+                self.rules[symbol][i] = (tensor[index], form)
+                index += 1
+        assert self.n_parameters == index
+
+    def sample(self, nonterminal):
+        """
+        Samples a random expression built from the space of syntax trees generated by `nonterminal`
+        """
+        # productions: all the ways that we can produce expressions from this nonterminal symbol
+        productions = self.rules[nonterminal]
+
+        # sample from multinomial distribution given by log probabilities in `productions`
+        log_probabilities = [log_probability for log_probability, form in productions]
+        probabilities = np.exp(np.array(log_probabilities))
+        i = np.argmax(np.random.multinomial(1, probabilities))
+        _, rule = productions[i]
+        if isinstance(rule, tuple):
+            # this rule is a function that takes arguments
+            constructor, *arguments = rule
+            return tuple([constructor] + [self.sample(argument) for argument in arguments])
+        else:
+            # this rule is just a terminal symbol
+            constructor = rule
+            return constructor
+
+    def log_probability(self, nonterminal, expression):
+        """
+        Returns the log probability of sampling `expression` starting from the symbol `nonterminal`
+        """
+        for log_probability, rule in self.rules[nonterminal]:
+            if isinstance(expression, tuple) and isinstance(rule, tuple) and expression[0] == rule[0]:
+                child_log_probability = sum(self.log_probability(child_symbol, child_expression)
+                                            for child_symbol, child_expression in zip(rule[1:], expression[1:]))
+                return log_probability + child_log_probability
+
+            if expression == rule:
+                return log_probability
+
+        raise ValueError("could not calculate probability of expression giving grammar")
