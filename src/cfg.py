@@ -644,7 +644,10 @@ class Grammar:
         """
         self.rules = rules
 
-    def pretty_print(self):
+    def __str__(self) -> str:
+        return self.pretty_print()
+
+    def pretty_print(self) -> str:
         pretty = ""
         for symbol, productions in self.rules.items():
             for probability, form in productions:
@@ -657,7 +660,7 @@ class Grammar:
         return pretty
 
     @staticmethod
-    def from_components(components, gram):
+    def from_components(components, gram) -> 'Grammar':
         """
         Builds and returns a `Grammar` (ie PCFG) from typed DSL components
         You should initialize the probabilities to be the same for every single rule
@@ -706,7 +709,7 @@ class Grammar:
 
         return Grammar(rules)
 
-    def normalize(self):
+    def normalize_(self) -> 'Grammar':
         """
         Destructively modifies grammar so that all the probabilities sum to one
         Has some extra logic so that if the log probabilities are coming from a neural network,
@@ -728,7 +731,7 @@ class Grammar:
 
         return self
 
-    def uniform(self):
+    def uniform_(self) -> 'Grammar':
         """
         Destructively modifies grammar so that all the probabilities are uniform across each nonterminal symbol
         """
@@ -737,7 +740,7 @@ class Grammar:
         return self.normalize()
 
     @property
-    def n_parameters(self):
+    def n_parameters(self) -> int:
         """
         Returns the number of real-valued parameters in the probabilistic grammar
         (technically, this is not equal to the number of degrees of freedom,
@@ -746,7 +749,7 @@ class Grammar:
         """
         return sum(len(productions) for productions in self.rules.values())
 
-    def from_tensor(self, tensor):
+    def from_tensor_(self, tensor):
         """
         Destructively modifies grammar so that the continuous parameters come from the provided pytorch tensor
         """
@@ -780,7 +783,7 @@ class Grammar:
             constructor = rule
             return constructor
 
-    def log_probability(self, nonterminal, expression):
+    def log_probability(self, nonterminal, expression) -> float:
         """
         Returns the log probability of sampling `expression` starting from the symbol `nonterminal`
         """
