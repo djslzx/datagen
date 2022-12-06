@@ -35,10 +35,11 @@ def plot_outputs(filename: str, batch_size=36):
 
 
 if __name__ == '__main__':
-    # for i in range(50):
-    #     fname = f"../out/ns/nolen-1669947420/pcfg-1669947420-nolen-gen-{i}.txt"
-    #     # fname = f"../out/ns/nolen50/pcfg-1669947420-nolen-gen-{i}.txt"
-    #     # fname = f".cache/pcfg-1669965929-nolen-gen-{i}.txt"
-    #     print(f"Plotting {fname}")
-    #     plot_outputs(fname)
-    plot_outputs("../out/ns/nolen-1669947420/pcfg-1669947420-nolen-arkv.txt")
+    for i in range(100):
+        fname = f"../out/ns/nolen-1669959013/pcfg-1669959013-nolen-gen-{i}.txt"
+        # fname = f"../out/ns/nolen50/pcfg-1669947420-nolen-gen-{i}.txt"
+        # fname = f".cache/pcfg-1669965929-nolen-gen-{i}.txt"
+        print(f"Plotting {fname}")
+        plot_outputs(fname)
+    # plot_outputs("../out/ns/nolen-1669947420/pcfg-1669947420-nolen-arkv.txt")
+    # plot_outputs("../out/ns/nolen-1669947420/pcfg-1669947420-nolen-arkv.txt")
