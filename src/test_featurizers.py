@@ -88,8 +88,8 @@ if __name__ == '__main__':  # pragma: no cover
         for string in [
             "F;F~[[+[-+[FF]+F[F]][F-][[F-]F]F]-F][F-]FF",
             "F;F~F+[F]F[FF][F][-[F]]",
-            # "FF;F~[[F]],F~-F[FF[F[[[[FF-]F][+[[F-]]]]]]]",
-            # "+F;F~F-F[+++F+[-F]F[F-+[---+FF-]F]F++-][[F]],F~F",
+            "FF;F~[[F]],F~-F[FF[F[[[[FF-]F][+[[F-]]]]]]]",
+            "+F;F~F-F[+++F+[-F]F[F-+[---+FF-]F]F++-][[F]],F~F",
             "-F;F~F",
             "F;F~F",
             "F;F~F-",
@@ -98,10 +98,10 @@ if __name__ == '__main__':  # pragma: no cover
         ]
     ]
     # check_resnet_with_images("../resnet-test/screenshots")
-    # check_resnet_classifier(popn=seed, n_samples=1)
-    check_featurizer(featurizer=ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True),
-                     popn=seed, n_samples=1, n_neighbors=len(seed))
-    check_featurizer(featurizer=ResnetFeaturizer(disable_last_layer=True, softmax_outputs=False),
-                     popn=seed, n_samples=1, n_neighbors=len(seed))
-    check_featurizer(featurizer=RawFeaturizer(N_ROWS, N_COLS),
-                     popn=seed, n_samples=1, n_neighbors=len(seed))
+    check_resnet_classifier(popn=seed, n_samples=1)
+    # check_featurizer(featurizer=ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True),
+    #                  popn=seed, n_samples=1, n_neighbors=len(seed))
+    # check_featurizer(featurizer=ResnetFeaturizer(disable_last_layer=True, softmax_outputs=False),
+    #                  popn=seed, n_samples=1, n_neighbors=len(seed))
+    # check_featurizer(featurizer=RawFeaturizer(N_ROWS, N_COLS),
+    #                  popn=seed, n_samples=1, n_neighbors=len(seed))
