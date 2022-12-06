@@ -5,6 +5,9 @@ import numpy as np
 import random
 import itertools as it
 from typing import *
+import copy
+
+from max_heap import MaxHeap
 import util
 
 
@@ -631,16 +634,23 @@ class PCFG(T.nn.Module):
 
 class Grammar:
 
-    def __init__(self, rules: Dict[Hashable, List[Tuple[float, Tuple | Hashable]]]):
+    Symbol = str
+
+    def __init__(self, rules: Dict[Symbol, List[Tuple[float | T.Tensor, Tuple | Symbol]]]):
         """
         Probabilistic Context Free Grammar (PCFG) over program expressions
 
-        rules: mapping from non-terminal symbol to list of productions
-        each production is a tuple of (log probability, form)
-        where log probability is a float corresponding to the log of the probability that generating from that nonterminal symbol will use that production
-        form is either : a tuple of the form (constructor, non-terminal-1, non-terminal-2, ...). `constructor` should be a component in the DSL, such as '+' or '*', which takes arguments
-                       : just `constructor`, where `constructor` should be a component in the DSL, such as '0' or 'x', which takes no arguments
-        non-terminals can be anything that can be hashed and compared for equality, such as strings, integers, and tuples of strings/integers
+        `rules`: mapping from non-terminal symbol to list of productions.
+        each production is a tuple of (log probability, form), where
+        log probability is that generating ﾻfrom the nonterminal will use that production
+        and form is either :
+          (1) a tuple of the form (constructor, non-terminal-1, non-terminal-2, ...).
+             `constructor` should be a component in the DSL, such as '+' or '*', which takes arguments
+          (2) a `constructor`, where `constructor` should be a component in the DSL,
+          such as '0' or 'x', which takes no arguments
+
+        Non-terminals can be anything that can be hashed and compared for equality,
+        such as strings, integers, and tuples of strings/integers.
         """
         self.rules = rules
 
@@ -660,30 +670,29 @@ class Grammar:
         return pretty
 
     @staticmethod
-    def from_components(components, gram) -> 'Grammar':
+    def from_components(components: Dict[Symbol, List[Symbol]], gram) -> 'Grammar':
         """
         Builds and returns a `Grammar` (ie PCFG) from typed DSL components
-        You should initialize the probabilities to be the same for every single rule
-        Also takes as input whether we are doing bigrams or unigrams for conditioning the probabilities
+        Initializes the probabilities to be the same for every single rule
 
         gram=1: unigram
         gram=2: bigram
         """
         assert gram in [1, 2]
-        symbols = {tp for component_type in components.values() for tp in component_type}
+        symbols = {typ for component_type in components.values() for typ in component_type}
 
         if gram == 1:
             def make_form(name, tp):
+                assert len(tp) >= 1
                 if len(tp) == 1: return name
-                assert len(tp) > 1
-                return tuple([name] + list(tp[:-1]))
+                else: return tuple([name] + list(tp[:-1]))
 
             rules = {symbol: [(0., make_form(component_name, component_type))
                               for component_name, component_type in
                               components.items() if component_type[-1] == symbol]
                      for symbol in symbols}
 
-        if gram == 2:
+        elif gram == 2:
             for parent, parent_type in components.items():
                 if len(parent_type) == 1: continue  # this is not a function, so cannot be a parent
                 for argument_index, argument_type in enumerate(parent_type[:-1]):
@@ -702,9 +711,9 @@ class Grammar:
                         if len(component_type) == 1:
                             form = component
                         else:
-                            form = tuple([component] + [(component, argument_index, argument_type)
-                                                        for argument_index, argument_type in
-                                                        enumerate(component_type[:-1])])
+                            form = tuple([component] +
+                                         [(component, argument_index, argument_type)
+                                          for argument_index, argument_type in enumerate(component_type[:-1])])
                         rules[symbol].append((0., form))
 
         return Grammar(rules)
@@ -737,7 +746,7 @@ class Grammar:
         """
         self.rules = {symbol: [(0., form) for _, form in productions]
                       for symbol, productions in self.rules.items()}
-        return self.normalize()
+        return self.normalize_()
 
     @property
     def n_parameters(self) -> int:
@@ -783,7 +792,7 @@ class Grammar:
             constructor = rule
             return constructor
 
-    def log_probability(self, nonterminal, expression) -> float:
+    def log_probability(self, nonterminal, expression) -> T.Tensor:
         """
         Returns the log probability of sampling `expression` starting from the symbol `nonterminal`
         """
@@ -797,3 +806,178 @@ class Grammar:
                 return log_probability
 
         raise ValueError("could not calculate probability of expression giving grammar")
+
+    def top_down_generator(self, start_symbol):
+        """
+        Best-first top-down enumeration of programs generated from the PCFG
+
+        start_symbol: a nonterminal in the grammar. Should have: `start_symbol in self.rules.keys()`
+
+        Yields a generator.
+        Each generated return value is of the form: (log probability, expression)
+        The expressions should be in non-increasing order of (log) probability
+        Every expression that can be generated from the grammar should eventually be yielded
+        """
+        heap = MaxHeap()
+        heap.push(0., start_symbol)
+
+        def next_non_terminal(syntax_tree):
+            for non_terminal in self.rules:
+                if non_terminal == syntax_tree:
+                    return non_terminal
+
+            if not isinstance(syntax_tree, tuple):  # leaf
+                return None
+
+            arguments = syntax_tree[1:]
+            for argument in arguments:
+                argument_next = next_non_terminal(argument)
+                if argument_next is not None:
+                    return argument_next
+
+            return None  # none of the arguments had a next non-terminal symbol to expand
+
+        def finished(syntax_tree):
+            return next_non_terminal(syntax_tree) is None
+
+        def substitute_next_non_terminal(syntax_tree, expansion):
+            for non_terminal in self.rules:
+                if non_terminal == syntax_tree:
+                    return expansion
+
+            if not isinstance(syntax_tree, tuple):  # leaf
+                return None  # failure
+
+            function = syntax_tree[0]
+            arguments = list(syntax_tree[1:])
+            performed_substitution = False
+            for argument_index, argument in enumerate(arguments):
+                argument_new = substitute_next_non_terminal(argument, expansion)
+                if argument_new is not None:
+                    arguments[argument_index] = argument_new
+                    performed_substitution = True
+                    break
+
+            if performed_substitution:
+                return tuple([function] + arguments)
+            else:
+                return None
+
+        while not heap.empty():
+            log_probability, syntax_tree = heap.pop()
+
+            if finished(syntax_tree):
+                yield log_probability, syntax_tree
+                continue
+
+            non_terminal = next_non_terminal(syntax_tree)
+
+            for production_log_probability, production in self.rules[non_terminal]:
+                new_probability = production_log_probability + log_probability
+                new_syntax_tree = substitute_next_non_terminal(syntax_tree, production)
+                assert new_syntax_tree is not None, "should never happen"
+                heap.push(new_probability, new_syntax_tree)
+
+    def top_down_synthesize(self, start_symbol, input_outputs, evaluate: Callable):
+        """
+        Wrapper over top_down_generator that checks to see if generated programs satisfy input outputs
+
+        start_symbol: a nonterminal in the grammar. Should have: `start_symbol in self.rules.keys()`
+        input_outputs: list of pairs of input-outputs
+
+        returns: (number_of_programs_enumerated, first_program_that_worked_on_input_outputs)
+        """
+        for j, (expression_log_probability, expression) in \
+                enumerate(self.top_down_generator(start_symbol)):
+            if all(o == evaluate(expression, i) for i, o in input_outputs):
+                return 1 + j, expression
+
+
+class LearnedGrammar:
+
+    def __init__(self, feature_extractor, template_grammar: Grammar):
+        self.feature_extractor = feature_extractor
+        # make a deep copy so that we can mutate it without causing problems
+        self.grammar = copy.deepcopy(template_grammar)
+
+        # keep around the original for comparison
+        self.original_grammar = copy.deepcopy(template_grammar.normalize_())
+
+        # get the number of output features
+        n_features = feature_extractor.n_features
+
+        # a simple linear model, but you could use a more complex neural network
+        self.f_theta = T.nn.Linear(n_features, template_grammar.n_parameters).float()
+
+    def train(self, start_symbol, training_examples, input_domain, evaluate: Callable, steps=10000):
+        """
+        Train learned model, which adjusts $theta$ to maximize the log probability of training examples
+        given training specs derived from those examples
+
+        start_symbol: which symbol in the grammar is used to start generating a program
+        training_examples: a list of programs
+        input_domain: a list of environments that the programs will be evaluated on to generate outputs
+        steps: number of steps of gradient descent to perform
+        """
+        optimizer = T.optim.Adam(self.f_theta.parameters())
+        recent_losses, recent_log_likelihoods = [], []
+
+        for step in range(steps):
+            program = random.choice(training_examples)
+            input_outputs = [(i, evaluate(program, i)) for i in input_domain]
+
+            features = self.feature_extractor(input_outputs)
+            features = T.tensor(features).float()
+            projected_features = self.f_theta(features)
+
+            self.grammar.from_tensor_(projected_features)
+            self.grammar.normalize_()
+            loss = -self.grammar.log_probability(start_symbol, program)
+
+            recent_losses.append(loss.detach().numpy())
+            recent_log_likelihoods.append(-self.original_grammar.log_probability(start_symbol, program))
+            if len(recent_losses) == 100:
+                print("training step", step + 1, "\n\tavg loss (negative log likelihood of expression, w/ learning)",
+                      sum(recent_losses) / len(recent_losses),
+                      "\n\t      avg negative log likelihood of expression, w/o learning",
+                      sum(recent_log_likelihoods) / len(recent_log_likelihoods))
+                recent_losses, recent_log_likelihoods = [], []
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+    def get_grammar(self, input_outputs):
+        features = self.feature_extractor(input_outputs)
+        self.grammar.from_tensor_(self.f_theta(T.tensor(features).float()))
+        self.grammar.normalize_()
+        for symbol in self.grammar.rules.keys():
+            for i in range(len(self.grammar.rules[symbol])):
+                p, form = self.grammar.rules[symbol][i]
+                self.grammar.rules[symbol][i] = (p.detach().cpu().numpy(), form)
+        return copy.deepcopy(self.grammar)
+
+
+class FeatureExtractor:
+
+    @property
+    def n_features(self) -> int:
+        raise NotImplementedError
+
+    def extract(self, spec: List[Tuple]) -> np.ndarray:
+        raise NotImplementedError
+
+
+class FixedLengthFeatureExtractor(FeatureExtractor):
+
+    def __init__(self, length: int, lexicon: List[str]):
+        self.length = length    # length of feature vector output
+        self.lexicon = lexicon  # tokens to expect
+        self.token_to_index = {s: i for i, s in enumerate(self.lexicon)}
+
+    @property
+    def n_features(self) -> int:
+        return self.length
+
+    def extract(self, spec: List[Tuple]) -> np.ndarray:
+        raise NotImplementedError
