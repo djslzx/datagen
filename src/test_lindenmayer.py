@@ -232,6 +232,23 @@ def test_LSYSTEM_MG_coverage():
         assert LSYSTEM_MG.can_generate(ex), f"Expected {LSYSTEM_MG} to generate {ex}"
 
 
+def demo_to_expr_eval():
+    for sys in simple_zoo_systems:
+        print("".join(sys.to_sentence()))
+        expr = sys.to_expr()
+        print(expr)
+        print(S0LSystem.eval(expr))
+        print()
+
+
+def demo_learned_metagrammar():
+    examples = []
+    for sys in simple_zoo_systems:
+        examples.append(sys.to_expr())
+    learned_mg = S0LSystem.learned_metagrammar(examples)
+    print(learned_mg.grammar.pretty_print())
+
+
 def demo_draw():  # pragma: no cover
     systems: Dict[str, LSystem] = {
         'koch': D0LSystem(
@@ -293,4 +310,6 @@ def demo_draw():  # pragma: no cover
 
 
 if __name__ == '__main__':  # pragma: no cover
-    demo_draw()
+    # demo_to_expr_eval()
+    demo_learned_metagrammar()
+    # demo_draw()

@@ -7,7 +7,7 @@ import skimage.draw
 import itertools as it
 import pdb
 
-from cfg import CFG, Grammar, LearnedGrammar
+from cfg import CFG, Grammar, LearnedGrammar, FixedLengthFeatureExtractor, DummyFeatureExtractor
 
 LSYSTEM_MG = CFG("L-SYSTEM", {
     "L-SYSTEM": [
@@ -258,7 +258,7 @@ class S0LSystem(LSystem):
 
         return S0LSystem(axiom, rules, "uniform")
 
-    def to_tree(self) -> Tuple:
+    def to_expr(self) -> Tuple:
         """Converts the grammar to a tuple encoding a tree"""
         # TODO: implement a general-purpose parser?
 
@@ -326,7 +326,37 @@ class S0LSystem(LSystem):
         return ('l_system', axiom_expr, rules_expr)
 
     @staticmethod
-    def metagrammar() -> Grammar:
+    def eval(expr: Tuple) -> str:
+        semantics = {
+            "l_system": lambda axiom, rules: axiom + ';' + rules,
+            "symbol_nonterm": lambda nonterm: nonterm,
+            "symbol_term": lambda term: term,
+            "axiom_extend": lambda symbol, axiom: symbol + axiom,
+            "axiom_atom": lambda symbol: symbol,
+            "rules_extend": lambda rule, rules: rule + "," + rules,
+            "rules_atom": lambda rule: rule,
+            "rule": lambda lhs, rhs: lhs + "~" + rhs,
+            "lhs": lambda nonterm: nonterm,
+            "rhs_bracket": lambda rhs1, rhs2: "[" + rhs1 + "]" + rhs2,
+            "rhs_symbol": lambda sym, rhs: sym + rhs,
+            "rhs_empty": "",
+            "+": "+",
+            "-": "-",
+            "F": "F"
+        }
+
+        def evaluate(expr: Tuple | str):
+            assert type(expr) in [tuple, str]
+            if isinstance(expr, str):
+                return semantics[expr]
+            else:
+                f, *args = [evaluate(x) for x in expr]
+                return f(*args)
+
+        return evaluate(expr)
+
+    @staticmethod
+    def learned_metagrammar(examples: List[S0LSystem]) -> LearnedGrammar:
         """
         root -> axiom rules
         symbol -> nonterm | term
@@ -356,21 +386,19 @@ class S0LSystem(LSystem):
             "-": ["Term"],
             "F": ["Nonterm"],
         }
-        semantics = {
-            "l_system": lambda axiom, rules: S0LSystem(axiom, rules, "uniform"),
-            "symbol_nonterm": lambda nonterm: nonterm,
-            "symbol_term": lambda term: term,
-            "axiom_extend": lambda symbol, axiom: symbol + axiom,
-            "axiom_atom": lambda symbol: symbol,
-            "rules_extend": lambda rule, rules: rule + "," + rules,
-            "rules_atom": lambda rule: rule,
-            "rule": lambda lhs, rhs: lhs + "~" + rhs,
-            "lhs": lambda nonterm: nonterm,
-            "rhs_bracket": lambda rhs1, rhs2: "[" + rhs1 + "]" + rhs2,
-            "rhs_symbol": lambda sym, rhs: sym + rhs,
-            "rhs_empty": lambda: "",
-            "+": lambda: "+",
-            "-": lambda: "-",
-            "F": lambda: "F"
-        }
-        return Grammar.from_components(components, 1).normalize_()
+        template_grammar = Grammar.from_components(components, 1).normalize_()
+
+        def evaluate(expr, env):
+            return S0LSystem.eval(expr)
+
+        print(template_grammar)
+
+        learned_grammar = LearnedGrammar(
+            feature_extractor=DummyFeatureExtractor(),
+            # feature_extractor=FixedLengthFeatureExtractor(max_expr_tokens=1,
+            #                                               lexicon=list(components.keys())),
+            template_grammar=template_grammar,
+        )
+        learned_grammar.train("LSystem", examples, [{}], evaluate)
+
+        return learned_grammar

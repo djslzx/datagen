@@ -895,7 +895,7 @@ class Grammar:
 
 class LearnedGrammar:
 
-    def __init__(self, feature_extractor, template_grammar: Grammar):
+    def __init__(self, feature_extractor: FeatureExtractor, template_grammar: Grammar):
         self.feature_extractor = feature_extractor
         # make a deep copy so that we can mutate it without causing problems
         self.grammar = copy.deepcopy(template_grammar)
@@ -926,7 +926,7 @@ class LearnedGrammar:
             program = random.choice(training_examples)
             input_outputs = [(i, evaluate(program, i)) for i in input_domain]
 
-            features = self.feature_extractor(input_outputs)
+            features = self.feature_extractor.extract(input_outputs)
             features = T.tensor(features).float()
             projected_features = self.f_theta(features)
 
@@ -948,7 +948,7 @@ class LearnedGrammar:
             optimizer.zero_grad()
 
     def get_grammar(self, input_outputs):
-        features = self.feature_extractor(input_outputs)
+        features = self.feature_extractor.extract(input_outputs)
         self.grammar.from_tensor_(self.f_theta(T.tensor(features).float()))
         self.grammar.normalize_()
         for symbol in self.grammar.rules.keys():
@@ -968,16 +968,31 @@ class FeatureExtractor:
         raise NotImplementedError
 
 
+class DummyFeatureExtractor(FeatureExtractor):
+
+    def __init__(self):
+        pass
+
+    @property
+    def n_features(self) -> int:
+        return 1
+
+    def extract(self, spec: List[Tuple]) -> np.ndarray:
+        return np.array([1.])
+
+
 class FixedLengthFeatureExtractor(FeatureExtractor):
 
-    def __init__(self, length: int, lexicon: List[str]):
-        self.length = length    # length of feature vector output
+    def __init__(self, n_exprs, max_expr_tokens: int, lexicon: List[str]):
+        self.max_expr_tokens = max_expr_tokens    # length of feature vector output
+        self.n_exprs = n_exprs
         self.lexicon = lexicon  # tokens to expect
         self.token_to_index = {s: i for i, s in enumerate(self.lexicon)}
 
     @property
     def n_features(self) -> int:
-        return self.length
+        return self.max_expr_tokens * self.n_exprs
 
     def extract(self, spec: List[Tuple]) -> np.ndarray:
+        # take outputs and map to fixed-length vectors of indices
         raise NotImplementedError
