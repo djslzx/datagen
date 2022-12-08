@@ -6,6 +6,19 @@ from typing import *
 import matplotlib.pyplot as plt
 
 
+def find_closing_bracket(s: str) -> int:
+    n_brackets = 0
+    for i, c in enumerate(s):
+        if c == "[":
+            n_brackets += 1
+        elif c == "]":
+            if n_brackets == 0:
+                return i
+            else:
+                n_brackets -= 1
+    raise ValueError(f"Mismatched brackets in {s}")
+
+
 def plot(imgs: List[np.array], shape: Tuple[int, int], labels: Optional[List[str]] = None,
          title="", saveto=None):  # pragma: no cover
     assert len(imgs) <= shape[0] * shape[1], f"Received {len(imgs)} with shape {shape}"
@@ -38,10 +51,6 @@ def plot(imgs: List[np.array], shape: Tuple[int, int], labels: Optional[List[str
     else:
         plt.show()
     plt.close()
-
-
-def scale_image(img: np.ndarray, k: int) -> np.ndarray:
-    return np.kron(img, np.ones((k, k)))
 
 
 def stack_repeat(array: np.ndarray, k) -> np.ndarray:

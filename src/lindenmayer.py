@@ -1,64 +1,114 @@
 from __future__ import annotations
 import random
-from typing import Dict, List, Iterator, Tuple
+from typing import *
 from math import sin, cos, radians
 import numpy as np
 import skimage.draw
 import itertools as it
 import pdb
 
-from cfg import CFG, Grammar, LearnedGrammar, FixedLengthFeatureExtractor, DummyFeatureExtractor
+from cfg import CFG
+import util
 
-LSYSTEM_MG = CFG("L-SYSTEM", {
-    "L-SYSTEM": [
-        ["AXIOM", ";", "RULES"],
+LSYSTEM_MG = CFG("LSystem", {
+    "LSystem": [
+        ["Axiom", ";", "Rules"],
     ],
-    "AXIOM": [
-        ["NT", "AXIOM_W_NT"],
-        ["NT"],
-        ["T", "AXIOM"],
-    ],
-    "AXIOM_W_NT": [
-        ["NT_OR_T", "AXIOM_W_NT"],
-        ["NT_OR_T"],
-    ],
-    "RULES": [
-        ["RULE", ",", "RULES"],
-        ["RULE"],
-    ],
-    "RULE": [
-        ["LHS", "~", "RHS"],
-    ],
-    "LHS": [
-        ["NT"],
-    ],
-    "RHS": [
-        ["[", "RHS", "]", "RHS"],
-        ["[", "RHS", "]"],
-        ["NT", "RHS_W_NT"],
-        ["NT"],
-        ["T", "RHS"],
-    ],
-    "RHS_W_NT": [
-        ["[", "RHS", "]", "RHS"],
-        ["[", "RHS", "]"],
-        ["NT_OR_T", "RHS_W_NT"],
-        ["NT_OR_T"],
-    ],
-    "NT_OR_T": [
-        ["NT"],
-        ["T"]
-    ],
-    "NT": [
+    "Nonterminal": [
         ["F"],
-        # ["f"],
-        # ["X"],
     ],
-    "T": [
+    "Terminal": [
         ["+"],
         ["-"],
     ],
+    "Axiom": [
+        ["Nonterminal", "Axiom"],
+        ["Terminal", "Axiom"],
+        [CFG.Eps],
+    ],
+    "Rules": [
+        ["Rule", ",", "Rules"],
+        ["Rule"],
+    ],
+    "Rule": [
+        ["Nonterminal", "~", "Rhs"],
+    ],
+    "Rhs": [
+        ["[", "Rhs", "]" "Rhs"],
+        ["Nonterminal", "Rhs"],
+        ["Terminal", "Rhs"],
+        [CFG.Eps],
+    ],
 })
+
+
+def parse_lsystem_str(s: str, f: Callable) -> Any:
+    """
+    Greedily parse the string s into a tree of (type, id) nodes, where
+    - type is the nonterminal used, and
+    - id is the index of the rule used in the nonterminal's list of rules
+    """
+
+    def parse_symbol(s: str) -> Tuple:
+        assert len(s) == 1, f"Found long symbol: {s}"
+        if s == "F":
+            return f("Nonterminal", 0)
+        else:
+            return f("Terminal", 0 if s == "+" else 1)
+
+    def parse_axiom(s: str) -> Tuple:
+        if len(s) == 0:
+            return f("Axiom", 2)
+        hd, tl = s[0], s[1:]
+        assert hd in ["F", "+", "-"]
+        i = (0 if hd == "F" else 1)  # choose Axiom's Nonterm or Term rule
+        return f("Axiom", i, parse_symbol(hd), parse_axiom(tl))
+
+    def parse_rhs(s: str) -> Tuple | str:
+        if len(s) == 0:
+            return f("Rhs", 3)
+        hd, tl = s[0], s[1:]
+        assert hd in ["F", "+", "-", "["]
+        if hd == "[":
+            # find position of paired closing bracket; assumes balanced brackets
+            end = util.find_closing_bracket(tl)
+            inner = tl[:end]
+            outer = tl[end + 1:]  # ignore closing bracket
+            return f("Rhs", 0, parse_rhs(inner), parse_rhs(outer))
+
+        i = (0 if hd == "F" else 1)
+        return f("Rhs", i, parse_symbol(hd), parse_rhs(tl))
+
+    def parse_rule(s: str) -> Tuple:
+        lhs, rhs = s.split("~")
+        return f("Rule", 0, f("Nonterminal", 0), parse_rhs(rhs))
+
+    def parse_rules(s: str) -> Tuple:
+        rule_exprs = [parse_rule(rule) for rule in s.split(",")]
+        expr = f("Rules", 1, rule_exprs[-1])
+        for rule_expr in reversed(rule_exprs[:-1]):
+            expr = f("Rules", 0, rule_expr, expr)
+        return expr
+
+    axiom, rules = s.split(";")
+    axiom_expr = parse_axiom(axiom)
+    rules_expr = parse_rules(rules)
+
+    return f("LSystem", 0, axiom_expr, rules_expr)
+
+
+def parse_lsystem_str_as_tree(s: str) -> Tuple:
+    return parse_lsystem_str(s, lambda *x: tuple(x))
+
+
+def parse_lsystem_str_as_counts(s: str) -> Dict:
+    counts = {}
+
+    def count(nt, i, *args):
+        counts[nt, i] = counts.get((nt, i), 0) + 1
+
+    parse_lsystem_str(s, count)
+    return counts
 
 
 class LSystem:
@@ -257,148 +307,3 @@ class S0LSystem(LSystem):
                 rules[lhs] = [rhs]
 
         return S0LSystem(axiom, rules, "uniform")
-
-    def to_expr(self) -> Tuple:
-        """Converts the grammar to a tuple encoding a tree"""
-        # TODO: implement a general-purpose parser?
-
-        def parse_axiom(s: str) -> Tuple:
-            assert s, "Received empty string"
-            if len(s) == 1:
-                hd, tl = s[0], None
-            else:
-                hd, tl = s[0], s[1:]
-            assert hd in ["F", "+", "-"]
-            symbol = ("symbol_nonterm" if hd == "F" else "symbol_term", hd)
-            if not tl:  # leaf
-                return ("axiom_atom", symbol)
-            else:
-                return ("axiom_extend", symbol, parse_axiom(tl))
-
-        def find_closing_bracket(s: str) -> int:
-            n_brackets = 0
-            for i, c in enumerate(s):
-                if c == "[":
-                    n_brackets += 1
-                elif c == "]":
-                    if n_brackets == 0:
-                        return i
-                    else:
-                        n_brackets -= 1
-            raise ValueError(f"Mismatched brackets in {s}")
-
-        def parse_rhs(s: str) -> Tuple | str:
-            if len(s) == 0:
-                return "rhs_empty"
-            elif len(s) == 1:
-                hd, tl = s[0], None
-            else:
-                hd, tl = s[0], s[1:]
-
-            assert hd in ["F", "+", "-", "["]
-
-            if hd == "[":
-                # find position of paired closing bracket; assumes balanced brackets
-                end = find_closing_bracket(tl)
-                inner = tl[:end]
-                outer = tl[end+1:]  # ignore closing bracket
-                return ("rhs_bracket", parse_rhs(inner), parse_rhs(outer))
-
-            symbol = ("symbol_nonterm" if hd == "F" else "symbol_term", hd)
-            if not tl:  # leaf
-                return ("rhs_symbol", symbol, "rhs_empty")
-            else:
-                return ("rhs_symbol", symbol, parse_rhs(tl))
-
-        def parse_rules(rules: Dict[CFG.Word, List[CFG.Sentence]]) -> Tuple:
-            rule_trees = []
-            for lhs, rhss in rules.items():
-                for rhs in rhss:
-                    rhs_tree = parse_rhs(rhs)
-                    rule_trees.append(("rule", ("lhs", lhs), rhs_tree))
-            rules_tree = ('rules_atom', rule_trees[-1])
-            for tree in reversed(rule_trees[:-1]):
-                rules_tree = ("rules_extend", tree, rules_tree)
-            return rules_tree
-
-        axiom_expr = parse_axiom(self.axiom)
-        rules_expr = parse_rules(self.productions)
-        return ('l_system', axiom_expr, rules_expr)
-
-    @staticmethod
-    def eval(expr: Tuple) -> str:
-        semantics = {
-            "l_system": lambda axiom, rules: axiom + ';' + rules,
-            "symbol_nonterm": lambda nonterm: nonterm,
-            "symbol_term": lambda term: term,
-            "axiom_extend": lambda symbol, axiom: symbol + axiom,
-            "axiom_atom": lambda symbol: symbol,
-            "rules_extend": lambda rule, rules: rule + "," + rules,
-            "rules_atom": lambda rule: rule,
-            "rule": lambda lhs, rhs: lhs + "~" + rhs,
-            "lhs": lambda nonterm: nonterm,
-            "rhs_bracket": lambda rhs1, rhs2: "[" + rhs1 + "]" + rhs2,
-            "rhs_symbol": lambda sym, rhs: sym + rhs,
-            "rhs_empty": "",
-            "+": "+",
-            "-": "-",
-            "F": "F"
-        }
-
-        def evaluate(expr: Tuple | str):
-            assert type(expr) in [tuple, str]
-            if isinstance(expr, str):
-                return semantics[expr]
-            else:
-                f, *args = [evaluate(x) for x in expr]
-                return f(*args)
-
-        return evaluate(expr)
-
-    @staticmethod
-    def learned_metagrammar(examples: List[S0LSystem]) -> LearnedGrammar:
-        """
-        root -> axiom rules
-        symbol -> nonterm | term
-        axiom -> symbol axiom | axiom
-        rules -> rule rules | rule
-        rule -> lhs rhs
-        lhs -> nonterm
-        rhs -> [ rhs ] rhs | symbol rhs | empty
-        term -> + | -
-        nonterm -> F
-        """
-        # Types are capitalized; functions are lowercase
-        components = {
-            "l_system": ["Axiom", "Rules", "LSystem"],
-            "symbol_nonterm": ["Nonterm", "Symbol"],
-            "symbol_term": ["Term", "Symbol"],
-            "axiom_extend": ["Symbol", "Axiom", "Axiom"],
-            "axiom_atom": ["Symbol", "Axiom"],
-            "rules_extend": ["Rule", "Rules", "Rules"],
-            "rules_atom": ["Rule", "Rules"],
-            "rule": ["Lhs", "Rhs", "Rule"],
-            "lhs": ["Nonterm", "Lhs"],
-            "rhs_bracket": ["Rhs", "Rhs", "Rhs"],
-            "rhs_symbol": ["Symbol", "Rhs", "Rhs"],
-            "rhs_empty": ["Rhs"],
-            "+": ["Term"],
-            "-": ["Term"],
-            "F": ["Nonterm"],
-        }
-        template_grammar = Grammar.from_components(components, 1).normalize_()
-
-        def evaluate(expr, env):
-            return S0LSystem.eval(expr)
-
-        print(template_grammar)
-
-        learned_grammar = LearnedGrammar(
-            feature_extractor=DummyFeatureExtractor(),
-            # feature_extractor=FixedLengthFeatureExtractor(max_expr_tokens=1,
-            #                                               lexicon=list(components.keys())),
-            template_grammar=template_grammar,
-        )
-        learned_grammar.train("LSystem", examples, [{}], evaluate)
-
-        return learned_grammar

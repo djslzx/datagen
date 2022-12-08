@@ -1,6 +1,10 @@
 from util import *
 
 
+def test_find_closing_bracket():
+    raise NotImplementedError
+
+
 def test_scale_image():
     raise NotImplementedError
 

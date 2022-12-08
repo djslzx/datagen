@@ -232,21 +232,8 @@ def test_LSYSTEM_MG_coverage():
         assert LSYSTEM_MG.can_generate(ex), f"Expected {LSYSTEM_MG} to generate {ex}"
 
 
-def demo_to_expr_eval():
-    for sys in simple_zoo_systems:
-        print("".join(sys.to_sentence()))
-        expr = sys.to_expr()
-        print(expr)
-        print(S0LSystem.eval(expr))
-        print()
-
-
-def demo_learned_metagrammar():
-    examples = []
-    for sys in simple_zoo_systems:
-        examples.append(sys.to_expr())
-    learned_mg = S0LSystem.learned_metagrammar(examples)
-    print(learned_mg.grammar.pretty_print())
+def test_parse_lsystem_str():
+    raise NotImplementedError
 
 
 def demo_draw():  # pragma: no cover
