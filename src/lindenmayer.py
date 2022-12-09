@@ -24,7 +24,7 @@ LSYSTEM_MG = CFG("LSystem", {
     "Axiom": [
         ["Nonterminal", "Axiom"],
         ["Terminal", "Axiom"],
-        [CFG.Eps],
+        [],
     ],
     "Rules": [
         ["Rule", ",", "Rules"],
@@ -34,10 +34,10 @@ LSYSTEM_MG = CFG("LSystem", {
         ["Nonterminal", "~", "Rhs"],
     ],
     "Rhs": [
-        ["[", "Rhs", "]" "Rhs"],
+        ["[", "Rhs", "]", "Rhs"],
         ["Nonterminal", "Rhs"],
         ["Terminal", "Rhs"],
-        [CFG.Eps],
+        [],
     ],
 })
 
@@ -76,7 +76,7 @@ def parse_lsystem_str(s: str, f: Callable) -> Any:
             outer = tl[end + 1:]  # ignore closing bracket
             return f("Rhs", 0, parse_rhs(inner), parse_rhs(outer))
 
-        i = (0 if hd == "F" else 1)
+        i = (1 if hd == "F" else 2)
         return f("Rhs", i, parse_symbol(hd), parse_rhs(tl))
 
     def parse_rule(s: str) -> Tuple:

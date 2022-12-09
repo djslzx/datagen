@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pdb
+
 import torch as T
 import numpy as np
 import random
@@ -23,8 +25,7 @@ class CFG:
     """
     Word = str
     Sentence = List[Word]
-    Eps = 'ε'
-    Empty = [Eps]
+    Empty: Sentence = []
 
     def __init__(self, start: str, rules: Dict[str, Iterable[str | Sentence]]):
         CFG.check_rep(start, rules)
@@ -39,16 +40,11 @@ class CFG:
     def check_rep(start, rules):
         if start not in rules:
             raise ValueError(f"Starting symbol {start} not found in rules")
-        if not all(succ and (isinstance(succ, str) or
-                             (isinstance(succ, list) and all(succ)))
+        if not all(succ and (isinstance(succ, str) or isinstance(succ, list))
                    for pred, succ in rules.items()):
-            raise ValueError("All rule RHS should be nonempty, "
-                             "and each element should also be nonempty")
+            raise ValueError("Each predecessor must have at least one successor")
         if any(pred in succs for pred, succs in rules.items()):
             raise ValueError("No nonterminal should map to itself")
-        if any(succs == [CFG.Empty] or succs == CFG.Empty
-               for succs in rules.values()):
-            raise ValueError("All RHS should have at least one non-epsilon successor")
         if not all(pred == start or any(pred in succ
                                         for succs in rules.values()
                                         for succ in succs)
@@ -147,7 +143,7 @@ class CFG:
         """Checks whether the grammar can produce a given sentence."""
         def has_parses(G: CFG, nt: CFG.Word, tgt: CFG.Sentence) -> bool:
             for succ in G.rules[nt]:
-                if len(succ) == 1 and succ == tgt:
+                if (len(succ) == 0 or len(succ) == 1) and succ == tgt:
                     return True
                 elif len(succ) == 2:
                     a, b = succ
@@ -249,8 +245,9 @@ class CFG:
          - S -> empty
         """
         for p, xs in self.as_rules():
-            if len(xs) > 2 or len(xs) < 1:
-                return False
+            if len(xs) == 0:
+                if p != self.start:
+                    return False
             elif len(xs) == 1:
                 a = xs[0]
                 if (self.is_nonterminal(a) or
@@ -261,6 +258,8 @@ class CFG:
                 if (self.is_terminal(B) or self.is_terminal(C) or
                    B == self.start or C == self.start):
                     return False
+            else:
+                return False
         return True
 
     def to_CNF(self, debug=False) -> 'CFG':
@@ -276,11 +275,12 @@ class CFG:
             'unit': lambda x: x._unit(),
         }
         g = self
+        if debug:  # pragma: no cover
+            print(f"Original grammar:\n{g}")
         for name, op in ops.items():
             g_new = op(g)
             if debug:  # pragma: no cover
-                print(f"Performing {name} on\n{g}\n"
-                      f"yielded\n{g_new}")
+                print(f"Performing {name} yielded\n{g_new}")
             g = g_new
         return g
 
@@ -388,13 +388,11 @@ class CFG:
                 if s and s not in self.rules[pred]:
                     succs.append(s)
 
+            if succ != CFG.Empty or pred == self.start:
+                rules.append((pred, succ))
             if succs:
-                if succ != CFG.Empty:
-                    rules.append((pred, succ))
                 for s in succs:
                     rules.append((pred, s))
-            elif succ != CFG.Empty:
-                rules.append((pred, succ))
 
         condensed_rules = []
         for (pred, succ), grp in it.groupby(sorted(rules), key=lambda x: x[:2]):
@@ -415,6 +413,11 @@ class CFG:
                 return cache[nt]
             rules: List[CFG.Sentence] = []
             for succ in self.rules[nt]:
+                # ignore empty string map if source is start symbol
+                if succ == CFG.Empty and nt == self.start:
+                    rules.append(succ)
+                    continue
+
                 # remove identity productions
                 if succ == [nt]:
                     continue

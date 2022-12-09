@@ -229,11 +229,25 @@ def test_LSYSTEM_MG_coverage():
     """Check that LSYSTEM_MG covers the book examples"""
     for sys in simple_zoo_systems:
         ex = sys.to_sentence()
-        assert LSYSTEM_MG.can_generate(ex), f"Expected {LSYSTEM_MG} to generate {ex}"
+        assert LSYSTEM_MG.can_generate(ex), \
+            f"Expected\n{LSYSTEM_MG}\nCNF:{LSYSTEM_MG.to_CNF()}\nto generate {ex}"
 
 
-def test_parse_lsystem_str():
-    raise NotImplementedError
+def test_parse_lsystem_str_as_tree():
+    cases = [
+        ("F;F~F",
+         ("LSystem", 0, ("Axiom", 0, ("Nonterminal", 0), ("Axiom", 2)),
+                        ("Rules", 1, ("Rule", 0, ("Nonterminal", 0),
+                                                 ("Rhs", 1, ("Nonterminal", 0),
+                                                            ("Rhs", 3)))))),
+    ]
+    for s, tree in cases:
+        out = parse_lsystem_str_as_tree(s)
+        assert tree == out, f"Expected\n{tree}\nbut got\n{out}"
+
+
+def test_parse_lsystem_str_as_counts():
+    pass
 
 
 def demo_draw():  # pragma: no cover
@@ -297,6 +311,6 @@ def demo_draw():  # pragma: no cover
 
 
 if __name__ == '__main__':  # pragma: no cover
-    # demo_to_expr_eval()
-    demo_learned_metagrammar()
     # demo_draw()
+    for sys in simple_zoo_systems:
+        print(parse_lsystem_str_as_tree(sys.to_code()))
