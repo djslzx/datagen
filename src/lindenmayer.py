@@ -130,11 +130,14 @@ def count_rules(corpus: List[str]) -> Dict[str, np.ndarray]:
     return sum_counts
 
 
-# def weighted_metagrammar(corpus: List[str]) -> PCFG:
-#     counts = count_rules(corpus)
-#
-#
-#
+def weighted_metagrammar(corpus: List[str], alpha=0.1) -> PCFG:
+    counts = count_rules(corpus)
+    weights = {
+        nt: (vec + alpha) / np.sum(vec + alpha)
+        for nt, vec in counts.items()
+    }
+    return PCFG.from_CFG(MG, weights)
+
 
 class LSystem:
 

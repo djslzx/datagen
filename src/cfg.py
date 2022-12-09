@@ -529,13 +529,17 @@ class PCFG(T.nn.Module):
         return hash(str(self))
 
     def __str__(self) -> str:
-        def denote_t_or_nt(xs):
-            return [f"{x}" if self.is_nonterminal(x) else f"`{x}`"
-                    for x in xs]
+
+        def markup_succ(succ):
+            if not succ:
+                return ["ε"]
+            else:
+                return [f"{tok}" if self.is_nonterminal(tok) else f"`{tok}`"
+                        for tok in succ]
 
         rules = "\n  ".join(
             f"{nt} ->\n    " +
-            "\n    ".join(f"{' '.join(denote_t_or_nt(succ))} @ {weight:.10f}"
+            "\n    ".join(f"{' '.join(markup_succ(succ))} @ {weight:.10f}"
                           for succ, weight in zip(self.cfg.rules[nt],
                                                   self.weights[nt]))
             for nt in self.cfg.nonterminals

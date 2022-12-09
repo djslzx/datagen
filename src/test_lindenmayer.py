@@ -370,6 +370,21 @@ def test_count_rules():
             f"Expected {ans} but got {out}"
 
 
+def demo_weighted_metagrammar():  # pragma: no cover
+    corpi = [
+        ["F;F~F"],
+        ["F;F~F"] * 3,
+        ["F;F~F", "F;F~FF"],
+        ["F;F~F", "F;F~FF", "F;F~FFF"],
+        ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
+        [sys.to_code() for sys in simple_zoo_systems],
+    ]
+    for corpus in corpi:
+        g = weighted_metagrammar(corpus)
+        print(corpus)
+        print(g)
+    # TODO: bigram
+
 def demo_draw():  # pragma: no cover
     systems: Dict[str, LSystem] = {
         'koch': D0LSystem(
@@ -432,7 +447,4 @@ def demo_draw():  # pragma: no cover
 
 if __name__ == '__main__':  # pragma: no cover
     # demo_draw()
-    # for sys in simple_zoo_systems:
-    #     print(parse_lsystem_str_as_tree(sys.to_code()))
-    counts = count_rules([sys.to_code() for sys in simple_zoo_systems])
-    print(counts)
+    demo_weighted_metagrammar()
