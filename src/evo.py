@@ -10,7 +10,7 @@ import time
 import Levenshtein
 
 from cfg import CFG, PCFG
-from lindenmayer import S0LSystem, LSYSTEM_MG
+from lindenmayer import S0LSystem, MG
 from inout import autograd_outside
 from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
 from book_zoo import zoo_systems, simple_zoo_systems
@@ -102,7 +102,7 @@ def novelty_search(init_popn: List[S0LSystem], max_popn_size: int, iters: int, i
     arkv = set()
     popn = np.array(init_popn, dtype=object)
     n_next_gen = max_popn_size * next_gen_ratio
-    meta_PCFG = PCFG.from_CFG(LSYSTEM_MG.to_CNF())
+    meta_PCFG = PCFG.from_CFG(MG.to_CNF())
     t = f"{int(time.time())}-{id}"
 
     for iter in range(iters):

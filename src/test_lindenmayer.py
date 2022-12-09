@@ -1,4 +1,5 @@
 import pytest
+import copy
 from lindenmayer import *
 import matplotlib.pyplot as plt
 import util
@@ -229,17 +230,23 @@ def test_LSYSTEM_MG_coverage():
     """Check that LSYSTEM_MG covers the book examples"""
     for sys in simple_zoo_systems:
         ex = sys.to_sentence()
-        assert LSYSTEM_MG.can_generate(ex), \
-            f"Expected\n{LSYSTEM_MG}\nCNF:{LSYSTEM_MG.to_CNF()}\nto generate {ex}"
+        assert MG.can_generate(ex), \
+            f"Expected\n{MG}\nCNF:{MG.to_CNF()}\nto generate {ex}"
 
 
 def test_parse_lsystem_str_as_tree():
     cases = [
         ("F;F~F",
-         ("LSystem", 0, ("Axiom", 0, ("Nonterminal", 0), ("Axiom", 2)),
-                        ("Rules", 1, ("Rule", 0, ("Nonterminal", 0),
-                                                 ("Rhs", 1, ("Nonterminal", 0),
-                                                            ("Rhs", 3)))))),
+         ("LSystem", 0,
+          ("Axiom", 0,
+           ("Nonterminal", 0),
+           ("Axiom", 2)),
+          ("Rules", 1,
+           ("Rule", 0,
+            ("Nonterminal", 0),
+            ("Rhs", 1,
+             ("Nonterminal", 0),
+             ("Rhs", 3)))))),
 
         ("F+F;F~+F,F~FF",
          ("LSystem", 0,
@@ -287,7 +294,80 @@ def test_parse_lsystem_str_as_tree():
 
 
 def test_parse_lsystem_str_as_counts():
-    pass
+    cases = [
+        ("F;F~F", {
+            ("LSystem", 0): 1,
+            ("Axiom", 0): 1,
+            ("Axiom", 2): 1,
+            ("Nonterminal", 0): 3,
+            ("Rules", 1): 1,
+            ("Rule", 0): 1,
+            ("Rhs", 1): 1,
+            ("Rhs", 3): 1,
+        }),
+        ("F;F~FF", {
+            ("LSystem", 0): 1,
+            ("Axiom", 0): 1,
+            ("Axiom", 2): 1,
+            ("Nonterminal", 0): 4,
+            ("Rules", 1): 1,
+            ("Rule", 0): 1,
+            ("Rhs", 1): 2,
+            ("Rhs", 3): 1,
+        }),
+        ("F+F;F~F", {
+            ("LSystem", 0): 1,
+            ("Axiom", 0): 2,
+            ("Axiom", 1): 1,
+            ("Axiom", 2): 1,
+            ("Terminal", 0): 1,
+            ("Nonterminal", 0): 4,
+            ("Rules", 1): 1,
+            ("Rule", 0): 1,
+            ("Rhs", 1): 1,
+            ("Rhs", 3): 1,
+        }),
+        ("F;F~[F]", {
+            ("LSystem", 0): 1,
+            ("Axiom", 0): 1,
+            ("Axiom", 2): 1,
+            ("Nonterminal", 0): 3,
+            ("Rules", 1): 1,
+            ("Rule", 0): 1,
+            ("Rhs", 0): 1,
+            ("Rhs", 1): 1,
+            ("Rhs", 3): 2,
+        }),
+    ]
+    for s, d in cases:
+        ans = empty_mg_counts()
+        for (nt, i), n in d.items():
+            ans[nt][i] = n
+        out = parse_lsystem_str_as_counts(s)
+        assert out.keys() == ans.keys() and all(np.array_equal(out[k], ans[k]) for k in out.keys()), \
+            f"Expected {ans} but got {out}"
+
+
+def test_count_rules():
+    cases = [
+        (["F;F~F"] * 10, {
+            ("LSystem", 0): 10,
+            ("Axiom", 0): 10,
+            ("Axiom", 2): 10,
+            ("Nonterminal", 0): 30,
+            ("Rules", 1): 10,
+            ("Rule", 0): 10,
+            ("Rhs", 1): 10,
+            ("Rhs", 3): 10,
+        }),
+    ]
+    for corpus, d in cases:
+        ans = empty_mg_counts()
+        for (nt, i), n in d.items():
+            ans[nt][i] = n
+        out = count_rules(corpus)
+        assert out.keys() == ans.keys() and all(np.array_equal(out[k], ans[k]) for k in out.keys()), \
+            f"Expected {ans} but got {out}"
 
 
 def demo_draw():  # pragma: no cover
@@ -352,5 +432,7 @@ def demo_draw():  # pragma: no cover
 
 if __name__ == '__main__':  # pragma: no cover
     # demo_draw()
-    for sys in simple_zoo_systems:
-        print(parse_lsystem_str_as_tree(sys.to_code()))
+    # for sys in simple_zoo_systems:
+    #     print(parse_lsystem_str_as_tree(sys.to_code()))
+    counts = count_rules([sys.to_code() for sys in simple_zoo_systems])
+    print(counts)

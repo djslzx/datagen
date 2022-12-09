@@ -101,6 +101,9 @@ class CFG:
     def successor(self, nt: Word) -> Sentence:
         return random.choice(self.rules[nt])
 
+    def successors(self, nt: CFG.Word) -> Iterable[CFG.Sentence]:
+        return self.rules[nt]
+
     def step(self, sentence: List[str]) -> Sentence:
         """
         Non-deterministically apply one of the production rules to

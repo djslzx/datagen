@@ -7,10 +7,10 @@ import skimage.draw
 import itertools as it
 import pdb
 
-from cfg import CFG
+from cfg import CFG, PCFG
 import util
 
-LSYSTEM_MG = CFG("LSystem", {
+MG = CFG("LSystem", {
     "LSystem": [
         ["Axiom", ";", "Rules"],
     ],
@@ -101,15 +101,40 @@ def parse_lsystem_str_as_tree(s: str) -> Tuple:
     return parse_lsystem_str(s, lambda *x: tuple(x))
 
 
-def parse_lsystem_str_as_counts(s: str) -> Dict:
-    counts = {}
+def parse_lsystem_str_as_counts(s: str) -> Dict[str, np.ndarray]:
+    counts = empty_mg_counts()
 
     def count(nt, i, *args):
-        counts[nt, i] = counts.get((nt, i), 0) + 1
+        counts[nt][i] += 1
 
     parse_lsystem_str(s, count)
     return counts
 
+
+def empty_mg_counts() -> Dict[str, np.ndarray]:
+    return {
+        nt: np.zeros(len(MG.rules[nt]))
+        for nt in MG.nonterminals
+    }
+
+
+def count_rules(corpus: List[str]) -> Dict[str, np.ndarray]:
+    sum_counts = {
+        nt: np.zeros(len(MG.rules[nt]))
+        for nt in MG.nonterminals
+    }
+    for word in corpus:
+        counts = parse_lsystem_str_as_counts(word)
+        for k, v in counts.items():
+            sum_counts[k] += v
+    return sum_counts
+
+
+# def weighted_metagrammar(corpus: List[str]) -> PCFG:
+#     counts = count_rules(corpus)
+#
+#
+#
 
 class LSystem:
 
@@ -117,7 +142,11 @@ class LSystem:
         pass
 
     def expand(self, s: str) -> str:  # pragma: no cover
-        assert False, f"Should be implemented in child {type(self).__name__}"
+        raise NotImplementedError(f"Should be implemented in child {type(self).__name__}")
+
+    @property
+    def axiom(self) -> str:
+        raise NotImplementedError(f"Should be implemented in child {type(self).__name__}")
 
     def expansions(self, iters: int) -> Iterator[str]:
         """Returns a generator over the 0-th through `iters`-th expansions."""
@@ -190,8 +219,12 @@ class D0LSystem(LSystem):
 
     def __init__(self, axiom: str, productions: Dict[str, str]):
         super().__init__()
-        self.axiom = axiom
+        self._axiom = axiom
         self.productions = productions
+
+    @property
+    def axiom(self) -> str:
+        return self._axiom
 
     def __str__(self) -> str:  # pragma: no cover
         rules = []
@@ -220,7 +253,7 @@ class S0LSystem(LSystem):
                  productions: Dict[str, List[str]],
                  distribution: str | Dict[str, List[float]] = "uniform"):
         super().__init__()
-        self.axiom = axiom
+        self._axiom = axiom
         self.productions = productions
 
         # check if distribution is a string
@@ -234,6 +267,10 @@ class S0LSystem(LSystem):
                 pred: (lambda x: x / np.sum(x))(np.array(weights))
                 for pred, weights in distribution.items()
             }
+
+    @property
+    def axiom(self) -> str:
+        return self._axiom
 
     def expand(self, s: str) -> str:
         return ''.join(random.choices(population=self.productions.get(c, [c]),

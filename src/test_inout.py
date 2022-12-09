@@ -1,6 +1,6 @@
 from inout import *
 import util
-from lindenmayer import LSYSTEM_MG, S0LSystem
+from lindenmayer import MG, S0LSystem
 import book_zoo as zoo
 
 
@@ -137,7 +137,7 @@ def test_io_small():
 
 def demo_io():  # pragma: no cover
     cases = [
-        (PCFG.from_CFG(LSYSTEM_MG.to_CNF()).normalized(),
+        (PCFG.from_CFG(MG.to_CNF()).normalized(),
          [sys.to_sentence() for sys in zoo.simple_zoo_systems]),
     ]
     for g, corpus in cases:
@@ -209,7 +209,7 @@ def demo_autograd_outside_pizza():  # pragma: no cover
 
 
 def demo_autograd_outside_lsystem():  # pragma: no cover
-    g = PCFG.from_CFG(LSYSTEM_MG.to_CNF())
+    g = PCFG.from_CFG(MG.to_CNF())
     corpus = [
         s.to_sentence()
         for s in [
