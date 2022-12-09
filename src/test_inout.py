@@ -201,14 +201,14 @@ def test_log_io_matches_standard_io():
             f"Found mismatched grammars: {g_fit}, {g_log_exp_fit}"
 
 
-def demo_autograd_outside_pizza():
+def demo_autograd_outside_pizza():  # pragma: no cover
     g = PCFG.from_CFG(pizza_cfg)
     corpus = [["She", "eats", "pizza", "without", "anchovies"]]
     g_fit = autograd_outside(g, corpus, iters=1000)
     print(g, g_fit)
 
 
-def demo_autograd_outside_lsystem():
+def demo_autograd_outside_lsystem():  # pragma: no cover
     g = PCFG.from_CFG(LSYSTEM_MG.to_CNF())
     corpus = [
         s.to_sentence()

@@ -128,7 +128,7 @@ def autograd_outside(G: PCFG, corpus: List[CFG.Sentence], iters, verbose=False) 
     for i in range(iters):
         print(f"[Inside-outside: iter {i}]", end="")
         for word in corpus:
-            if verbose:
+            if verbose:  # pragma: no cover
                 print(f"  Fitting to word {''.join(word)} of length {len(word)}...")
                 t_start = time.time()
             else:
@@ -138,7 +138,7 @@ def autograd_outside(G: PCFG, corpus: List[CFG.Sentence], iters, verbose=False) 
             loss.backward()
             optimizer.step()
 
-            if verbose:
+            if verbose:  # pragma: no cover
                 print(f"    took {time.time() - t_start}s")
         print()
     return g.normalized()

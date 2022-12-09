@@ -1,12 +1,51 @@
+import pytest
 from util import *
 
 
 def test_find_closing_bracket():
-    pass
+    cases = [
+        ("]", 0),
+        ("[]]", 2),
+        ("[][][][]]", 8),
+        ("[[]]]", 4),
+    ]
+    for s, pos in cases:
+        out = find_closing_bracket(s)
+        assert pos == out, f"Expected to find closing bracket at {pos} for string {s}, but got {out}"
+
+
+def test_find_closing_bracket_failing():
+    cases = [
+        "",
+        "[]",
+        "[][][][",
+        "[[[[]]]]",
+    ]
+    for s in cases:
+        with pytest.raises(ValueError):
+            find_closing_bracket(s)
 
 
 def test_stack_repeat():
-    pass
+    cases = [
+        ([[0, 1],
+          [0, 0]],
+         3,
+         [
+             [[0, 1],
+              [0, 0]],
+             [[0, 1],
+              [0, 0]],
+             [[0, 1],
+              [0, 0]],
+         ]),
+        ([1], 2, [[1], [1]])
+    ]
+    for x, k, y in cases:
+        x = np.array(x)
+        y = np.array(y)
+        out = stack_repeat(x, k)
+        assert np.array_equal(y, out), f"Expected {y}, but got {out}"
 
 
 def test_split_list():
