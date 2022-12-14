@@ -7,9 +7,7 @@ import numpy as np
 import random
 import itertools as it
 from typing import *
-import copy
 
-from max_heap import MaxHeap
 import util
 
 
@@ -39,18 +37,18 @@ class CFG:
     @staticmethod
     def check_rep(start, rules):
         if start not in rules:
-            raise ValueError(f"Starting symbol {start} not found in rules")
+            raise ValueError(f"Starting symbol {start} not found in rules: {rules}")
         if not all(succ and (isinstance(succ, str) or isinstance(succ, list))
                    for pred, succ in rules.items()):
-            raise ValueError("Each predecessor must have at least one successor")
+            raise ValueError(f"Each predecessor must have at least one successor: {rules}")
         if any(pred in succs for pred, succs in rules.items()):
-            raise ValueError("No nonterminal should map to itself")
+            raise ValueError(f"No nonterminal should map to itself: {rules}")
         if not all(pred == start or any(pred in succ
                                         for succs in rules.values()
                                         for succ in succs)
                    for pred in rules.keys()):
             raise ValueError("Each nonterminal should appear in the RHS of a rule, "
-                             "unless the nonterminal is the start symbol")
+                             f"unless the nonterminal is the start symbol: {start}, {rules}")
         for pred, succs in rules.items():
             ok, pair = util.unique(succs)
             if not ok:
@@ -101,7 +99,7 @@ class CFG:
     def successor(self, nt: Word) -> Sentence:
         return random.choice(self.rules[nt])
 
-    def successors(self, nt: CFG.Word) -> Iterable[CFG.Sentence]:
+    def successors(self, nt: CFG.Word) -> List[CFG.Sentence]:
         return self.rules[nt]
 
     def step(self, sentence: List[str]) -> Sentence:
@@ -160,7 +158,7 @@ class CFG:
 
     def to_bigram(self) -> 'CFG':
         """
-        Expand the CFG into a bigram model.
+        Expand the CFG into a bigram CFG.
 
         Annotate all RHS appearances of a nonterminal with an index,
         then duplicate the resulting rules with the LHS being each
@@ -172,29 +170,30 @@ class CFG:
         """
         # annotate nonterminals with indices
         rules = []
-        nt_counts = {nt: 0 for nt in self.nonterminals}
+        counts = {nt: 0 for nt in self.nonterminals}
         for p, s in self.as_rules():
             new_s = []
-            for word in s:
-                if self.is_nonterminal(word):
-                    nt_counts[word] += 1
-                    new_s.append(f"{word}_{nt_counts[word]}")
+            for tok in s:
+                if self.is_nonterminal(tok):
+                    counts[tok] += 1
+                    new_tok = f"{tok}_{counts[tok]}"
                 else:
-                    new_s.append(word)
+                    new_tok = tok
+                new_s.append(new_tok)
             rules.append((p, new_s))
 
         # duplicate annotated rules
         duped_rules = []
         for p, s in rules:
             # handle nonterminals that never appear in a RHS by taking max of (1, n)
-            n = max(1, nt_counts[p])
-            for i in range(1, n+1):
-                duped_rules.append((f"{p}_{i}", s))
+            for i in range(counts[p]):
+                duped_rules.append((f"{p}_{i+1}", s))
+            if counts[p] == 0:
+                duped_rules.append((p, s))
 
-        # add transitions to transformed start symbol
-        n = max(1, nt_counts[self.start])
-        for i in range(1, n+1):
-            duped_rules.append((self.start, [f"{self.start}_{i}"]))
+        # add transitions from plain start symbol to annotated start symbol if needed
+        for i in range(counts[self.start]):
+            duped_rules.append((self.start, [f"{self.start}_{i+1}"]))
 
         return CFG.from_rules(self.start, duped_rules)
 
