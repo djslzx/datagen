@@ -1,5 +1,6 @@
 import pytest
 import copy
+from pprint import pp
 from lindenmayer import *
 import matplotlib.pyplot as plt
 import util
@@ -370,6 +371,10 @@ def test_count_rules():
             f"Expected {ans} but got {out}"
 
 
+def test_bigram_counts():
+    pass
+
+
 def demo_weighted_metagrammar():  # pragma: no cover
     corpi = [
         ["F;F~F"],
@@ -383,7 +388,23 @@ def demo_weighted_metagrammar():  # pragma: no cover
         g = weighted_metagrammar(corpus)
         print(corpus)
         print(g)
-    # TODO: bigram
+
+
+def demo_bigram_metagrammar():  # pragma: no cover
+    corpi = [
+        ["F;F~F"],
+        ["F;F~F"] * 3,
+        ["F;F~F", "F;F~FF"],
+        ["F;F~F", "F;F~FF", "F;F~FFF"],
+        ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
+        [sys.to_code() for sys in simple_zoo_systems],
+    ]
+    print(MG.to_bigram())
+    for corpus in corpi:
+        g = trained_bigram_metagrammar(corpus)
+        pp(corpus)
+        print(g)
+
 
 def demo_draw():  # pragma: no cover
     systems: Dict[str, LSystem] = {
@@ -447,4 +468,5 @@ def demo_draw():  # pragma: no cover
 
 if __name__ == '__main__':  # pragma: no cover
     # demo_draw()
-    demo_weighted_metagrammar()
+    demo_bigram_metagrammar()
+    # demo_weighted_metagrammar()

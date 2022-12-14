@@ -5,7 +5,6 @@ from math import sin, cos, radians
 import numpy as np
 import skimage.draw
 import itertools as it
-import pdb
 
 from cfg import CFG, PCFG
 import util
@@ -101,6 +100,14 @@ def parse_lsystem_str_as_tree(s: str) -> Tuple:
     return parse_lsystem_str(s, lambda *x: tuple(x))
 
 
+def apply_to_tree(root: Tuple, f: Callable) -> Any:
+    symbol, i, *args = root
+    if not args:
+        return f(symbol, i)
+    else:
+        return f(symbol, i, apply_to_tree(*args))
+
+
 def parse_lsystem_str_as_counts(s: str) -> Dict[str, np.ndarray]:
     counts = empty_mg_counts()
 
@@ -119,10 +126,7 @@ def empty_mg_counts() -> Dict[str, np.ndarray]:
 
 
 def count_rules(corpus: List[str]) -> Dict[str, np.ndarray]:
-    sum_counts = {
-        nt: np.zeros(len(MG.rules[nt]))
-        for nt in MG.nonterminals
-    }
+    sum_counts = empty_mg_counts()
     for word in corpus:
         counts = parse_lsystem_str_as_counts(word)
         for k, v in counts.items():
@@ -137,6 +141,63 @@ def weighted_metagrammar(corpus: List[str], alpha=0.1) -> PCFG:
         for nt, vec in counts.items()
     }
     return PCFG.from_CFG(MG, weights)
+
+
+def empty_bigram_counts() -> Dict[Tuple[str, int, int], np.ndarray]:
+    return {
+        (nt, i, j): np.zeros(len(MG.rules[succ]))
+        for nt in MG.nonterminals
+        for i, succs in enumerate(MG.successors(nt))
+        for j, succ in enumerate(succ for succ in succs if MG.is_nonterminal(succ))
+    }
+
+
+def bigram_map() -> Dict[Tuple[str, int, int], str]:
+    """Construct the map from (nt, i, j) to the annotated bigram nonterminal"""
+    counts = {nt: 0 for nt in MG.nonterminals}
+    mapping = {}
+    for p in MG.nonterminals:
+        for i, s in enumerate(MG.successors(p)):
+            j = 0  # count only nonterminal successors
+            for tok in s:
+                if MG.is_nonterminal(tok):
+                    counts[tok] += 1
+                    mapping[p, i, j] = f"{tok}_{counts[tok]}"
+                    j += 1
+    return mapping
+
+
+def bigram_counts(s: str) -> Dict[Tuple[str, int, int], np.ndarray]:
+    counts = empty_bigram_counts()
+    parse_tree = parse_lsystem_str_as_tree(s)
+
+    def count_node(symbol, i, *args):
+        for j, arg in enumerate(args):
+            k = arg[1]  # arg = (symbol', i', *args')
+            counts[symbol, i, j][k] += 1
+            count_node(*arg)
+
+    count_node(*parse_tree)
+    return counts
+
+
+def trained_bigram_metagrammar(corpus: List[str], alpha=0.1) -> PCFG:
+    sum_counts = empty_bigram_counts()
+    map_fn = bigram_map()
+    grammar = MG.to_bigram()
+
+    for word in corpus:
+        counts = bigram_counts(word)
+        for k, v in counts.items():
+            sum_counts[k] += v
+
+    weights = {
+        map_fn[nt, i, j]: (vec + alpha) / np.sum(vec + alpha)
+        for (nt, i, j), vec in sum_counts.items()
+    }
+    # add start symbol with weight 1
+    weights[MG.start] = np.ones(1)
+    return PCFG.from_CFG(grammar, weights)
 
 
 class LSystem:
