@@ -1,10 +1,17 @@
 from math import sqrt, ceil
+from glob import glob
+import sys
+
 from evo import ROLLOUT_DEPTH, DRAW_ARGS
 from lindenmayer import S0LSystem
+from featurizers import ResnetFeaturizer
 import util
 
 
-def plot_outputs(filename: str, batch_size=36):
+classifier = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
+
+
+def plot_outputs(filename: str, batch_size=36, save=True):
     with open(filename, "r") as f:
         imgs = []
         labels = []
@@ -19,6 +26,11 @@ def plot_outputs(filename: str, batch_size=36):
             sys = S0LSystem.from_sentence(list(sys_str))
             img = S0LSystem.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
             imgs.append(img)
+
+            # check resnet classifier output
+            features = classifier.apply(img)
+            top_class = classifier.top_k_classes(features, k=1)[0]
+            score += f" ({top_class})"
             labels.append(f"{score}")
 
     n_cols = ceil(sqrt(batch_size))
@@ -31,15 +43,18 @@ def plot_outputs(filename: str, batch_size=36):
                   imgs=img_batch,
                   shape=(n_rows, n_cols),
                   labels=label_batch,
-                  saveto=f"{filename}-{i}.png")
+                  saveto=f"{filename}-{i}.png" if save else None)
 
 
 if __name__ == '__main__':
-    for i in range(100):
-        fname = f"../out/ns/nolen-1669959013/pcfg-1669959013-nolen-gen-{i}.txt"
-        # fname = f"../out/ns/nolen50/pcfg-1669947420-nolen-gen-{i}.txt"
-        # fname = f".cache/pcfg-1669965929-nolen-gen-{i}.txt"
-        print(f"Plotting {fname}")
-        plot_outputs(fname)
-    # plot_outputs("../out/ns/nolen-1669947420/pcfg-1669947420-nolen-arkv.txt")
-    # plot_outputs("../out/ns/nolen-1669947420/pcfg-1669947420-nolen-arkv.txt")
+    if len(sys.argv) != 3:
+        print("Usage: examine.py FILE_GLOB SAVE")
+        print(sys.argv)
+        exit(1)
+
+    file_glob, save = sys.argv[1:]
+    save = save == "True"
+
+    for filename in glob(file_glob):
+        print(f"Plotting {filename} with save={save}")
+        plot_outputs(filename, save=save)
