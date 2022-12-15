@@ -501,6 +501,9 @@ class PCFG(T.nn.Module):
     def rules(self) -> Iterable[Tuple[CFG.Word, List[CFG.Sentence]]]:
         return self.cfg.rules.items()
 
+    def weighted_successors(self, nt: CFG.Word) -> Iterable[Tuple[CFG.Sentence, np.ndarray]]:
+        return zip(self.cfg.rules[nt], self.weights[nt])
+
     def successors(self, nt: CFG.Word) -> Iterable[CFG.Sentence]:
         return self.cfg.rules[nt]
 
