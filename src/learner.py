@@ -18,7 +18,7 @@ class Grammar:
 
         `rules`: mapping from non-terminal symbol to list of productions.
         each production is a tuple of (log probability, form), where
-        log probability is that generating ﾻfrom the nonterminal will use that production
+        log probability is that generating from the nonterminal will use that production
         and form is either :
           (1) a tuple of the form (constructor, non-terminal-1, non-terminal-2, ...).
              `constructor` should be a component in the DSL, such as '+' or '*', which takes arguments

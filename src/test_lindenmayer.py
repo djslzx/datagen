@@ -385,7 +385,7 @@ def demo_weighted_metagrammar():  # pragma: no cover
         [sys.to_code() for sys in simple_zoo_systems],
     ]
     for corpus in corpi:
-        g = weighted_metagrammar(corpus)
+        g = trained_metagrammar(corpus)
         print(corpus)
         print(g)
 
@@ -401,9 +401,13 @@ def demo_bigram_metagrammar():  # pragma: no cover
     ]
     print(MG.to_bigram())
     for corpus in corpi:
-        g = trained_bigram_metagrammar(corpus)
+        g = trained_bigram_metagrammar(corpus).log()
         pp(corpus)
         print(g)
+        print("Probabilities:")
+        for word in corpus:
+            log_pr = bigram_log_pr(g, word)
+            print(f"{word}: {log_pr}")
 
 
 def demo_draw():  # pragma: no cover
