@@ -4,6 +4,8 @@ import numpy as np
 import random
 from typing import *
 import copy
+import sys
+from glob import glob
 
 from max_heap import MaxHeap
 from lindenmayer import S0LSystem, parse_lsystem_str_as_ast, apply_to_tree
@@ -409,64 +411,86 @@ class ConvFeatureExtractor(FeatureExtractor):
         return outputs.squeeze().detach().numpy()
 
 
-if __name__ == "__main__":
-    components = {
-        "LSystem_0": ["Axiom", "Rules", "LSystem"],
-        "Nonterminal_0": ["Nonterminal"],
-        "Terminal_0": ["Terminal"],
-        "Terminal_1": ["Terminal"],
-        "Axiom_0": ["Nonterminal", "Axiom", "Axiom"],
-        "Axiom_1": ["Terminal", "Axiom", "Axiom"],
-        "Axiom_2": ["Axiom"],
-        "Rules_0": ["Rule", "Rules", "Rules"],
-        "Rules_1": ["Rule", "Rules"],
-        "Rule_0": ["Nonterminal", "Rhs", "Rule"],
-        "Rhs_0": ["Rhs", "Rhs", "Rhs"],
-        "Rhs_1": ["Nonterminal", "Rhs", "Rhs"],
-        "Rhs_2": ["Terminal", "Rhs", "Rhs"],
-        "Rhs_3": ["Rhs"],
-    }
-    str_semantics = {
-        "LSystem_0": lambda axiom, rules: f"{axiom};{rules}",
-        "Nonterminal_0": lambda: "F",
-        "Terminal_0": lambda: "+",
-        "Terminal_1": lambda: "-",
-        "Axiom_0": lambda nt, axiom: f"{nt}{axiom}",
-        "Axiom_1": lambda t, axiom: f"{t}{axiom}",
-        "Axiom_2": lambda: "",
-        "Rules_0": lambda r, rs: f"{r},{rs}",
-        "Rules_1": lambda r: r,
-        "Rule_0": lambda nt, rhs: f"{nt}~{rhs}",
-        "Rhs_0": lambda rhs1, rhs2: f"[{rhs1}]{rhs2}",
-        "Rhs_1": lambda nt, rhs: f"{nt}{rhs}",
-        "Rhs_2": lambda t, rhs: f"{t}{rhs}",
-        "Rhs_3": lambda: "",
-    }
+components = {
+    "LSystem_0": ["Axiom", "Rules", "LSystem"],
+    "Nonterminal_0": ["Nonterminal"],
+    "Terminal_0": ["Terminal"],
+    "Terminal_1": ["Terminal"],
+    "Axiom_0": ["Nonterminal", "Axiom", "Axiom"],
+    "Axiom_1": ["Terminal", "Axiom", "Axiom"],
+    "Axiom_2": ["Axiom"],
+    "Rules_0": ["Rule", "Rules", "Rules"],
+    "Rules_1": ["Rule", "Rules"],
+    "Rule_0": ["Nonterminal", "Rhs", "Rule"],
+    "Rhs_0": ["Rhs", "Rhs", "Rhs"],
+    "Rhs_1": ["Nonterminal", "Rhs", "Rhs"],
+    "Rhs_2": ["Terminal", "Rhs", "Rhs"],
+    "Rhs_3": ["Rhs"],
+}
 
-    def to_learner_ast(tree: Tuple) -> Tuple:
-        def transform(*node):
-            symbol, i, *args = node
-            if not args:
-                return f"{symbol}_{i}"
-            else:
-                return f"{symbol}_{i}", *args
+str_semantics = {
+    "LSystem_0": lambda axiom, rules: f"{axiom};{rules}",
+    "Nonterminal_0": lambda: "F",
+    "Terminal_0": lambda: "+",
+    "Terminal_1": lambda: "-",
+    "Axiom_0": lambda nt, axiom: f"{nt}{axiom}",
+    "Axiom_1": lambda t, axiom: f"{t}{axiom}",
+    "Axiom_2": lambda: "",
+    "Rules_0": lambda r, rs: f"{r},{rs}",
+    "Rules_1": lambda r: r,
+    "Rule_0": lambda nt, rhs: f"{nt}~{rhs}",
+    "Rhs_0": lambda rhs1, rhs2: f"[{rhs1}]{rhs2}",
+    "Rhs_1": lambda nt, rhs: f"{nt}{rhs}",
+    "Rhs_2": lambda t, rhs: f"{t}{rhs}",
+    "Rhs_3": lambda: "",
+}
 
-        return apply_to_tree(tree, transform)
 
-    def to_str(ltree: Tuple) -> str:
-        if isinstance(ltree, tuple):
-            symbol, *args = ltree
+def to_learner_ast(tree: Tuple) -> Tuple:
+    def transform(*node):
+        symbol, i, *args = node
+        if not args:
+            return f"{symbol}_{i}"
         else:
-            symbol = ltree
-            args = []
-        str_args = [to_str(arg) for arg in args]
-        return str_semantics[symbol](*str_args)
+            return f"{symbol}_{i}", *args
 
-    def evaluate(p, env):
-        sys_str = to_str(p)
-        sys = S0LSystem.from_sentence(list(sys_str))
-        render_str = sys.nth_expansion(3)
-        return S0LSystem.draw(render_str, d=3, theta=45, n_rows=128, n_cols=128)
+    return apply_to_tree(tree, transform)
+
+
+def to_str(ltree: Tuple) -> str:
+    if isinstance(ltree, tuple):
+        symbol, *args = ltree
+    else:
+        symbol = ltree
+        args = []
+    str_args = [to_str(arg) for arg in args]
+    return str_semantics[symbol](*str_args)
+
+
+def evaluate(p, env):
+    sys_str = to_str(p)
+    sys = S0LSystem.from_sentence(list(sys_str))
+    render_str = sys.nth_expansion(3)
+    return S0LSystem.draw(render_str, d=3, theta=45, n_rows=128, n_cols=128)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: learner.py training_glob\n"
+              f"got: {''.join(sys.argv)}")
+        exit(1)
+
+    file_glob = sys.argv[1]
+    file_example_strs = []
+    for filename in glob(file_glob):
+        with open(filename, "r") as f:
+            for line in f.readlines():
+                file_example_strs.append(line.strip())
+
+    file_examples = [to_learner_ast(parse_lsystem_str_as_ast(s))
+                     for s in file_example_strs]
+    book_examples = [to_learner_ast(parse_lsystem_str_as_ast(s.to_code()))
+                     for s in simple_zoo_systems]
 
     g = Grammar.from_components(components, gram=1)
     fe = ConvFeatureExtractor(n_features=1000,
@@ -475,15 +499,22 @@ if __name__ == "__main__":
                               bitmap_n_rows=128,
                               bitmap_n_cols=128)
     lg = LearnedGrammar(fe, g)
-    training_examples = [to_learner_ast(parse_lsystem_str_as_ast(sys.to_code()))
-                         for sys in simple_zoo_systems]
-    print(training_examples)
-    print()
+    start = "LSystem"
+    training_examples = book_examples
+    test_examples = file_examples
+
     lg.train(
-        start_symbol="LSystem",
+        start_symbol=start,
         training_examples=training_examples,
         input_domain=[{}],
         evaluate=evaluate,
         log_steps=10,
+        steps=200,
     )
     print(lg)
+
+    for ex in test_examples:
+        learned_loss = -lg.grammar.log_probability(start, ex)
+        learnless_loss = -lg.original_grammar.log_probability(start, ex)
+        print(f"loss (negative log likelihood) of expression, w/ learning: {learned_loss:.4f},"
+              f" w/o learning: {learnless_loss:.4f}")

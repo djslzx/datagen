@@ -1,6 +1,8 @@
 """
 Test out evolutionary search algorithms for data augmentation.
 """
+import pdb
+
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from typing import *
@@ -58,30 +60,38 @@ def gen_next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float, sentence_lim
     return next_gen, arkv
 
 
-def semantic_score(popn: np.ndarray, featurizer: Featurizer, n_samples: int, n_neighbors: int) -> np.ndarray:
-    n_popn = len(popn)
+def semantic_score(prev_gen: np.ndarray, next_gen: np.ndarray,
+                   featurizer: Featurizer, n_samples: int, n_neighbors: int) -> np.ndarray:
     n_features = featurizer.n_features
 
     # build knn data structure
-    popn_features = np.empty((len(popn), n_features * n_samples))
-    for i, s in enumerate(popn):  # parallel
+    print("Featurizing popn...")
+    t_feat = time.time()
+    popn_features = np.empty((len(prev_gen), n_features * n_samples))
+    for i, s in enumerate(prev_gen):  # parallel
         sys = S0LSystem.from_sentence(s)
         for j in range(n_samples):
             bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
             popn_features[i, j * n_features: (j + 1) * n_features] = featurizer.apply(bmp)
-    knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(popn))).fit(popn_features)
+    t_knn = time.time()
+    print(f"Featurizing popn took {t_knn - t_feat}s")
+    knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(prev_gen))).fit(popn_features)
+    print(f"Building knn data structure took {time.time() - t_knn}s")
 
-    # compute scores using knn data structure
-    scores = np.empty(n_popn)
-    for i, s in enumerate(popn):  # parallel
+    # compute scores of next generation
+    print("Scoring instances...")
+    t_scoring = time.time()
+    scores = np.empty(len(next_gen))
+    for i, s in enumerate(next_gen):  # parallel
         features = np.empty((1, n_features * n_samples))
         sys = S0LSystem.from_sentence(s)
         for j in range(n_samples):
             bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
             features[0, j * n_features: (j + 1) * n_features] = featurizer.apply(bmp)
         distances, indices = knn.kneighbors(features)
-        scores[i] = distances.mean(axis=1).item()
-        # scores[i] /= LENGTH_PADDING + len(s)  # prioritize shorter agents
+        scores[i] = distances.sum(axis=1).item()
+        # scores[i] = distances.mean(axis=1).item() ** 2 / len(s)  # prioritize shorter agents
+    print(f"Scoring took {time.time() - t_scoring}s")
     return scores
 
 
@@ -129,9 +139,12 @@ def novelty_search(init_popn: List[CFG.Sentence],
         # compute popn features, build knn data structure, and score next_gen
         print("Scoring population...")
         t_score = time.time()
-        sem_scores = semantic_score(popn=next_gen, featurizer=featurizer, n_neighbors=n_neighbors, n_samples=n_samples)
-        scores = syntactic_semantic_score(popn=next_gen, semantic_scores=sem_scores)
-        print(f"Scoring took {time.time() - t_score}s.")
+        # prev_popn = np.concatenate((popn, np.array(list(arkv), dtype=object)), axis=0)
+        scores = semantic_score(prev_gen=next_gen, next_gen=next_gen,
+                                featurizer=featurizer, n_neighbors=n_neighbors, n_samples=n_samples)
+        # print(f"Semantic scoring took {time.time() - t_score}s.")
+        # scores = syntactic_semantic_score(popn=next_gen, semantic_scores=sem_scores)  # fixme
+        print(f"Scoring took {time.time() - t_score}s total.")
 
         # cull popn
         print("Culling popn...")
@@ -176,34 +189,35 @@ def novelty_search(init_popn: List[CFG.Sentence],
 
 
 if __name__ == '__main__':
-    seed = [
-        x.to_sentence()
-        for x in
-        simple_zoo_systems
-        # [
-        #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
-        #     S0LSystem("F", {"F": ["FF", "F-F"]}),
-        #     S0LSystem("F", {"F": ["F"]}),
-        #     S0LSystem("F", {"F": ["FF"]}),
-        #     S0LSystem("F", {"F": ["FFF"]}),
-        #     S0LSystem("F+F", {"F": ["FF"]}),
-        #     S0LSystem("F-F", {"F": ["FF"]}),
-        # ]
+    simple_seed_systems = [
+        S0LSystem("F", {"F": ["F+F", "F-F"]}),
+        S0LSystem("F", {"F": ["FF", "F-F"]}),
+        S0LSystem("F", {"F": ["F"]}),
+        S0LSystem("F", {"F": ["FF"]}),
+        S0LSystem("F", {"F": ["FFF"]}),
+        S0LSystem("F+F", {"F": ["FF"]}),
+        S0LSystem("F-F", {"F": ["FF"]}),
     ]
-    popn_size = 100
+    seed = [
+        tuple(x.to_sentence())
+        for x in 
+        simple_zoo_systems
+        # simple_seed_systems
+    ]
+    popn_size = 25
     arkv_growth_rate = 2
     params = {
         'id': 'gen-training-exs',
         'init_popn': seed,
-        'iters': 100,
+        'iters': 10,
         'featurizer':
             # RawFeaturizer(DRAW_ARGS['n_rows'], DRAW_ARGS['n_cols']),
             ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True),
         'max_popn_size': popn_size,
-        'n_neighbors': 20,
+        'n_neighbors': 10,
         'n_samples': 3,
         'next_gen_ratio': 10,
-        'sentence_limit': 25,
+        'sentence_limit': 30,
         'p_arkv': arkv_growth_rate / popn_size,
     }
     print(f"Running novelty search with parameters: {params}")

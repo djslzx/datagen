@@ -39,7 +39,7 @@ class ResnetFeaturizer(Featurizer):
         return 2048 if self.disable_last_layer else 1000
 
     def apply(self, img: np.ndarray) -> np.ndarray:
-        assert len(img.shape) <= 3
+        assert len(img.shape) in [2, 3], f"Got imgs with shape {img.shape}"
         assert isinstance(img, np.ndarray), f"Expected ndarray, but got {type(img)}"
 
         # resnet only plays nice with uint8 matrices
@@ -48,9 +48,9 @@ class ResnetFeaturizer(Featurizer):
             img = img.astype(np.uint8)
 
         # handle alpha channels, grayscale images -> rgb
-        if len(img.shape) == 2:
+        if len(img.shape) == 2:  # images with no color channel
             img = util.stack_repeat(img, 3)
-        elif img.shape[0] != 3:
+        elif img.shape[0] != 3:  # remove alpha channel -> grayscale w/ 3 channels (rgb)
             img = util.stack_repeat(img[0], 3)
 
         # run resnet

@@ -60,7 +60,7 @@ def parse_lsystem_str(s: str, f: Callable) -> Any:
         if len(s) == 0:
             return f("Axiom", 2)
         hd, tl = s[0], s[1:]
-        assert hd in ["F", "+", "-"]
+        assert hd in ["F", "+", "-"], f"Unexpected head: '{hd}'"
         i = (0 if hd == "F" else 1)  # choose Axiom's Nonterm or Term rule
         return f("Axiom", i, parse_symbol(hd), parse_axiom(tl))
 
@@ -68,7 +68,7 @@ def parse_lsystem_str(s: str, f: Callable) -> Any:
         if len(s) == 0:
             return f("Rhs", 3)
         hd, tl = s[0], s[1:]
-        assert hd in ["F", "+", "-", "["]
+        assert hd in ["F", "+", "-", "["], f"Unexpected head: '{hd}'"
         if hd == "[":
             # find position of paired closing bracket; assumes balanced brackets
             end = util.find_closing_bracket(tl)
