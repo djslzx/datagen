@@ -10,6 +10,7 @@ import time
 import Levenshtein
 
 from cfg import CFG, PCFG
+from book_zoo import simple_zoo_systems
 from lindenmayer import S0LSystem, trained_bigram_metagrammar
 from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
 
@@ -177,30 +178,32 @@ def novelty_search(init_popn: List[CFG.Sentence],
 if __name__ == '__main__':
     seed = [
         x.to_sentence()
-        for x in [
-            S0LSystem("F", {"F": ["F+F", "F-F"]}),
-            S0LSystem("F", {"F": ["FF", "F-F"]}),
-            S0LSystem("F", {"F": ["F"]}),
-            S0LSystem("F", {"F": ["FF"]}),
-            S0LSystem("F", {"F": ["FFF"]}),
-            S0LSystem("F+F", {"F": ["FF"]}),
-            S0LSystem("F-F", {"F": ["FF"]}),
-        ]
+        for x in
+        simple_zoo_systems
+        # [
+        #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
+        #     S0LSystem("F", {"F": ["FF", "F-F"]}),
+        #     S0LSystem("F", {"F": ["F"]}),
+        #     S0LSystem("F", {"F": ["FF"]}),
+        #     S0LSystem("F", {"F": ["FFF"]}),
+        #     S0LSystem("F+F", {"F": ["FF"]}),
+        #     S0LSystem("F-F", {"F": ["FF"]}),
+        # ]
     ]
-    popn_size = 10
-    arkv_growth_rate = 1
+    popn_size = 100
+    arkv_growth_rate = 2
     params = {
-        'id': 'nolen',
+        'id': 'gen-training-exs',
         'init_popn': seed,
         'iters': 100,
         'featurizer':
             # RawFeaturizer(DRAW_ARGS['n_rows'], DRAW_ARGS['n_cols']),
             ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True),
         'max_popn_size': popn_size,
-        'n_neighbors': 100,
+        'n_neighbors': 20,
         'n_samples': 3,
         'next_gen_ratio': 10,
-        'sentence_limit': 20,
+        'sentence_limit': 25,
         'p_arkv': arkv_growth_rate / popn_size,
     }
     print(f"Running novelty search with parameters: {params}")

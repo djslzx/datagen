@@ -403,7 +403,8 @@ class ConvFeatureExtractor(FeatureExtractor):
         return self._n_features
 
     def extract(self, spec: List[Tuple]) -> np.ndarray:
-        outputs = T.stack([T.from_numpy(util.stack_repeat(y, 3)).float() for x, y in spec])
+        outputs = T.stack([T.from_numpy(util.stack_repeat(y, self.n_color_channels)).float()
+                           for x, y in spec])
         outputs = self.conv(outputs)
         return outputs.squeeze().detach().numpy()
 
@@ -469,13 +470,13 @@ if __name__ == "__main__":
 
     g = Grammar.from_components(components, gram=1)
     fe = ConvFeatureExtractor(n_features=1000,
-                              n_color_channels=3,
+                              n_color_channels=1,
                               n_conv_channels=12,
                               bitmap_n_rows=128,
                               bitmap_n_cols=128)
     lg = LearnedGrammar(fe, g)
     training_examples = [to_learner_ast(parse_lsystem_str_as_ast(sys.to_code()))
-                         for sys in simple_zoo_systems[:1]]
+                         for sys in simple_zoo_systems]
     print(training_examples)
     print()
     lg.train(
