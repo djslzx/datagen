@@ -97,7 +97,7 @@ def parse_lsystem_str(s: str, f: Callable) -> Any:
     return f("LSystem", 0, axiom_expr, rules_expr)
 
 
-def parse_lsystem_str_as_tree(s: str) -> Tuple:
+def parse_lsystem_str_as_ast(s: str) -> Tuple:
     return parse_lsystem_str(s, lambda *x: tuple(x))
 
 
@@ -106,7 +106,7 @@ def apply_to_tree(root: Tuple, f: Callable) -> Any:
     if not args:
         return f(symbol, i)
     else:
-        return f(symbol, i, apply_to_tree(*args))
+        return f(symbol, i, *[apply_to_tree(arg, f) for arg in args])
 
 
 def parse_lsystem_str_as_counts(s: str) -> Dict[str, np.ndarray]:

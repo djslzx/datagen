@@ -290,7 +290,7 @@ def test_parse_lsystem_str_as_tree():
              ("Rhs", 3)))))),
     ]
     for s, tree in cases:
-        out = parse_lsystem_str_as_tree(s)
+        out = parse_lsystem_str_as_ast(s)
         assert tree == out, f"Expected\n{tree}\nbut got\n{out}"
 
 

@@ -6,6 +6,9 @@ from typing import *
 import copy
 
 from max_heap import MaxHeap
+from lindenmayer import S0LSystem, parse_lsystem_str_as_ast, apply_to_tree
+from book_zoo import simple_zoo_systems
+import util
 
 
 class Grammar:
@@ -39,9 +42,9 @@ class Grammar:
             for probability, form in productions:
                 pretty += f"{symbol} ::= "
                 if isinstance(form, tuple):
-                    pretty += "constructor='" + form[0] + "', args=" + ",".join(map(str, form[1:]))
+                    pretty += f"constructor='{form[0]}', args={','.join(map(str, form[1:]))}"
                 else:
-                    pretty += "constructor=" + form
+                    pretty += f"constructor={form}"
                 pretty += "\tw.p. " + str(probability) + "\n"
         return pretty
 
@@ -182,7 +185,8 @@ class Grammar:
             if expression == rule:
                 return log_probability
 
-        raise ValueError("could not calculate probability of expression giving grammar")
+        raise ValueError("Could not calculate probability of expression giving grammar for "
+                         f"nonterminal={nonterminal}, expression={expression}")
 
     def top_down_generator(self, start_symbol):
         """
@@ -270,9 +274,6 @@ class Grammar:
                 return 1 + j, expression
 
 
-
-
-
 class LearnedGrammar:
 
     def __init__(self, feature_extractor: FeatureExtractor, template_grammar: Grammar):
@@ -283,13 +284,16 @@ class LearnedGrammar:
         # keep around the original for comparison
         self.original_grammar = copy.deepcopy(template_grammar.normalize_())
 
-        # get the number of output features
-        n_features = feature_extractor.n_features
-
         # a simple linear model, but you could use a more complex neural network
-        self.f_theta = T.nn.Linear(n_features, template_grammar.n_parameters).float()
+        self.f_theta = T.nn.Linear(feature_extractor.n_features, template_grammar.n_parameters).float()
 
-    def train(self, start_symbol, training_examples, input_domain, evaluate: Callable, steps=10000):
+    def train(self,
+              start_symbol: str | Tuple,
+              training_examples: List[Tuple],
+              input_domain: List[Dict],
+              evaluate: Callable[[Tuple, Dict], Any],
+              steps=10000,
+              log_steps=100):
         """
         Train learned model, which adjusts $theta$ to maximize the log probability of training examples
         given training specs derived from those examples
@@ -306,6 +310,7 @@ class LearnedGrammar:
             program = random.choice(training_examples)
             input_outputs = [(i, evaluate(program, i)) for i in input_domain]
 
+            # pdb.set_trace()
             features = self.feature_extractor.extract(input_outputs)
             features = T.tensor(features).float()
             projected_features = self.f_theta(features)
@@ -316,7 +321,7 @@ class LearnedGrammar:
 
             recent_losses.append(loss.detach().numpy())
             recent_log_likelihoods.append(-self.original_grammar.log_probability(start_symbol, program))
-            if len(recent_losses) == 100:
+            if len(recent_losses) == log_steps:
                 print("training step", step + 1, "\n\tavg loss (negative log likelihood of expression, w/ learning)",
                       sum(recent_losses) / len(recent_losses),
                       "\n\t      avg negative log likelihood of expression, w/o learning",
@@ -361,18 +366,123 @@ class DummyFeatureExtractor(FeatureExtractor):
         return np.array([1.])
 
 
-class FixedLengthFeatureExtractor(FeatureExtractor):
+class ConvFeatureExtractor(FeatureExtractor):
 
-    def __init__(self, n_exprs, max_expr_tokens: int, lexicon: List[str]):
-        self.max_expr_tokens = max_expr_tokens    # length of feature vector output
-        self.n_exprs = n_exprs
-        self.lexicon = lexicon  # tokens to expect
-        self.token_to_index = {s: i for i, s in enumerate(self.lexicon)}
+    def __init__(self,
+                 n_features: int,
+                 n_color_channels: int,
+                 n_conv_channels: int,
+                 bitmap_n_rows: int,
+                 bitmap_n_cols: int,
+                 batch_size: int = 1):
+        self._n_features = n_features
+        self.n_conv_channels = n_conv_channels
+        self.n_color_channels = n_color_channels
+        self.bitmap_n_rows = bitmap_n_rows
+        self.bitmap_n_cols = bitmap_n_cols
+        self.batch_size = batch_size
+
+        def conv_block(in_channels: int, out_channels: int, kernel_size=3) -> T.nn.Module:
+            return T.nn.Sequential(
+                T.nn.Conv2d(in_channels, out_channels, kernel_size, padding='same'),
+                T.nn.BatchNorm2d(out_channels),
+                T.nn.ReLU(),
+            )
+
+        self.conv = T.nn.Sequential(
+            conv_block(n_color_channels, n_conv_channels),
+            conv_block(n_conv_channels, n_conv_channels),
+            conv_block(n_conv_channels, n_conv_channels),
+            conv_block(n_conv_channels, n_conv_channels),
+            T.nn.Flatten(),
+            T.nn.Linear(n_conv_channels * bitmap_n_rows * bitmap_n_cols, n_features),
+        )
 
     @property
     def n_features(self) -> int:
-        return self.max_expr_tokens * self.n_exprs
+        return self._n_features
 
     def extract(self, spec: List[Tuple]) -> np.ndarray:
-        # take outputs and map to fixed-length vectors of indices
-        raise NotImplementedError
+        outputs = T.stack([T.from_numpy(util.stack_repeat(y, 3)).float() for x, y in spec])
+        outputs = self.conv(outputs)
+        return outputs.squeeze().detach().numpy()
+
+
+if __name__ == "__main__":
+    components = {
+        "LSystem_0": ["Axiom", "Rules", "LSystem"],
+        "Nonterminal_0": ["Nonterminal"],
+        "Terminal_0": ["Terminal"],
+        "Terminal_1": ["Terminal"],
+        "Axiom_0": ["Nonterminal", "Axiom", "Axiom"],
+        "Axiom_1": ["Terminal", "Axiom", "Axiom"],
+        "Axiom_2": ["Axiom"],
+        "Rules_0": ["Rule", "Rules", "Rules"],
+        "Rules_1": ["Rule", "Rules"],
+        "Rule_0": ["Nonterminal", "Rhs", "Rule"],
+        "Rhs_0": ["Rhs", "Rhs", "Rhs"],
+        "Rhs_1": ["Nonterminal", "Rhs", "Rhs"],
+        "Rhs_2": ["Terminal", "Rhs", "Rhs"],
+        "Rhs_3": ["Rhs"],
+    }
+    str_semantics = {
+        "LSystem_0": lambda axiom, rules: f"{axiom};{rules}",
+        "Nonterminal_0": lambda: "F",
+        "Terminal_0": lambda: "+",
+        "Terminal_1": lambda: "-",
+        "Axiom_0": lambda nt, axiom: f"{nt}{axiom}",
+        "Axiom_1": lambda t, axiom: f"{t}{axiom}",
+        "Axiom_2": lambda: "",
+        "Rules_0": lambda r, rs: f"{r},{rs}",
+        "Rules_1": lambda r: r,
+        "Rule_0": lambda nt, rhs: f"{nt}~{rhs}",
+        "Rhs_0": lambda rhs1, rhs2: f"[{rhs1}]{rhs2}",
+        "Rhs_1": lambda nt, rhs: f"{nt}{rhs}",
+        "Rhs_2": lambda t, rhs: f"{t}{rhs}",
+        "Rhs_3": lambda: "",
+    }
+
+    def to_learner_ast(tree: Tuple) -> Tuple:
+        def transform(*node):
+            symbol, i, *args = node
+            if not args:
+                return f"{symbol}_{i}"
+            else:
+                return f"{symbol}_{i}", *args
+
+        return apply_to_tree(tree, transform)
+
+    def to_str(ltree: Tuple) -> str:
+        if isinstance(ltree, tuple):
+            symbol, *args = ltree
+        else:
+            symbol = ltree
+            args = []
+        str_args = [to_str(arg) for arg in args]
+        return str_semantics[symbol](*str_args)
+
+    def evaluate(p, env):
+        sys_str = to_str(p)
+        sys = S0LSystem.from_sentence(list(sys_str))
+        render_str = sys.nth_expansion(3)
+        return S0LSystem.draw(render_str, d=3, theta=45, n_rows=128, n_cols=128)
+
+    g = Grammar.from_components(components, gram=1)
+    fe = ConvFeatureExtractor(n_features=1000,
+                              n_color_channels=3,
+                              n_conv_channels=12,
+                              bitmap_n_rows=128,
+                              bitmap_n_cols=128)
+    lg = LearnedGrammar(fe, g)
+    training_examples = [to_learner_ast(parse_lsystem_str_as_ast(sys.to_code()))
+                         for sys in simple_zoo_systems[:1]]
+    print(training_examples)
+    print()
+    lg.train(
+        start_symbol="LSystem",
+        training_examples=training_examples,
+        input_domain=[{}],
+        evaluate=evaluate,
+        log_steps=10,
+    )
+    print(lg)
