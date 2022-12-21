@@ -9,7 +9,7 @@ from time import sleep
 
 from cfg import PCFG
 from lindenmayer import S0LSystem
-from book_zoo import zoo
+from zoo import zoo
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 CODE_MODEL = "code-davinci-002"

@@ -415,14 +415,6 @@ class CFG:
                 return cache[nt]
             rules: List[CFG.Sentence] = []
             for succ in self.rules[nt]:
-                # ignore empty string map if source is start symbol
-                if succ == CFG.Empty and nt == self.start:
-                    rules.append(succ)
-                    continue
-
-                # remove identity productions
-                if succ == [nt]:
-                    continue
                 h = succ[0]
                 if len(succ) > 1 or self.is_terminal(h):
                     # ignore rules of len >1
@@ -500,9 +492,6 @@ class PCFG(T.nn.Module):
 
     def rules(self) -> Iterable[Tuple[CFG.Word, List[CFG.Sentence]]]:
         return self.cfg.rules.items()
-
-    def weighted_successors(self, nt: CFG.Word) -> Iterable[Tuple[CFG.Sentence, np.ndarray]]:
-        return zip(self.cfg.rules[nt], self.weights[nt])
 
     def successors(self, nt: CFG.Word) -> Iterable[CFG.Sentence]:
         return self.cfg.rules[nt]

@@ -12,7 +12,7 @@ import time
 import Levenshtein
 
 from cfg import CFG, PCFG
-from book_zoo import simple_zoo_systems
+from zoo import zoo
 from lindenmayer import S0LSystem, trained_bigram_metagrammar
 from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
 
@@ -201,7 +201,7 @@ if __name__ == '__main__':
     seed = [
         tuple(x.to_sentence())
         for x in 
-        simple_zoo_systems
+        zoo
         # simple_seed_systems
     ]
     popn_size = 25

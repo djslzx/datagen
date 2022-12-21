@@ -1,7 +1,7 @@
 import pdb
 
 from featurizers import *
-from book_zoo import zoo
+from zoo import zoo
 from torchvision.io import read_image, ImageReadMode
 from sklearn.neighbors import NearestNeighbors
 from typing import *

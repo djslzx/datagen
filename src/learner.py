@@ -9,7 +9,7 @@ from glob import glob
 
 from max_heap import MaxHeap
 from lindenmayer import S0LSystem, parse_lsystem_str_as_ast, apply_to_tree
-from book_zoo import simple_zoo_systems
+from zoo import zoo
 import util
 
 
@@ -329,7 +329,7 @@ class LearnedGrammar:
                       "\n\t      avg negative log likelihood of expression, w/o learning",
                       sum(recent_log_likelihoods) / len(recent_log_likelihoods))
                 recent_losses, recent_log_likelihoods = [], []
-
+            # todo: batching
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
@@ -490,7 +490,7 @@ if __name__ == "__main__":
     file_examples = [to_learner_ast(parse_lsystem_str_as_ast(s))
                      for s in file_example_strs]
     book_examples = [to_learner_ast(parse_lsystem_str_as_ast(s.to_code()))
-                     for s in simple_zoo_systems]
+                     for s in zoo]
 
     g = Grammar.from_components(components, gram=1)
     fe = ConvFeatureExtractor(n_features=1000,

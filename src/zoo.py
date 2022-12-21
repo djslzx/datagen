@@ -1,7 +1,7 @@
 from typing import List, Tuple
 from lindenmayer import S0LSystem
 
-zoo: List[Tuple[S0LSystem, int]] = [
+_zoo: List[Tuple[S0LSystem, int]] = [
     # Deterministic L-systems
     (S0LSystem(
         axiom="F-F-F-F",
@@ -225,7 +225,6 @@ zoo: List[Tuple[S0LSystem, int]] = [
     # ), 90),
 ]
 
-zoo_systems = [sys for sys, angle in zoo]
-simple_zoo_systems = [S0LSystem.from_sentence(["F" if char in ["f", "X"] else char
-                                               for char in sys.to_sentence()])
-                      for sys in zoo_systems]
+zoo = [S0LSystem.from_sentence(["F" if char in ["f", "X"] else char
+                                for char in sys.to_sentence()])
+       for sys, _ in _zoo]

@@ -4,7 +4,7 @@ from pprint import pp
 from lindenmayer import *
 import matplotlib.pyplot as plt
 import util
-from book_zoo import simple_zoo_systems
+from zoo import zoo
 
 
 def test_D0L_expand():
@@ -229,7 +229,7 @@ def test_S0L_to_code():
 
 def test_LSYSTEM_MG_coverage():
     """Check that LSYSTEM_MG covers the book examples"""
-    for sys in simple_zoo_systems:
+    for sys in zoo:
         ex = sys.to_sentence()
         assert MG.can_generate(ex), \
             f"Expected\n{MG}\nCNF:{MG.to_CNF()}\nto generate {ex}"
@@ -382,7 +382,7 @@ def demo_weighted_metagrammar():  # pragma: no cover
         ["F;F~F", "F;F~FF"],
         ["F;F~F", "F;F~FF", "F;F~FFF"],
         ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
-        [sys.to_code() for sys in simple_zoo_systems],
+        [sys.to_code() for sys in zoo],
     ]
     for corpus in corpi:
         g = trained_metagrammar(corpus)
@@ -397,7 +397,7 @@ def demo_bigram_metagrammar():  # pragma: no cover
         ["F;F~F", "F;F~FF"],
         ["F;F~F", "F;F~FF", "F;F~FFF"],
         ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
-        [sys.to_code() for sys in simple_zoo_systems],
+        [sys.to_code() for sys in zoo],
     ]
     print(MG.to_bigram())
     for corpus in corpi:

@@ -1,7 +1,7 @@
 from inout import *
 import util
 from lindenmayer import MG, S0LSystem
-import book_zoo as zoo
+import zoo as zoo
 
 
 def test_inward_diag():
@@ -138,7 +138,7 @@ def test_io_small():
 def demo_io():  # pragma: no cover
     cases = [
         (PCFG.from_CFG(MG.to_CNF()).normalized(),
-         [sys.to_sentence() for sys in zoo.simple_zoo_systems]),
+         [sys.to_sentence() for sys in zoo.zoo]),
     ]
     for g, corpus in cases:
         print(corpus, '\n', g, '\n')
