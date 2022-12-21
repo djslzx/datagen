@@ -60,6 +60,26 @@ class ResnetFeaturizer(Featurizer):
             features = features.softmax(0)
         return features.detach().numpy()
 
+    def apply_batched(self, imgs: np.ndarray) -> np.ndarray:
+        assert isinstance(imgs, np.ndarray), f"Expected ndarray, but got {type(imgs)}"
+        assert len(imgs.shape) in [3, 4], f"Got imgs with shape {imgs.shape}"
+
+        if imgs.dtype != np.uint8:
+            print(f"WARNING: casting image of type {imgs.dtype} to uint8", file=stderr)
+            imgs = imgs.astype(np.uint8)
+
+        if len(imgs.shape) == 3:  # images with no color channel
+            imgs = np.repeat(imgs[:, None, ...], repeats=3, axis=1)
+        elif imgs.shape[0] != 3:  # remove alpha channel
+            imgs = imgs[:, 0, ...]  # select first channel in each image
+            imgs = np.repeat(imgs[:, None, ...], repeats=3, axis=1)  # repeat first channel 3x
+
+        batch = self.preprocess(T.from_numpy(imgs))
+        features = self.model(batch).squeeze()
+        if self.softmax_outputs:
+            features = features.softmax(0)
+        return features.detach().numpy()
+
     def top_k_classes(self, features: np.ndarray, k: int) -> List[str]:
         top_class_ids = [int(x) for x in (-features).argsort()[:k]]
         labels = [f"{self.classify(class_id)}: {features[class_id].item(): .4f}"
