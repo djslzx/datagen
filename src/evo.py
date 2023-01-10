@@ -203,10 +203,10 @@ def main(name: str):
     seed = [tuple(x.to_sentence()) for x in zoo]
 
     # choices for each param
-    popn_sizes = [1, 10]  # [10, 100, 1000, 10000]
-    arkv_growth_rates = [2]  # [1, 2, 4, 8]
-    iterations = [2]  # [10, 100, 1000]
-    neighborhood_sizes = [10]  # [1, 10, 100]
+    popn_sizes = [10, 100, 1000, 10000]
+    arkv_growth_rates = [1, 2, 4, 8]
+    iterations = [10, 100, 1000]
+    neighborhood_sizes = [1, 10, 100]
     novelty_within_gen = [False, True]
 
     for i, args in enumerate(it.product(popn_sizes, arkv_growth_rates, iterations,
