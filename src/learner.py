@@ -8,7 +8,7 @@ import sys
 from glob import glob
 
 from max_heap import MaxHeap
-from lindenmayer import S0LSystem, parse_lsystem_str_as_ast, apply_to_tree
+from lindenmayer import S0LSystem, parse_lsystem_ast, apply_to_tree
 from zoo import zoo
 import util
 
@@ -487,9 +487,9 @@ if __name__ == "__main__":
             for line in f.readlines():
                 file_example_strs.append(line.strip())
 
-    file_examples = [to_learner_ast(parse_lsystem_str_as_ast(s))
+    file_examples = [to_learner_ast(parse_lsystem_ast(s))
                      for s in file_example_strs]
-    book_examples = [to_learner_ast(parse_lsystem_str_as_ast(s.to_code()))
+    book_examples = [to_learner_ast(parse_lsystem_ast(s.to_code()))
                      for s in zoo]
 
     g = Grammar.from_components(components, gram=1)

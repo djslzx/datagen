@@ -2,7 +2,6 @@
 Test out evolutionary search algorithms for data augmentation.
 """
 import pdb
-
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from typing import *
@@ -10,6 +9,7 @@ from os import mkdir
 from pprint import pp
 import time
 import Levenshtein
+import itertools as it
 
 from cfg import CFG, PCFG
 from zoo import zoo
@@ -17,7 +17,7 @@ from lindenmayer import S0LSystem, trained_bigram_metagrammar
 from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
 
 # Set up file paths
-PCFG_CACHE_PREFIX = ".cache/pcfg-"
+PCFG_CACHE_PREFIX = ".cache/"
 IMG_CACHE_PREFIX = ".cache/imgs/"
 
 for directory in [".cache/", ".cache/imgs/"]:
@@ -113,11 +113,15 @@ def novelty_search(init_popn: List[CFG.Sentence],
                    n_neighbors: int,
                    next_gen_ratio: int,
                    sentence_limit: int,
-                   id: str = "") -> Set[Iterable[str]]:
+                   measure_novelty_within_generation: bool = False,
+                   name: str = "") -> Set[Iterable[str]]:
+
+    logparams = locals()
+    del logparams['init_popn']
+
     arkv = set()
     popn = np.array(init_popn, dtype=object)
     n_next_gen = max_popn_size * next_gen_ratio
-    t = f"{int(time.time())}-{id}"
 
     for iter in range(iters):
         print(f"[Novelty search: iter {iter}]")
@@ -139,12 +143,18 @@ def novelty_search(init_popn: List[CFG.Sentence],
         # compute popn features, build knn data structure, and score next_gen
         print("Scoring population...")
         t_score = time.time()
-        # prev_popn = np.concatenate((popn, np.array(list(arkv), dtype=object)), axis=0)
-        scores = semantic_score(prev_gen=next_gen, next_gen=next_gen,
-                                featurizer=featurizer, n_neighbors=n_neighbors, n_samples=n_samples)
+        if measure_novelty_within_generation:
+            prev_gen = next_gen
+        else:
+            prev_gen = np.concatenate((popn, np.array(list(arkv), dtype=object)), axis=0)
+        scores = semantic_score(prev_gen=prev_gen,
+                                next_gen=next_gen,
+                                featurizer=featurizer,
+                                n_neighbors=n_neighbors,
+                                n_samples=n_samples)
         # print(f"Semantic scoring took {time.time() - t_score}s.")
         # scores = syntactic_semantic_score(popn=next_gen, semantic_scores=sem_scores)  # fixme
-        print(f"Scoring took {time.time() - t_score}s total.")
+        print(f"Scoring took {time.time() - t_score}s.")
 
         # cull popn
         print("Culling popn...")
@@ -176,49 +186,60 @@ def novelty_search(init_popn: List[CFG.Sentence],
         print("====================")
 
         # save gen
-        with open(f"{PCFG_CACHE_PREFIX}{t}-gen-{iter}.txt", "w") as f:
+        with open(f"{PCFG_CACHE_PREFIX}{name}-gen-{iter}.txt", "w") as f:
+            f.write(f"# {logparams}\n")
             for agent, label in zip(next_gen, labels):
                 f.write("".join(agent) + f" : {label}\n")
 
         # save arkv
-        with open(f"{PCFG_CACHE_PREFIX}{t}-arkv.txt", "a") as f:
+        with open(f"{PCFG_CACHE_PREFIX}{name}-arkv.txt", "a") as f:
             for agent in next_arkv:
                 f.write(''.join(agent) + "\n")
 
     return arkv
 
 
+def main(name: str):
+    seed = [tuple(x.to_sentence()) for x in zoo]
+
+    # choices for each param
+    popn_sizes = [1, 10]  # [10, 100, 1000, 10000]
+    arkv_growth_rates = [2]  # [1, 2, 4, 8]
+    iterations = [2]  # [10, 100, 1000]
+    neighborhood_sizes = [10]  # [1, 10, 100]
+    novelty_within_gen = [False, True]
+
+    for i, args in enumerate(it.product(popn_sizes, arkv_growth_rates, iterations,
+                                        neighborhood_sizes, novelty_within_gen)):
+        popn_size, arkv_growth_rate, iters, neighborhood_size, novelty_within = args
+        params = {
+            'name': f"{int(time.time())}-{name}-{i}",
+            'init_popn': seed,
+            'iters': iters,
+            'featurizer': ResnetFeaturizer(disable_last_layer=False,
+                                           softmax_outputs=True),
+            'max_popn_size': popn_size,
+            'n_neighbors': neighborhood_size,
+            'n_samples': 3,
+            'next_gen_ratio': 10,
+            'sentence_limit': 30,
+            'p_arkv': arkv_growth_rate / popn_size,
+            'measure_novelty_within_generation': novelty_within,
+        }
+        print("****************")
+        print(f"Running {i}-th novelty search with parameters: {params}")
+        novelty_search(**params)
+
+
 if __name__ == '__main__':
-    simple_seed_systems = [
-        S0LSystem("F", {"F": ["F+F", "F-F"]}),
-        S0LSystem("F", {"F": ["FF", "F-F"]}),
-        S0LSystem("F", {"F": ["F"]}),
-        S0LSystem("F", {"F": ["FF"]}),
-        S0LSystem("F", {"F": ["FFF"]}),
-        S0LSystem("F+F", {"F": ["FF"]}),
-        S0LSystem("F-F", {"F": ["FF"]}),
-    ]
-    seed = [
-        tuple(x.to_sentence())
-        for x in 
-        zoo
-        # simple_seed_systems
-    ]
-    popn_size = 25
-    arkv_growth_rate = 2
-    params = {
-        'id': 'gen-training-exs',
-        'init_popn': seed,
-        'iters': 10,
-        'featurizer':
-            # RawFeaturizer(DRAW_ARGS['n_rows'], DRAW_ARGS['n_cols']),
-            ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True),
-        'max_popn_size': popn_size,
-        'n_neighbors': 10,
-        'n_samples': 3,
-        'next_gen_ratio': 10,
-        'sentence_limit': 30,
-        'p_arkv': arkv_growth_rate / popn_size,
-    }
-    print(f"Running novelty search with parameters: {params}")
-    novelty_search(**params)
+    # simple_seed_systems = [
+    #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
+    #     S0LSystem("F", {"F": ["FF", "F-F"]}),
+    #     S0LSystem("F", {"F": ["F"]}),
+    #     S0LSystem("F", {"F": ["FF"]}),
+    #     S0LSystem("F", {"F": ["FFF"]}),
+    #     S0LSystem("F+F", {"F": ["FF"]}),
+    #     S0LSystem("F-F", {"F": ["FF"]}),
+    # ]
+    main('test')
+

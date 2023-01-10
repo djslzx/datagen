@@ -41,7 +41,7 @@ MG = CFG("LSystem", {
 })
 
 
-def parse_lsystem_str(s: str, f: Callable) -> Any:
+def parse_lsystem(s: str, f: Callable) -> Any:
     """
     Greedily parse the string s into a tree of (type, id) nodes, where
     - type is the nonterminal used, and
@@ -97,8 +97,8 @@ def parse_lsystem_str(s: str, f: Callable) -> Any:
     return f("LSystem", 0, axiom_expr, rules_expr)
 
 
-def parse_lsystem_str_as_ast(s: str) -> Tuple:
-    return parse_lsystem_str(s, lambda *x: tuple(x))
+def parse_lsystem_ast(s: str) -> Tuple:
+    return parse_lsystem(s, lambda *x: tuple(x))
 
 
 def apply_to_tree(root: Tuple, f: Callable) -> Any:
@@ -115,7 +115,7 @@ def parse_lsystem_str_as_counts(s: str) -> Dict[str, np.ndarray]:
     def count(nt, i, *args):
         counts[nt][i] += 1
 
-    parse_lsystem_str(s, count)
+    parse_lsystem(s, count)
     return counts
 
 
@@ -181,7 +181,7 @@ def bigram_counts(s: str) -> Dict[str, np.ndarray]:
             counts[k][arg] += 1
         return i
 
-    parse_lsystem_str(s, count)
+    parse_lsystem(s, count)
     return counts
 
 
@@ -192,7 +192,6 @@ def trained_bigram_metagrammar(corpus: List[str], alpha=0.1) -> PCFG:
         counts = bigram_counts(word)
         for k, v in counts.items():
             counts[k] += v
-
     weights = {
         k: (vec + alpha) / np.sum(vec + alpha)
         for k, vec in counts.items()
