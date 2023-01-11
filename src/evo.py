@@ -200,7 +200,8 @@ def novelty_search(init_popn: List[CFG.Sentence],
 
 
 def main(name: str):
-    seed = [tuple(x.to_sentence()) for x in zoo]
+    seed_popn = [tuple(x.to_sentence()) for x in zoo]
+    t = int(time.time())
 
     # choices for each param
     popn_sizes = [10, 100, 1000, 10000]
@@ -213,8 +214,8 @@ def main(name: str):
                                         neighborhood_sizes, novelty_within_gen)):
         popn_size, arkv_growth_rate, iters, neighborhood_size, novelty_within = args
         params = {
-            'name': f"{int(time.time())}-{name}-{i}",
-            'init_popn': seed,
+            'name': f"{t}-{name}-{i}",
+            'init_popn': seed_popn,
             'iters': iters,
             'featurizer': ResnetFeaturizer(disable_last_layer=False,
                                            softmax_outputs=True),

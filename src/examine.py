@@ -16,6 +16,10 @@ def plot_outputs(filename: str, batch_size=36, save=True):
         imgs = []
         labels = []
         for line in f.readlines():
+            # skip comment lines
+            if line.startswith('#'):
+                print(line)
+                continue
             if ':' in line:
                 sys_str, score = line.split(' : ')
                 if not score.strip().endswith('*'): continue  # skip unselected children
@@ -55,6 +59,6 @@ if __name__ == '__main__':
     file_glob, save = sys.argv[1:]
     save = save == "True"
 
-    for filename in glob(file_glob):
-        print(f"Plotting {filename} with save={save}")
-        plot_outputs(filename, save=save)
+    for fname in sorted(glob(file_glob)):
+        print(f"Plotting {fname} with save={save}")
+        plot_outputs(fname, save=save)
