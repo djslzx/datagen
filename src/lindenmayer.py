@@ -9,6 +9,8 @@ import itertools as it
 from cfg import CFG, PCFG
 import util
 
+
+Tree: TypeAlias = Tuple
 MG = CFG("LSystem", {
     "LSystem": [
         ["Axiom", ";", "Rules"],
@@ -47,16 +49,17 @@ def parse_lsystem(s: str, f: Callable) -> Any:
     - type is the nonterminal used, and
     - id is the index of the rule used in the nonterminal's list of rules
     """
+    # TODO: test
     assert isinstance(s, str), f"Got unexpected type: {type(s)}"
 
-    def parse_symbol(s: str) -> Tuple:
+    def parse_symbol(s: str) -> Any:
         assert len(s) == 1, f"Found long symbol: {s}"
         if s == "F":
             return f("Nonterminal", 0)
         else:
             return f("Terminal", 0 if s == "+" else 1)
 
-    def parse_axiom(s: str) -> Tuple:
+    def parse_axiom(s: str) -> Any:
         if len(s) == 0:
             return f("Axiom", 2)
         hd, tl = s[0], s[1:]
@@ -64,7 +67,7 @@ def parse_lsystem(s: str, f: Callable) -> Any:
         i = (0 if hd == "F" else 1)  # choose Axiom's Nonterm or Term rule
         return f("Axiom", i, parse_symbol(hd), parse_axiom(tl))
 
-    def parse_rhs(s: str) -> Tuple | str:
+    def parse_rhs(s: str) -> Any:
         if len(s) == 0:
             return f("Rhs", 3)
         hd, tl = s[0], s[1:]
@@ -79,11 +82,12 @@ def parse_lsystem(s: str, f: Callable) -> Any:
         i = (1 if hd == "F" else 2)
         return f("Rhs", i, parse_symbol(hd), parse_rhs(tl))
 
-    def parse_rule(s: str) -> Tuple:
+    def parse_rule(s: str) -> Any:
         lhs, rhs = s.split("~")
+        assert lhs == "F", f"Expected F on lhs but found {lhs}"
         return f("Rule", 0, f("Nonterminal", 0), parse_rhs(rhs))
 
-    def parse_rules(s: str) -> Tuple:
+    def parse_rules(s: str) -> Any:
         rule_exprs = [parse_rule(rule) for rule in s.split(",")]
         expr = f("Rules", 1, rule_exprs[-1])
         for rule_expr in reversed(rule_exprs[:-1]):
@@ -97,11 +101,11 @@ def parse_lsystem(s: str, f: Callable) -> Any:
     return f("LSystem", 0, axiom_expr, rules_expr)
 
 
-def parse_lsystem_ast(s: str) -> Tuple:
+def parse_lsystem_to_ast(s: str) -> Tree:
     return parse_lsystem(s, lambda *x: tuple(x))
 
 
-def apply_to_tree(root: Tuple, f: Callable) -> Any:
+def apply_to_tree(root: Tree, f: Callable) -> Any:
     symbol, i, *args = root
     if not args:
         return f(symbol, i)
@@ -389,7 +393,7 @@ class S0LSystem(LSystem):
              for pred, succs in self.productions.items()
              for succ in succs])))[:-1]
 
-    def to_code(self) -> str:
+    def to_str(self) -> str:
         return "".join(self.to_sentence())
 
     @staticmethod

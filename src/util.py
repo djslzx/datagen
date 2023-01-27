@@ -6,12 +6,15 @@ from typing import *
 import matplotlib.pyplot as plt
 
 
-def find_closing_bracket(s: str) -> int:
+def find_closing_bracket(s: str, brackets="[]") -> int:
+    assert brackets in {"[]", "()", "{}"}
+    c_open, c_close = brackets
+    assert s[0] != c_open, f"Expected string to skip open bracket, but received: {s}"
     n_brackets = 0
     for i, c in enumerate(s):
-        if c == "[":
+        if c == c_open:
             n_brackets += 1
-        elif c == "]":
+        elif c == c_close:
             if n_brackets == 0:
                 return i
             else:

@@ -9,8 +9,12 @@ import sys
 from glob import glob
 
 from grammar import Grammar, LearnedGrammar, ConvFeatureExtractor
-from lindenmayer import S0LSystem, parse_lsystem_ast, apply_to_tree
+from lindenmayer import S0LSystem, parse_lsystem_to_ast, apply_to_tree
 from zoo import zoo
+from cfg import CFG
+
+Tree: TypeAlias = Tuple
+
 
 # types of components
 components = {
@@ -49,7 +53,7 @@ str_semantics = {
 }
 
 
-def to_learner_ast(tree: Tuple) -> Tuple:
+def to_learner_ast(tree: Tree) -> Tree:
     """
     Convert tuple node ASTs, where node values are tuples of the form (NT, i),
     to ASTs with string values.
@@ -64,7 +68,7 @@ def to_learner_ast(tree: Tuple) -> Tuple:
     return apply_to_tree(tree, transform)
 
 
-def to_flat_string(ltree: Tuple) -> str:
+def to_flat_string(ltree: Tree) -> str:
     if isinstance(ltree, tuple):
         symbol, *args = ltree
     else:
@@ -74,7 +78,7 @@ def to_flat_string(ltree: Tuple) -> str:
     return str_semantics[symbol](*str_args)
 
 
-def evaluate(p: Tuple):
+def evaluate(p: Tree):
     sys_str = to_flat_string(p)
     sys = S0LSystem.from_sentence(list(sys_str))
     render_str = sys.nth_expansion(3)
@@ -106,7 +110,7 @@ class LSystemDataset(data.Dataset):
 
     def __getitem__(self, item):
         s = self.data[item]
-        ast = parse_lsystem_ast(s)
+        ast = parse_lsystem_to_ast(s)
         ast = to_learner_ast(ast)
         return s, evaluate(ast)
 
@@ -130,7 +134,7 @@ if __name__ == "__main__":
                               n_conv_channels=12,
                               bitmap_n_rows=128,
                               bitmap_n_cols=128)
-    parse = lambda s: to_learner_ast(parse_lsystem_ast(s))
+    parse = lambda s: to_learner_ast(parse_lsystem_to_ast(s))
     lg = LearnedGrammar(feature_extractor=fe, grammar=g,
                         evaluator=evaluate, parser=parse,
                         start_symbol="LSystem")

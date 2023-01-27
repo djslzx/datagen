@@ -223,7 +223,7 @@ def test_S0L_to_code():
          'F-F-F;F~fF'),
     ]
     for g, y in cases:
-        out = g.to_code()
+        out = g.to_str()
         assert out == y, f"Expected {y}, but got {out}"
 
 
@@ -290,7 +290,7 @@ def test_parse_lsystem_str_as_tree():
              ("Rhs", 3)))))),
     ]
     for s, tree in cases:
-        out = parse_lsystem_ast(s)
+        out = parse_lsystem_to_ast(s)
         assert tree == out, f"Expected\n{tree}\nbut got\n{out}"
 
 
@@ -382,7 +382,7 @@ def demo_weighted_metagrammar():  # pragma: no cover
         ["F;F~F", "F;F~FF"],
         ["F;F~F", "F;F~FF", "F;F~FFF"],
         ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
-        [sys.to_code() for sys in zoo],
+        [sys.to_str() for sys in zoo],
     ]
     for corpus in corpi:
         g = trained_metagrammar(corpus)
@@ -397,7 +397,7 @@ def demo_bigram_metagrammar():  # pragma: no cover
         ["F;F~F", "F;F~FF"],
         ["F;F~F", "F;F~FF", "F;F~FFF"],
         ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
-        [sys.to_code() for sys in zoo],
+        [sys.to_str() for sys in zoo],
     ]
     print(MG.to_bigram())
     for corpus in corpi:
