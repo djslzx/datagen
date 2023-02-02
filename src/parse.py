@@ -7,13 +7,13 @@ import eggy
 lsystem_metagrammar = r"""
     lsystem: axiom ";" rules   -> lsystem
     axiom: symbols             -> axiom
-    ?symbols: symbol           -> symbol
-            | "[" symbols "]"  -> bracket
-            | symbols symbols  -> symbols
-    ?symbol: NT                -> nonterm
-           | T                 -> term
-    rules: rule                -> rule
-         | rule "," rules      -> rules
+    symbols: symbol symbols    -> symbols
+           | symbol            -> symbol
+    symbol: "[" symbols "]"    -> bracket
+          | NT                 -> nonterm
+          | T                  -> term
+    rules: rule "," rules      -> rules
+         | rule                -> rule
     rule: NT "~" symbols       -> arrow
     NT: "F"
       | "f"
@@ -40,7 +40,7 @@ def tree_to_sexp(node: lark.Tree | lark.Token) -> str:
         return node.value
 
 
-def tree_to_counts(tree: lark.Tree) -> Dict:
+def unigram_counts(tree: lark.Tree) -> Dict:
     keys = ["lsystem", "axiom", "symbol", "bracket", "symbols",
             "rule", "rules", "arrow", "nonterm", "term", "F", "f", "+", "-"]
     counts = {key: 0 for key in keys}
@@ -124,22 +124,25 @@ if __name__ == '__main__':
     strs = [ 
         "F;F~F",
         "F;F~+-+--+++--F",
-        "F;F~F,F~F,F~F",
-        "F;F~F,F~+-F,F~F",
-        "F;F~F,F~+F-,F~F",
-        "F;F~F,F~FF,F~F,F~FF",
-        "F;F~F[+F]F,F~F,F~F[+F]F",
+        "F;F~-+F+-",
+        # "F;F~F,F~F,F~F",
+        # "F;F~F,F~+-F,F~F",
+        # "F;F~F,F~+F-",
+        # "F;F~F,F~+F-,F~F",
+        # "F;F~F,F~FF,F~F,F~FF",
+        # "F;F~F[+F]F,F~F,F~F[+F]F",
     ]
     parser = lark.Lark(lsystem_metagrammar, start='lsystem', parser='lalr')
     for s in strs:
         ast = parser.parse(s)
-        sexp = tree_to_sexp(ast)
-        simplified = eggy.simplify(sexp)
-        # counts = tree_to_counts(ast)
         # print(ast.pretty())
-        print(f"{s} -> {sexp} -> {simplified}")
+        sexp = tree_to_sexp(ast)
+        print(sexp)
+        # simplified = eggy.simplify(sexp)
+        # print(f"{s} ->\n"
+        #       f"  {sexp} ->\n"
+        #       f"  {simplified}")
 
-    # for s in simplified:
-    #     tokens = tokenize(s)
-    #     sexp = tokens_to_sexp(tokens)
-    #     print(sexp)
+        # tokens = tokenize(simplified)
+        # sexp = tokens_to_sexp(tokens)
+        # print(sexp)
