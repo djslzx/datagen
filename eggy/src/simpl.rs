@@ -22,44 +22,37 @@ define_language! {
 
 fn make_rules() -> Vec<Rewrite<LSystem, ()>> {
     vec![
+        // empty turn
         rewrite!("empty-turn-plus-minus";
             "(symbols (term +) (symbols (term -) ?x))" =>
-            "?x",
+            "?x"
         ),
         rewrite!("empty-turn-minus-plus";
             "(symbols (term -) (symbols (term +) ?x))" =>
-            "?x",
+            "?x"
         ),
         rewrite!("empty-turn-plus-minus-end";
             "(symbols (term +) (symbol (term -)))" =>
-            "nil",
+            "nil"
         ),
         rewrite!("empty-turn-minus-plus-end";
             "(symbols (term -) (symbol (term +)))" =>
-            "nil",
+            "nil"
         ),
         rewrite!("collapse-nil";
             "(symbols ?x nil)" =>
-            "(symbol ?x)",
+            "(symbol ?x)"
         ),
-
-        rewrite!("tree-assoc";
-            "(symbols (symbols ?a ?b) ?c)" => "(symbols ?a (symbols ?b ?c)))"),
-        // +- => ''
-        rewrite!("zero-turn-addsub";
-            "(symbols (symbols (symbol (term +)) (symbol (term -))) ?x)" => "?x"),
-        rewrite!("zero-turn-subadd";
-            "(symbols (symbols (symbol (term -)) (symbol (term +))) ?x)" => "?x"),
-        // TODO: handle empty symbols list from zero turn reductions?
-        rewrite!("bracket-dup";
-            "(symbols (bracket ?x) ?x)" => "?x"),
-
-        rewrite!("rules-commute-one";
-            "(rules ?a (rule ?b))" => "(rules ?b (rule ?a))"),
-        rewrite!("rules-commute-mult";
-            "(rules ?a (rules ?b ?c))" => "(rules ?b (rules ?a ?c))"),
-        rewrite!("rules-dup-mult";
-            "(rules ?a (rules ?a ?b))" => "?b"),
+        // retracing: X[X] => X
+        rewrite!("retracing";
+            "(symbols (bracket ?x) ?x)" =>
+            "?x"
+        ),
+        // unnecessary brackets: X~[Y] => X~Y
+        rewrite!("unnecessary-brackets";
+            "(arrow ?x (symbol (bracket ?y)))" =>
+            "(arrow ?x ?y)"
+        ),
     ]
 }
 
@@ -87,13 +80,23 @@ mod tests {
 
     #[test]
     fn test_empty_turn() {
-        let cases = vec![
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (symbol (term +)) \
-            (symbols (symbol (term -)) (symbols (symbol (term +)) (symbols (symbol (term -)) \
-            (symbols (symbol (term -)) (symbols (symbol (term +)) (symbols (symbol (term +)) \
-            (symbols (symbol (term +)) (symbols (symbol (term -)) (symbols (symbol (term -)) \
-            (symbol (nonterm F)))))))))))))))",
+        let inputs = vec![
+            // F;F~F
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))",
+            // F;F~+-+--+++--F
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (term +) \
+            (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term -) \
+            (symbols (term +) (symbols (term +) (symbols (term +) (symbols (term -) \
+            (symbols (term -) (symbol (nonterm F)))))))))))))))",
+            // "F;F~-+F+-",
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (term -) \
+            (symbols (term +) (symbols (nonterm F) (symbols (term +) (symbol (term -)))))))))",
         ];
+        let ans = "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))";
+        for input in inputs {
+            let output = simplify(input);
+            assert_eq!(output, ans)
+        }
     }
 
     #[test]
@@ -108,29 +111,11 @@ mod tests {
 
     #[test]
     fn test_bracketed_turns_only() {
-        // only turns in brackets: [---+-+...--+] => eps
+        // only turns in brackets: [---+-+...--+] => empty symbols
     }
 
     #[test]
     fn test_axiom_turns_only() {
-        // only turns in
-    }
-
-
-    #[test]
-    fn test_simplify() {
-        let xs = vec![
-
-
-            "(lsystem (axiom (symbol (nonterm F))) (rules (arrow F (symbol (nonterm F))) (rules (arrow F (symbols (symbol (nonterm F)) (symbol (nonterm F)))) (rules (arrow F (symbol (nonterm F))) (rule (arrow F (symbols (symbol (nonterm F)) (symbol (nonterm F)))))))))",
-            "(lsystem (axiom (symbol (nonterm F))) (rules (arrow F (symbols (symbol (nonterm F)) (symbols (bracket (symbols (symbol (term +)) (symbol (nonterm F)))) (symbol (nonterm F))))) (rules (arrow F (symbol (nonterm F))) (rule (arrow F (symbols (symbol (nonterm F)) (symbols (bracket (symbols (symbol (term +)) (symbol (nonterm F)))) (symbol (nonterm F)))))))))",
-        ];
-        for x in xs {
-            println!("'{}',", simplify(x));
-        }
-        let input = "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (symbol (term +)) (symbols (symbol (term -)) (symbols (symbol (term +)) (symbols (symbol (term -)) (symbols (symbol (term -)) (symbols (symbol (term +)) (symbols (symbol (term +)) (symbols (symbol (term +)) (symbols (symbol (term -)) (symbols (symbol (term -)) (symbol (nonterm F)))))))))))))))";
-        let output = "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))";
-        let result = simplify(input);
-        assert_eq!(result, output);
+        // only turns in axiom => empty axiom
     }
 }
