@@ -102,11 +102,44 @@ mod tests {
     #[test]
     fn test_extra_brackets() {
         // unnecessary brackets: X~[Y] => X~Y
+        // F;F~[F]
+        assert_eq!(
+            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbol (nonterm F)))))))"),
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
+        );
+        // F;F~[FF+FF]
+        assert_eq!(
+            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))))"),
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))"
+        );
+
     }
 
     #[test]
     fn test_retracing() {
         // retracing: [X]X => X
+        // F;F~[F]F
+        assert_eq!(
+            simplify("(lsystem (axiom (symbol (nonterm F))) \
+            (rule (arrow F (symbols (bracket (symbol (nonterm F))) (symbol (nonterm F))))))"),
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
+        );
+        // F;F~[FF]FF
+        assert_eq!(
+            simplify("(lsystem (axiom (symbol (nonterm F))) \
+            (rule (arrow F (symbols (bracket (symbols (nonterm F) (symbol (nonterm F)))) \
+            (symbols (nonterm F) (symbol (nonterm F)))))))"),
+            "(lsystem (axiom (symbol (nonterm F))) \
+            (rule (arrow F (symbols (nonterm F) (symbol (nonterm F))))))"
+        );
+        // F;F~[+F-F]+F-F
+        assert_eq!(
+            simplify("(lsystem (axiom (symbol (nonterm F))) \
+            (rule (arrow F (symbols (bracket (symbols (term +) (symbols (nonterm F) (symbols (term -) (symbol (nonterm F)))))) \
+            (symbols (term +) (symbols (nonterm F) (symbols (term -) (symbol (nonterm F)))))))))"),
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F \
+            (symbols (term +) (symbols (nonterm F) (symbols (term -) (symbol (nonterm F))))))))"
+        );
     }
 
     #[test]
