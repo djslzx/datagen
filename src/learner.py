@@ -18,7 +18,7 @@ import parse
 Tree: TypeAlias = lark.Tree
 
 
-def eval_ltree_as_lsys(p: Tuple, level=3):
+def eval_ttree_as_lsys(p: Tuple, level=3):
     sys_str = parse.eval_ttree_as_str(p)
     sys = S0LSystem.from_sentence(list(sys_str))
     render_str = sys.nth_expansion(level)
@@ -57,7 +57,7 @@ class LSystemDataset(Tdata.Dataset):
     def __getitem__(self, item):
         s = self.data[item]
         ast = parse_str_to_tuple(s)
-        return s, eval_lsys(ast)
+        return s, eval_ttree_as_lsys(ast)
 
     def __len__(self):
         return len(self.data)
@@ -87,7 +87,7 @@ if __name__ == "__main__":
                               bitmap_n_cols=128)
 
     lg = LearnedGrammar(feature_extractor=fe, grammar=g,
-                        evaluator=eval_lsys, parser=parse_str_to_tuple,
+                        evaluator=eval_ttree_as_lsys, parser=parse_str_to_tuple,
                         start_symbol="LSystem")
     dataset = LSystemDataset.from_files(train_filenames)
     train_loader = Tdata.DataLoader(dataset, num_workers=8)

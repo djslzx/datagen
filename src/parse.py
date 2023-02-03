@@ -124,7 +124,8 @@ def group_parens(tokens: List[str]) -> Dict[int, int]:
     return ends
 
 
-def sexp_to_ttree(tokens: List[str]) -> Tuple:
+def sexp_to_ttree(s: str) -> Tuple:
+    tokens = tokenize(s)
     ends = group_parens(tokens)
 
     def to_ast_h(i: int, j: int) -> Tuple:
@@ -152,8 +153,26 @@ def eval_ttree_as_str(ttree: Tuple) -> str:
     return rule_str_semantics[symbol](*str_args)
 
 
-if __name__ == '__main__':
-    strs = [ 
+def simplify(s: str) -> str:
+    """Simplifies an L-system repr `s` using egg."""
+    ltree = parse_lsys_as_ltree(s)
+    sexp = ltree_to_sexp(ltree)
+    sexp_simpl = eggy.simplify(sexp)
+    ttree = sexp_to_ttree(sexp_simpl)
+    s_simpl = eval_ttree_as_str(ttree)
+    s_dedup = dedup_rules(s_simpl)
+    return s_dedup
+
+
+def dedup_rules(s: str) -> str:
+    s_axiom, s_rules = s.split(";")
+    rules = set(s_rules.split(","))
+    s_rules = ",".join(sorted(rules, key=lambda x: (len(x), x)))
+    return f"{s_axiom};{s_rules}"
+
+
+def demo_simplify():
+    strs = [
         "F;F~F",
         "F;F~+-+--+++--F",
         "F;F~-+F+-",
@@ -170,14 +189,9 @@ if __name__ == '__main__':
         "F;F~F[+F]F,F~F,F~F[+F]F",
     ]
     for s in strs:
-        ast = parse_lsys_as_ltree(s)
-        # print(ast.pretty())
-        sexp = ltree_to_sexp(ast)
-        simplified = eggy.simplify(sexp)
-        # print(f"{s} ->\n"
-        #       f"  {sexp} ->\n"
-        #       f"  {simplified}")
-
-        ttree = sexp_to_ttree(tokenize(simplified))
-        s_simpl = eval_ttree_as_str(ttree)
+        s_simpl = simplify(s)
         print(f"{s} => {s_simpl}")
+
+
+if __name__ == '__main__':
+    demo_simplify()
