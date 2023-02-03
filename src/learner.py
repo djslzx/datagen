@@ -41,6 +41,7 @@ class LSystemDataset(Tdata.Dataset):
                     if ":" in line:  # split out scores
                         line = line.split(" : ")[0]
                     # confirm that line is parseable
+                    # TODO: restructure so we don't parse twice
                     try:
                         parse_str_to_tuple(line)
                         lines.append(line.strip())
@@ -69,12 +70,37 @@ def parse_str_to_tuple(s: str) -> Tuple:
     return parse.ltree_to_ttree(ltree)
 
 
-if __name__ == "__main__":
+def simplify_file(fname: str):
+    new_fname = f"{fname}-simpl.txt"
+    n_lines_in, n_lines_out = 0, 0
+    print(f"Writing simplified file to {new_fname}")
+    with open(fname, 'r') as f_in, open(new_fname, 'w') as f_out:
+        for line in f_in.readlines():
+            n_lines_in += 1
+            if line.startswith("#"):  # skip comments
+                f_out.write(line)
+                n_lines_out += 1
+                continue
+            if ":" in line:  # split out scores
+                line = line.split(" : ")[0]
+            # simplify line
+            try:
+                line_simpl = parse.simplify(line)
+                f_out.write(line_simpl + "\n")
+                n_lines_out += 1
+            except (lark.UnexpectedCharacters,
+                    lark.UnexpectedToken,
+                    parse.ParseError):
+                pass
+    print(f"Wrote {n_lines_out} out of {n_lines_in} lines")
+
+
+def train_learner():
     if len(sys.argv) != 3:
         print("Usage: learner.py train test\n"
               f"got: {''.join(sys.argv)}")
         exit(1)
-    train_glob, test_glob = sys.argv[1:]
+    _, train_glob, test_glob = sys.argv
     train_filenames = sorted(glob(train_glob))
     test_filenames = sorted(glob(test_glob))
 
@@ -88,10 +114,12 @@ if __name__ == "__main__":
 
     lg = LearnedGrammar(feature_extractor=fe, grammar=g,
                         evaluator=eval_ttree_as_lsys, parser=parse_str_to_tuple,
-                        start_symbol="LSystem")
+                        start_symbol="LSystem",
+                        learning_rate=0.001)
     dataset = LSystemDataset.from_files(train_filenames)
-    train_loader = Tdata.DataLoader(dataset, num_workers=8)
-    trainer = L.Trainer()  # limit_train_batches=100, max_epochs=1)
+    train_loader = Tdata.DataLoader(dataset, num_workers=3)
+    trainer = L.Trainer(max_epochs=100, auto_lr_find=True)
+    trainer.tune(model=lg, train_dataloaders=train_loader)
     trainer.fit(model=lg, train_dataloaders=train_loader)
 
     print("Untrained grammar")
@@ -100,8 +128,23 @@ if __name__ == "__main__":
     print(lg.grammar)
 
     test_loader = Tdata.DataLoader(LSystemDataset.from_files(test_filenames))
-    for (s,), out in test_loader:
-        ttree = parse_str_to_tuple(s)
-        print(f"{s}\n"
+    for lsys_str, out in test_loader:
+        ttree = parse_str_to_tuple(lsys_str)
+        print(f"{lsys_str}\n"
               f"  trained loss: {-lg.grammar.log_probability(lg.start_symbol, ttree)}\n"
               f"  untrained loss: {-lg.original_grammar.log_probability(lg.start_symbol, ttree)}")
+
+
+def simplify_files():
+    if len(sys.argv) != 2:
+        print("Usage: python learner.py IN_FILE")
+        exit(1)
+
+    _, in_glob = sys.argv
+    for file in sorted(glob(in_glob)):
+        simplify_file(file)
+
+
+if __name__ == "__main__":
+    # simplify_files()
+    train_learner()

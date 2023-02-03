@@ -282,7 +282,8 @@ class LearnedGrammar(L.LightningModule):
                  grammar: Grammar,
                  evaluator: Callable[[Tuple], Any],
                  parser: Callable[[str], Tuple],
-                 start_symbol: str | Tuple):
+                 start_symbol: str | Tuple,
+                 learning_rate: float):
         """
         feature_extractor: maps each program output to a numerical vector
         grammar: the template grammar whose parameters should be tuned
@@ -295,11 +296,12 @@ class LearnedGrammar(L.LightningModule):
         self.eval = evaluator
         self.parse = parser
         self.start_symbol = start_symbol
+        self.learning_rate = learning_rate
         self.original_grammar = copy.deepcopy(grammar.normalize_())
         self.f_theta = T.nn.Linear(feature_extractor.n_features, grammar.n_parameters).float()
 
     def configure_optimizers(self) -> Any:
-        return T.optim.Adam(self.f_theta.parameters())
+        return T.optim.Adam(self.f_theta.parameters(), lr=self.learning_rate)
 
     def training_step(self, batch, batch_idx):
         """

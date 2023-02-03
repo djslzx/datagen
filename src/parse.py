@@ -86,27 +86,13 @@ def ltree_to_sexp(node: lark.Tree | lark.Token) -> str:
         return node.value
 
 
-def unigram_counts(tree: lark.Tree) -> Dict[str, np.ndarray]:
-    raise NotImplementedError
-    # counts: Dict[str, np.ndarray] = {nt: np.zeros(len(mg.rules[nt]))
-    #                                  for nt in mg.nonterminals}
-    #
-    # def traverse(node: lark.Tree | lark.Token):
-    #     if isinstance(node, lark.Tree):
-    #         nt, i = name_to_nti(node.data)
-    #         counts[nt][i] += 1
-    #         for c in node.children:
-    #             traverse(c)
-    #     else:
-    #         nt, i = name_to_nti(node.value)
-    #         counts[nt][i] += 1
-    #
-    # traverse(tree)
-    # return counts
-
-
-def bigram_counts(tree: lark.Tree) -> Dict[str, Dict[str, int]]:
-    raise NotImplementedError
+def ttree_to_sexp(ttree: Tuple) -> str:
+    node, *args = ttree
+    if args:
+        s_args = " ".join([node] + [ttree_to_sexp(arg) for arg in args])
+        return f"({s_args})"
+    else:
+        return node
 
 
 def tokenize(s: str) -> List[str]:
@@ -114,6 +100,7 @@ def tokenize(s: str) -> List[str]:
 
 
 def group_parens(tokens: List[str]) -> Dict[int, int]:
+    # TODO: test
     ends = {}
     stack = []
     for i, token in enumerate(tokens):
@@ -121,10 +108,13 @@ def group_parens(tokens: List[str]) -> Dict[int, int]:
             stack.append(i)
         elif token == ")":
             ends[stack.pop()] = i
+    if stack:
+        raise ValueError(f"Mismatched parentheses in expression: {''.join(tokens)}")
     return ends
 
 
 def sexp_to_ttree(s: str) -> Tuple:
+    # TODO: test
     tokens = tokenize(s)
     ends = group_parens(tokens)
 
@@ -153,15 +143,29 @@ def eval_ttree_as_str(ttree: Tuple) -> str:
     return rule_str_semantics[symbol](*str_args)
 
 
+class ParseError(Exception):
+    pass
+
+
 def simplify(s: str) -> str:
     """Simplifies an L-system repr `s` using egg."""
     ltree = parse_lsys_as_ltree(s)
     sexp = ltree_to_sexp(ltree)
     sexp_simpl = eggy.simplify(sexp)
+    # FIXME: hacky fix to unexpected grammar elts
+    if 'nil' in sexp_simpl:
+        raise ParseError(f"Unexpected 'nil' token in simplified expr: {sexp_simpl}")
     ttree = sexp_to_ttree(sexp_simpl)
     s_simpl = eval_ttree_as_str(ttree)
     s_dedup = dedup_rules(s_simpl)
     return s_dedup
+
+
+def simplify_ttree(ttree: Tuple) -> Tuple:
+    sexp = ttree_to_sexp(ttree)
+    sexp_simpl = eggy.simplify(sexp)
+    ttree_simpl = sexp_to_ttree(sexp_simpl)
+    return ttree_simpl
 
 
 def dedup_rules(s: str) -> str:
