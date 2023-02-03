@@ -9,9 +9,9 @@ import sys
 from glob import glob
 
 from grammar import Grammar, LearnedGrammar, ConvFeatureExtractor
-from lindenmayer import S0LSystem, parse_lsystem_to_ast, apply_to_tree
+from lindenmayer import S0LSystem
 from zoo import zoo
-from cfg import CFG
+import parse
 
 Tree: TypeAlias = Tuple
 

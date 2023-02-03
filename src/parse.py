@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import *
 import lark
 import eggy
+import numpy as np
 
+from cfg import CFG
+
+# grammar over lsystems
 lsystem_metagrammar = r"""
     lsystem: axiom ";" rules   -> lsystem
     axiom: symbols             -> axiom
@@ -24,8 +28,50 @@ lsystem_metagrammar = r"""
     %ignore WS
 """
 
+lsystem_meta_cfg = CFG("LSystem", {
+    "LSystem": ["Axiom ; Rules"],
+    "Axiom": ["Symbols"],
+    "Symbols": ["Symbol Symbols", "Symbol"],
+    "Symbol": ["[ Symbols ]", "Nonterm", "Term"],
+    "Rules": ["Rule , Rules", "Rule"],
+    "Rule": ["Nonterm ~ Symbols"],
+    "Nonterm": ["F", "f"],
+    "Term": ["+", "-"]
+})
+
+# declare rule names
+_rule_names = {
+    "LSystem": ["lsystem"],
+    "Axiom": ["axiom"],
+    "Symbols": ["symbols", "symbol"],
+    "Symbol": ["bracket", "nonterm", "term"],
+    "Rules": ["rules", "rule"],
+    "Rule": ["arrow"],
+    "Nonterm": ["F", "f"],
+    "Term": ["+", "-"]
+}
+
+# build translation dicts from rule name decls
+_d_name_to_nti = {
+    name: (nt, i)
+    for nt, names in _rule_names.items()
+    for i, name in enumerate(names)
+}
+_d_nti_to_name = {v: k for k, v in _d_name_to_nti.items()}
+
+
+def name_to_nti(s: str) -> Tuple[str, int]:
+    """Given the name of the i-th rule of nonterminal NT, return (NT, i)"""
+    return _d_name_to_nti[s]
+
+
+def nti_to_name(s: str, i: int) -> str:
+    """Given (NT, i), return the name of the i-th rule of nonterminal NT"""
+    return _d_nti_to_name[s, i]
+
 
 def tree_to_tuple(node: lark.Tree | lark.Token):
+    """Convert a lark tree into a nested tuple of strings"""
     if isinstance(node, lark.Tree):
         return tuple([node.data] + [tree_to_tuple(x) for x in node.children])
     else:
@@ -33,6 +79,7 @@ def tree_to_tuple(node: lark.Tree | lark.Token):
 
 
 def tree_to_sexp(node: lark.Tree | lark.Token) -> str:
+    """Convert a lark tree into an s-expression string"""
     if isinstance(node, lark.Tree):
         args = [node.data] + [tree_to_sexp(x) for x in node.children]
         return f"({' '.join(args)})"
@@ -40,21 +87,27 @@ def tree_to_sexp(node: lark.Tree | lark.Token) -> str:
         return node.value
 
 
-def unigram_counts(tree: lark.Tree) -> Dict:
-    keys = ["lsystem", "axiom", "symbol", "bracket", "symbols",
-            "rule", "rules", "arrow", "nonterm", "term", "F", "f", "+", "-"]
-    counts = {key: 0 for key in keys}
+def unigram_counts(tree: lark.Tree) -> Dict[str, np.ndarray]:
+    mg = lsystem_meta_cfg  # TODO: take this as an argument
+    counts: Dict[str, np.ndarray] = {nt: np.zeros(len(mg.rules[nt]))
+                                     for nt in mg.nonterminals}
 
     def traverse(node: lark.Tree | lark.Token):
         if isinstance(node, lark.Tree):
-            counts[node.data] += 1
+            nt, i = name_to_nti(node.data)
+            counts[nt][i] += 1
             for c in node.children:
                 traverse(c)
         else:
-            counts[node.value] += 1
+            nt, i = name_to_nti(node.value)
+            counts[nt][i] += 1
 
     traverse(tree)
     return counts
+
+
+def bigram_counts(tree: lark.Tree) -> Dict[str, Dict[str, int]]:
+    raise NotImplementedError
 
 
 def tokenize(s: str) -> List[str]:
@@ -99,32 +152,16 @@ def map_sexp(sexp: Tuple, f: Callable) -> Tuple:
     return tuple([f(val)] + [map_sexp(child, f) for child in children])
 
 
-mapping = [
-    (("LSystem", 0), "sys"),
-    (("LSystem", 1), "sys-e"),
-    (("Nonterminal", 0), "F"),
-    (("Terminal", 0), "+"),
-    (("Terminal", 1), "-"),
-    (("Axiom", 0), "ax-nt"),
-    (("Axiom", 1), "ax-t"),
-    (("Axiom", 2), "ax-e"),
-    (("Rules", 0), "rules-add"),
-    (("Rules", 1), "rules-one"),
-    (("Rule", 0), "rule"),
-    (("Rhs", 0), "rhs-bracket"),
-    (("Rhs", 1), "rhs-nt"),
-    (("Rhs", 2), "rhs-t"),
-    (("Rhs", 3), "rhs-e"),
-]
-forward = {x: y for x, y in mapping}
-backward = {y: x for x, y in mapping}
-
-
 if __name__ == '__main__':
     strs = [ 
-        "F;F~F",
-        "F;F~+-+--+++--F",
-        "F;F~-+F+-",
+        # "F;F~F",
+        # "F;F~+-+--+++--F",
+        # "F;F~-+F+-",
+        # "F;F~[F]F",
+        # "F;F~[FF]FF",
+        # "F;F~[+F-F]+F-F",
+        "F;F~[F]",
+        "F;F~[FF+FF]",
         # "F;F~F,F~F,F~F",
         # "F;F~F,F~+-F,F~F",
         # "F;F~F,F~+F-",
@@ -137,11 +174,10 @@ if __name__ == '__main__':
         ast = parser.parse(s)
         # print(ast.pretty())
         sexp = tree_to_sexp(ast)
-        print(sexp)
-        # simplified = eggy.simplify(sexp)
-        # print(f"{s} ->\n"
-        #       f"  {sexp} ->\n"
-        #       f"  {simplified}")
+        simplified = eggy.simplify(sexp)
+        print(f"{s} ->\n"
+              f"  {sexp} ->\n"
+              f"  {simplified}")
 
         # tokens = tokenize(simplified)
         # sexp = tokens_to_sexp(tokens)
