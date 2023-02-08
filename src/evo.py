@@ -13,7 +13,7 @@ import itertools as it
 
 from cfg import CFG, PCFG
 from zoo import zoo
-from lindenmayer import S0LSystem, trained_bigram_metagrammar
+from lindenmayer import S0LSystem
 from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
 
 # Set up file paths
@@ -39,28 +39,28 @@ DRAW_ARGS = {
 ROLLOUT_DEPTH = 3
 
 
-def gen_next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float, sentence_limit: int) -> Tuple[np.ndarray, Set]:
-    next_gen = np.empty(n_next_gen, dtype=object)
+def next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float, sentence_limit: int) -> Tuple[np.ndarray, Set]:
+    popn = np.empty(n_next_gen, dtype=object)
     arkv = set()
     for i in range(n_next_gen):  # parallel
         retried = False
         while True:
             sentence = tuple(metagrammar.iterate_fully())
             if len(sentence) <= sentence_limit and \
-               all(sentence != stored for stored in next_gen[:i]):
+               all(sentence != stored for stored in popn[:i]):
                 break
             print(i if not retried else '.', end='')
             retried = True
         if retried: print(', ', end='')
 
-        next_gen[i] = sentence
+        popn[i] = sentence
         if np.random.random() < p_arkv:
             arkv.add(sentence)
     print()
-    return next_gen, arkv
+    return popn, arkv
 
 
-def semantic_score(prev_gen: np.ndarray, next_gen: np.ndarray,
+def semantic_score(prev_gen: np.ndarray, new_gen: np.ndarray,
                    featurizer: Featurizer, n_samples: int, n_neighbors: int) -> np.ndarray:
     n_features = featurizer.n_features
 
@@ -81,8 +81,8 @@ def semantic_score(prev_gen: np.ndarray, next_gen: np.ndarray,
     # compute scores of next generation
     print("Scoring instances...")
     t_scoring = time.time()
-    scores = np.empty(len(next_gen))
-    for i, s in enumerate(next_gen):  # parallel
+    scores = np.empty(len(new_gen))
+    for i, s in enumerate(new_gen):  # parallel
         features = np.empty((1, n_features * n_samples))
         sys = S0LSystem.from_sentence(s)
         for j in range(n_samples):
@@ -135,20 +135,20 @@ def novelty_search(init_popn: List[CFG.Sentence],
 
         print("Generating next gen...")
         t_gen = time.time()
-        next_gen, next_arkv = gen_next_gen(metagrammar=metagrammar, n_next_gen=n_next_gen,
-                                           p_arkv=p_arkv, sentence_limit=sentence_limit)
-        arkv |= next_arkv
+        new_gen, new_arkv = next_gen(metagrammar=metagrammar, n_next_gen=n_next_gen,
+                                     p_arkv=p_arkv, sentence_limit=sentence_limit)
+        arkv |= new_arkv
         print(f"Generating took {time.time() - t_gen}s.")
 
         # compute popn features, build knn data structure, and score next_gen
         print("Scoring population...")
         t_score = time.time()
         if measure_novelty_within_generation:
-            prev_gen = next_gen
+            prev_gen = new_gen
         else:
             prev_gen = np.concatenate((popn, np.array(list(arkv), dtype=object)), axis=0)
         scores = semantic_score(prev_gen=prev_gen,
-                                next_gen=next_gen,
+                                new_gen=new_gen,
                                 featurizer=featurizer,
                                 n_neighbors=n_neighbors,
                                 n_samples=n_samples)
@@ -160,8 +160,8 @@ def novelty_search(init_popn: List[CFG.Sentence],
         print("Culling popn...")
         t_cull = time.time()
         indices = np.argsort(-scores)  # sort descending: higher mean distances first
-        next_gen = next_gen[indices]
-        popn = next_gen[:max_popn_size]  # take indices of top `max_popn_size` agents
+        new_gen = new_gen[indices]
+        popn = new_gen[:max_popn_size]  # take indices of top `max_popn_size` agents
         print(f"Culling took {time.time() - t_cull}s.")
 
         # make labels
@@ -177,7 +177,7 @@ def novelty_search(init_popn: List[CFG.Sentence],
         print("====================")
         print(f"Completed iteration {iter} in {t_taken:.2f}s.")
         print(f"New generation ({n_next_gen}):")
-        for agent, label in zip(next_gen, labels):
+        for agent, label in zip(new_gen, labels):
             print(f"  {''.join(agent)} - {label}")
         print(f"Population ({len(popn)}):")
         pp([''.join(x) for x in popn])
@@ -188,12 +188,12 @@ def novelty_search(init_popn: List[CFG.Sentence],
         # save gen
         with open(f"{PCFG_CACHE_PREFIX}{name}-gen-{iter}.txt", "w") as f:
             f.write(f"# {logparams}\n")
-            for agent, label in zip(next_gen, labels):
+            for agent, label in zip(new_gen, labels):
                 f.write("".join(agent) + f" : {label}\n")
 
         # save arkv
         with open(f"{PCFG_CACHE_PREFIX}{name}-arkv.txt", "a") as f:
-            for agent in next_arkv:
+            for agent in new_arkv:
                 f.write(''.join(agent) + "\n")
 
     return arkv
