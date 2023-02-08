@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pdb
-
 import lark
 import lightning as L
 import torch.utils.data as Tdata
@@ -96,13 +94,12 @@ def simplify_file(fname: str):
 
 
 def train_learner():
-    if len(sys.argv) != 3:
-        print("Usage: learner.py train test\n"
+    if len(sys.argv) != 2:
+        print("Usage: learner.py TRAIN\n"
               f"got: {''.join(sys.argv)}")
         exit(1)
-    _, train_glob, test_glob = sys.argv
+    _, train_glob = sys.argv
     train_filenames = sorted(glob(train_glob))
-    test_filenames = sorted(glob(test_glob))
 
     # book_examples = [parse_str_to_tuple(s.to_code()) for s in zoo]
     g = Grammar.from_components(components=parse.rule_types, gram=2)
@@ -111,14 +108,14 @@ def train_learner():
                               n_conv_channels=12,
                               bitmap_n_rows=128,
                               bitmap_n_cols=128)
-
-    lg = LearnedGrammar(feature_extractor=fe, grammar=g,
-                        evaluator=eval_ttree_as_lsys, parser=parse_str_to_tuple,
+    lg = LearnedGrammar(feature_extractor=fe,
+                        grammar=g,
+                        parser=parse_str_to_tuple,
                         start_symbol="LSystem",
                         learning_rate=0.001)
     dataset = LSystemDataset.from_files(train_filenames)
     train_loader = Tdata.DataLoader(dataset, num_workers=3)
-    trainer = L.Trainer(max_epochs=100, auto_lr_find=True)
+    trainer = L.Trainer(max_epochs=10, auto_lr_find=True)
     trainer.tune(model=lg, train_dataloaders=train_loader)
     trainer.fit(model=lg, train_dataloaders=train_loader)
 
@@ -126,13 +123,6 @@ def train_learner():
     print(lg.original_grammar)
     print("Trained grammar")
     print(lg.grammar)
-
-    test_loader = Tdata.DataLoader(LSystemDataset.from_files(test_filenames))
-    for lsys_str, out in test_loader:
-        ttree = parse_str_to_tuple(lsys_str)
-        print(f"{lsys_str}\n"
-              f"  trained loss: {-lg.grammar.log_probability(lg.start_symbol, ttree)}\n"
-              f"  untrained loss: {-lg.original_grammar.log_probability(lg.start_symbol, ttree)}")
 
 
 def simplify_files():

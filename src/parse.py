@@ -1,10 +1,26 @@
+"""
+Handles parsing and optimization of L-system strings of the form 'F;F~F...'
+using lark and egg (packaged as `eggy` for the DSL used here).
+
+This module defines a metagrammar over L-systems that guides parsing, in
+addition to types and semantics for the rules in the metagrammar.
+
+Because `egg` requires ASTs (represented as s-expressions) as input and
+produces AST strings as output, but the learner requires ASTs as tuples,
+this module contains multiple translation functions that convert between
+lark parse trees, s-expression strings, and tuple trees.
+
+Using `egg` to simplify an L-system string looks as follows:
+
+  Lsys str => Lsys lark AST => Lsys s-exp => [egg]
+  [egg] => simpl s-exp => simpl tuple AST => simpl str
+"""
+
 from __future__ import annotations
 
 from typing import *
 import lark
 import eggy
-import numpy as np
-from lindenmayer import S0LSystem
 
 
 # grammar over lsystems

@@ -280,7 +280,6 @@ class LearnedGrammar(L.LightningModule):
     def __init__(self,
                  feature_extractor: FeatureExtractor,
                  grammar: Grammar,
-                 evaluator: Callable[[Tuple], Any],
                  parser: Callable[[str], Tuple],
                  start_symbol: str | Tuple,
                  learning_rate: float):
@@ -293,7 +292,6 @@ class LearnedGrammar(L.LightningModule):
         super().__init__()
         self.feature_extractor = feature_extractor
         self.grammar = copy.deepcopy(grammar)
-        self.eval = evaluator
         self.parse = parser
         self.start_symbol = start_symbol
         self.learning_rate = learning_rate
@@ -321,6 +319,7 @@ class LearnedGrammar(L.LightningModule):
 
         # logging
         self.log("train_loss", loss)
+        self.log("training loss / n_tokens", loss / len(x))
         return loss
 
     def get_grammar(self, x: List[Tuple], y: List[Any]):
