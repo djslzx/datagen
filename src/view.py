@@ -52,7 +52,7 @@ def plot_outputs(filename: str, batch_size=36, save=True):
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
-        print("Usage: examine.py FILE_GLOB SAVE")
+        print("Usage: view.py FILE_GLOB SAVE")
         print(sys.argv)
         exit(1)
 
