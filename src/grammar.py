@@ -280,7 +280,7 @@ class LearnedGrammar(L.LightningModule):
     def __init__(self,
                  feature_extractor: FeatureExtractor,
                  grammar: Grammar,
-                 parser: Callable[[str], Tuple],
+                 parse: Callable[[str], Tuple],
                  start_symbol: str | Tuple,
                  learning_rate: float):
         """
@@ -292,7 +292,7 @@ class LearnedGrammar(L.LightningModule):
         super().__init__()
         self.feature_extractor = feature_extractor
         self.grammar = copy.deepcopy(grammar)
-        self.parse = parser
+        self.parse = parse
         self.start_symbol = start_symbol
         self.learning_rate = learning_rate
         self.original_grammar = copy.deepcopy(grammar.normalize_())

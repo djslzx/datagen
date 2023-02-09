@@ -53,6 +53,8 @@ fn make_rules() -> Vec<Rewrite<LSystem, ()>> {
             "(arrow ?x (symbol (bracket ?y)))" =>
             "(arrow ?x ?y)"
         ),
+        // axiom with only turns
+        // bracket with only turns
     ]
 }
 

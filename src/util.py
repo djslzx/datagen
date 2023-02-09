@@ -6,6 +6,10 @@ from typing import *
 import matplotlib.pyplot as plt
 
 
+def cut_ext(filename: str) -> str:
+    return filename[:filename.rfind(".")]
+
+
 def find_closing_bracket(s: str, brackets="[]") -> int:
     assert brackets in {"[]", "()", "{}"}
     c_open, c_close = brackets
