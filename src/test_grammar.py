@@ -1,8 +1,9 @@
+from copy import deepcopy
 from grammar import *
 
 simple_components = {
     "add": ["expr", "expr", "expr"],
-    "neg": ["expr", "expr"],
+    "abs": ["expr", "expr"],
 }
 
 list_components = {
@@ -20,12 +21,19 @@ list_components = {
 
 
 def test_to_from_tensor():
-    # cases = [
-    #     T.tensor([])
-    # ]
-    g = Grammar.from_components(simple_components, gram=1)
-    print(g.as_tensor())
+    grammars = [
+        Grammar.from_components(simple_components, gram=1),
+        Grammar.from_components(simple_components, gram=2),
+        Grammar.from_components(list_components, gram=1),
+        Grammar.from_components(list_components, gram=2),
+    ]
+    for g in grammars:
+        # g -> [t] -> h
+        t = g.to_tensor()
+        h = deepcopy(g)
+        h.from_tensor_(t)
+        assert h == g, f"g={g}, h={h}"
 
-
-if __name__ == "__main__":
-    test_to_from_tensor()
+        # [t] -> h -> [t']
+        tp = h.to_tensor()
+        assert T.equal(t, tp)
