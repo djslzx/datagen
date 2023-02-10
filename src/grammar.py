@@ -3,7 +3,7 @@ from __future__ import annotations
 import pdb
 
 import torch as T
-import lightning as L
+import lightning as pl
 import numpy as np
 from typing import *
 import copy
@@ -36,6 +36,9 @@ class Grammar:
 
     def __str__(self) -> str:
         return self.pretty_print()
+
+    def __eq__(self, other) -> bool:
+        return self.rules == other.rules
 
     def pretty_print(self) -> str:
         pretty = ""
@@ -150,6 +153,18 @@ class Grammar:
                 self.rules[symbol][i] = (tensor[index], form)
                 index += 1
         assert self.n_parameters == index
+
+    def to_tensor(self) -> T.Tensor:
+        n_params = self.n_parameters
+        weights = T.empty(n_params)
+        i = 0
+        for symbol in sorted(self.rules.keys(), key=str):
+            for j in range(len(self.rules[symbol])):
+                w, _ = self.rules[symbol][j]
+                weights[i] = w
+                i += 1
+        assert i == n_params
+        return weights
 
     def sample(self, nonterminal):
         """
@@ -275,7 +290,7 @@ class Grammar:
                 return 1 + j, expression
 
 
-class LearnedGrammar(L.LightningModule):
+class LearnedGrammar(pl.LightningModule):
 
     def __init__(self,
                  feature_extractor: FeatureExtractor,
@@ -307,8 +322,7 @@ class LearnedGrammar(L.LightningModule):
         given training specs derived from those examples
         """
         # extract features, then project onto grammar
-        x, y = batch
-        x = x[0]
+        (x,), y = batch
         features = self.feature_extractor.extract(x, y).float()
         projected_features = self.f_theta(features)
         self.grammar.from_tensor_(projected_features)
@@ -319,8 +333,18 @@ class LearnedGrammar(L.LightningModule):
 
         # logging
         self.log("train_loss", loss)
-        self.log("training loss / n_tokens", loss / len(x))
+        self.log("train_loss_per_token", loss / len(x))
         return loss
+
+    def validation_step(self, batch, batch_idx):
+        (x,), y = batch
+        loss = -self.grammar.log_probability(self.start_symbol, self.parse(x))
+        self.log("val_loss", loss)
+        return loss
+
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]):
+        # log grammar with checkpoint
+        checkpoint["grammar_params"] = self.grammar.to_tensor()
 
     def get_grammar(self, x: List[Tuple], y: List[Any]):
         features = self.feature_extractor.extract(x, y)

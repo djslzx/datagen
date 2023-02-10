@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import lark
-import lightning as L
+import torch as T
+import lightning as pl
 import torch.utils.data as Tdata
 from typing import *
 import sys
@@ -71,30 +72,35 @@ def parse_str_to_tuple(s: str) -> Tuple:
     return parse.ltree_to_ttree(ltree)
 
 
-def simplify_file(fname: str):
-    basename = util.cut_ext(fname)
-    out_fname = f"{basename}-simpl.txt"
-    n_in, n_out = 0, 0
-    print(f"Writing simplified file to {out_fname}")
-    with open(fname, 'r') as f_in, open(out_fname, 'w') as f_out:
+def simplify_file(in_path: str, out_path: str, score_thresh=None):
+    print(f"Writing simplified file to {out_path}")
+    n_parse_failures, n_low_score = 0, 0
+    with open(in_path, 'r') as f_in, open(out_path, 'w') as f_out:
         for i, line in enumerate(f_in.readlines()):
-            n_in += 1
             if line.startswith("#"):  # skip comments
                 f_out.write(line)
-                n_out += 1
                 continue
             if ":" in line:  # split out scores
-                line = line.split(" : ")[0]
+                line, score = line.split(" : ")
+                if score_thresh is not None:
+                    # skip lines with low score
+                    score = float(score.replace("*", ""))
+                    if score <= score_thresh:
+                        print(f"Skipping line {i} because of low score: {score}")
+                        f_out.write("\n")
+                        n_low_score += 1
+                        continue
             # simplify line
             try:
                 s = parse.simplify(line)
                 print(f"{i}: {s}")
                 f_out.write(s + "\n")
-                n_out += 1
             except (lark.UnexpectedCharacters, lark.UnexpectedToken, parse.ParseError):
                 print(f"Skipping line {i}")
                 f_out.write("\n")
-    print(f"Wrote {n_out} out of {n_in} lines")
+                n_parse_failures += 1
+    print(f"Skipped {n_parse_failures} lines b/c of parsing failure,\n"
+          f"        {n_low_score} lines b/c of low score (< 0.001)")
 
 
 def check_compression(in_file: str, out_file: str, n_lines: int):
@@ -139,21 +145,16 @@ def lg_kwargs():
     }
 
 
-def train_learner():
-    if len(sys.argv) != 2:
-        print("Usage: learner.py TRAIN\n"
-              f"got: {''.join(sys.argv)}")
-        exit(1)
-    _, train_glob = sys.argv
-    train_filenames = sorted(glob(train_glob))
-
+def train_learner(train_filenames: List[str], epochs: int):
     # book_examples = [parse_str_to_tuple(s.to_code()) for s in zoo]
     lg = LearnedGrammar(**lg_kwargs())
-    dataset = LSystemDataset.from_files(train_filenames)
-    train_loader = Tdata.DataLoader(dataset, num_workers=3)
-    trainer = L.Trainer(max_epochs=10, auto_lr_find=True)
-    trainer.tune(model=lg, train_dataloaders=train_loader)
-    trainer.fit(model=lg, train_dataloaders=train_loader)
+    train_dataset = LSystemDataset.from_files(train_filenames)
+    train_loader = Tdata.DataLoader(train_dataset, shuffle=True)
+    val_dataset = LSystemDataset([sys.to_str() for sys in zoo])
+    val_loader = Tdata.DataLoader(val_dataset)
+    trainer = pl.Trainer(max_epochs=epochs, auto_lr_find=True)
+    trainer.tune(model=lg, train_dataloaders=train_loader, val_dataloaders=val_loader)
+    trainer.fit(model=lg, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
     print("Untrained grammar")
     print(lg.original_grammar)
@@ -161,31 +162,20 @@ def train_learner():
     print(lg.grammar)
 
 
-def simplify_files():
-    if len(sys.argv) != 2:
-        print("Usage: python learner.py IN_FILE")
-        exit(1)
-
-    _, in_glob = sys.argv
-    for file in sorted(glob(in_glob)):
-        simplify_file(file)
-
-
 def load_learned_grammar(checkpt_path: str) -> LearnedGrammar:
-    return LearnedGrammar.load_from_checkpoint(checkpoint_path=checkpt_path, **lg_kwargs())
+    ckpt = T.load(checkpt_path)
+    weights = ckpt["grammar_params"]
+    lg = LearnedGrammar.load_from_checkpoint(checkpoint_path=checkpt_path, **lg_kwargs())
+    lg.grammar.from_tensor_(weights)
+    return lg
 
 
-def compare_models():
-    if len(sys.argv) != 4:
-        print("Usage: python learner.py MODEL1 MODEL2 DATASET")
-        print(f"Received {len(sys.argv)} args")
-        exit(1)
-    _, m1, m2, ds = sys.argv
-    model1 = load_learned_grammar(m1)
-    model2 = load_learned_grammar(m2)
+def compare_models(model1_chkpt: str, model2_chkpt: str, datasets: List[str]):
+    model1 = load_learned_grammar(model1_chkpt)
+    model2 = load_learned_grammar(model2_chkpt)
     model1.eval()
     model2.eval()
-    dataset = LSystemDataset.from_files(sorted(glob(ds)))
+    dataset = LSystemDataset.from_files(datasets)
     dataloader = Tdata.DataLoader(dataset)
     for (x,), y in dataloader:
         ttree = parse_str_to_tuple(x)
@@ -195,6 +185,41 @@ def compare_models():
 
 
 if __name__ == "__main__":
-    # simplify_files()
-    train_learner()
-    # compare_models()
+    def usage():
+        print("Usage: learner.py train|compare|simplify|check_compression *args")
+        exit(1)
+
+    if len(sys.argv) <= 1:
+        usage()
+
+    choice, *args = sys.argv[1:]
+    if choice == "train":
+        assert len(args) == 2, "Usage: learner.py train DATASETS EPOCHS"
+        train_glob, epochs = args
+        train_filenames = sorted(glob(train_glob))
+        epochs = int(epochs)
+        train_learner(train_filenames, epochs)
+
+    elif choice == "compare":
+        assert len(args) == 3, "Usage: learner.py compare MODEL1 MODEL2 DATASETS"
+        model1_path, model2_path, datasets_glob = args
+        dataset_paths = sorted(glob(datasets_glob))
+        compare_models(model1_path, model2_path, dataset_paths)
+
+    elif choice == "simplify":
+        assert len(args) in [2, 3], "Usage: learner.py simplify IN_PATH OUT_PATH [THRESH]"
+        if len(args) == 2:
+            in_path, out_path = args
+            thresh = None
+        else:
+            in_path, out_path, thresh = args
+            thresh = float(thresh)
+        simplify_file(in_path, out_path, thresh)
+
+    elif choice == "check_compression":
+        assert len(args) == 3, "Usage: learner.py check_compression PATH1 PATH2 N_LINES"
+        path1, path2, n_lines = args
+        check_compression(path1, path2, n_lines)
+
+    else:
+        usage()
