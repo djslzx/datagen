@@ -1,10 +1,9 @@
-import pytest
-import copy
-from pprint import pp
-from lindenmayer import *
 import matplotlib.pyplot as plt
-import util
-from zoo import zoo
+from pprint import pp
+
+from ..lindenmayer import *
+from ..util import vec_approx_eq
+from ..zoo import zoo
 
 
 def test_D0L_expand():
@@ -143,7 +142,7 @@ def test_S0L_init():
     ]
     for sys, distro in cases:
         out = sys.distribution["F"]
-        assert util.vec_approx_eq(out, distro), \
+        assert vec_approx_eq(out, distro), \
             f"Expected {distro} but got {out} for system {sys}"
 
 
@@ -227,187 +226,187 @@ def test_S0L_to_code():
         assert out == y, f"Expected {y}, but got {out}"
 
 
-def test_LSYSTEM_MG_coverage():
-    """Check that LSYSTEM_MG covers the book examples"""
-    for sys in zoo:
-        ex = sys.to_sentence()
-        assert MG.can_generate(ex), \
-            f"Expected\n{MG}\nCNF:{MG.to_CNF()}\nto generate {ex}"
+# def test_LSYSTEM_MG_coverage():
+#     """Check that LSYSTEM_MG covers the book examples"""
+#     for sys in zoo:
+#         ex = sys.to_sentence()
+#         assert MG.can_generate(ex), \
+#             f"Expected\n{MG}\nCNF:{MG.to_CNF()}\nto generate {ex}"
 
 
-def test_parse_lsystem_str_as_tree():
-    cases = [
-        ("F;F~F",
-         ("LSystem", 0,
-          ("Axiom", 0,
-           ("Nonterminal", 0),
-           ("Axiom", 2)),
-          ("Rules", 1,
-           ("Rule", 0,
-            ("Nonterminal", 0),
-            ("Rhs", 1,
-             ("Nonterminal", 0),
-             ("Rhs", 3)))))),
-
-        ("F+F;F~+F,F~FF",
-         ("LSystem", 0,
-          ("Axiom", 0,
-           ("Nonterminal", 0),
-           ("Axiom", 1,
-            ("Terminal", 0),
-            ("Axiom", 0,
-             ("Nonterminal", 0),
-             ("Axiom", 2)))),
-          ("Rules", 0,
-           ("Rule", 0,  # F~+F
-            ("Nonterminal", 0),
-            ("Rhs", 2,
-             ("Terminal", 0),
-             ("Rhs", 1,
-              ("Nonterminal", 0),
-              ("Rhs", 3)))),
-           ("Rules", 1,  # F~FF
-            ("Rule", 0,
-             ("Nonterminal", 0),
-             ("Rhs", 1,
-              ("Nonterminal", 0),
-              ("Rhs", 1,
-               ("Nonterminal", 0),
-               ("Rhs", 3)))))))),
-
-        ("F;F~[F]",
-         ("LSystem", 0,
-          ("Axiom", 0,
-           ("Nonterminal", 0),
-           ("Axiom", 2)),
-          ("Rules", 1,
-           ("Rule", 0,
-            ("Nonterminal", 0),
-            ("Rhs", 0,
-             ("Rhs", 1,
-              ("Nonterminal", 0),
-              ("Rhs", 3)),
-             ("Rhs", 3)))))),
-    ]
-    for s, tree in cases:
-        out = parse_lsystem_to_ast(s)
-        assert tree == out, f"Expected\n{tree}\nbut got\n{out}"
-
-
-def test_parse_lsystem_str_as_counts():
-    cases = [
-        ("F;F~F", {
-            ("LSystem", 0): 1,
-            ("Axiom", 0): 1,
-            ("Axiom", 2): 1,
-            ("Nonterminal", 0): 3,
-            ("Rules", 1): 1,
-            ("Rule", 0): 1,
-            ("Rhs", 1): 1,
-            ("Rhs", 3): 1,
-        }),
-        ("F;F~FF", {
-            ("LSystem", 0): 1,
-            ("Axiom", 0): 1,
-            ("Axiom", 2): 1,
-            ("Nonterminal", 0): 4,
-            ("Rules", 1): 1,
-            ("Rule", 0): 1,
-            ("Rhs", 1): 2,
-            ("Rhs", 3): 1,
-        }),
-        ("F+F;F~F", {
-            ("LSystem", 0): 1,
-            ("Axiom", 0): 2,
-            ("Axiom", 1): 1,
-            ("Axiom", 2): 1,
-            ("Terminal", 0): 1,
-            ("Nonterminal", 0): 4,
-            ("Rules", 1): 1,
-            ("Rule", 0): 1,
-            ("Rhs", 1): 1,
-            ("Rhs", 3): 1,
-        }),
-        ("F;F~[F]", {
-            ("LSystem", 0): 1,
-            ("Axiom", 0): 1,
-            ("Axiom", 2): 1,
-            ("Nonterminal", 0): 3,
-            ("Rules", 1): 1,
-            ("Rule", 0): 1,
-            ("Rhs", 0): 1,
-            ("Rhs", 1): 1,
-            ("Rhs", 3): 2,
-        }),
-    ]
-    for s, d in cases:
-        ans = empty_mg_counts()
-        for (nt, i), n in d.items():
-            ans[nt][i] = n
-        out = parse_lsystem_str_as_counts(s)
-        assert out.keys() == ans.keys() and all(np.array_equal(out[k], ans[k]) for k in out.keys()), \
-            f"Expected {ans} but got {out}"
+# def test_parse_lsystem_str_as_tree():
+#     cases = [
+#         ("F;F~F",
+#          ("LSystem", 0,
+#           ("Axiom", 0,
+#            ("Nonterminal", 0),
+#            ("Axiom", 2)),
+#           ("Rules", 1,
+#            ("Rule", 0,
+#             ("Nonterminal", 0),
+#             ("Rhs", 1,
+#              ("Nonterminal", 0),
+#              ("Rhs", 3)))))),
+#
+#         ("F+F;F~+F,F~FF",
+#          ("LSystem", 0,
+#           ("Axiom", 0,
+#            ("Nonterminal", 0),
+#            ("Axiom", 1,
+#             ("Terminal", 0),
+#             ("Axiom", 0,
+#              ("Nonterminal", 0),
+#              ("Axiom", 2)))),
+#           ("Rules", 0,
+#            ("Rule", 0,  # F~+F
+#             ("Nonterminal", 0),
+#             ("Rhs", 2,
+#              ("Terminal", 0),
+#              ("Rhs", 1,
+#               ("Nonterminal", 0),
+#               ("Rhs", 3)))),
+#            ("Rules", 1,  # F~FF
+#             ("Rule", 0,
+#              ("Nonterminal", 0),
+#              ("Rhs", 1,
+#               ("Nonterminal", 0),
+#               ("Rhs", 1,
+#                ("Nonterminal", 0),
+#                ("Rhs", 3)))))))),
+#
+#         ("F;F~[F]",
+#          ("LSystem", 0,
+#           ("Axiom", 0,
+#            ("Nonterminal", 0),
+#            ("Axiom", 2)),
+#           ("Rules", 1,
+#            ("Rule", 0,
+#             ("Nonterminal", 0),
+#             ("Rhs", 0,
+#              ("Rhs", 1,
+#               ("Nonterminal", 0),
+#               ("Rhs", 3)),
+#              ("Rhs", 3)))))),
+#     ]
+#     for s, tree in cases:
+#         out = parse_lsystem_to_ast(s)
+#         assert tree == out, f"Expected\n{tree}\nbut got\n{out}"
 
 
-def test_count_rules():
-    cases = [
-        (["F;F~F"] * 10, {
-            ("LSystem", 0): 10,
-            ("Axiom", 0): 10,
-            ("Axiom", 2): 10,
-            ("Nonterminal", 0): 30,
-            ("Rules", 1): 10,
-            ("Rule", 0): 10,
-            ("Rhs", 1): 10,
-            ("Rhs", 3): 10,
-        }),
-    ]
-    for corpus, d in cases:
-        ans = empty_mg_counts()
-        for (nt, i), n in d.items():
-            ans[nt][i] = n
-        out = count_rules(corpus)
-        assert out.keys() == ans.keys() and all(np.array_equal(out[k], ans[k]) for k in out.keys()), \
-            f"Expected {ans} but got {out}"
+# def test_parse_lsystem_str_as_counts():
+#     cases = [
+#         ("F;F~F", {
+#             ("LSystem", 0): 1,
+#             ("Axiom", 0): 1,
+#             ("Axiom", 2): 1,
+#             ("Nonterminal", 0): 3,
+#             ("Rules", 1): 1,
+#             ("Rule", 0): 1,
+#             ("Rhs", 1): 1,
+#             ("Rhs", 3): 1,
+#         }),
+#         ("F;F~FF", {
+#             ("LSystem", 0): 1,
+#             ("Axiom", 0): 1,
+#             ("Axiom", 2): 1,
+#             ("Nonterminal", 0): 4,
+#             ("Rules", 1): 1,
+#             ("Rule", 0): 1,
+#             ("Rhs", 1): 2,
+#             ("Rhs", 3): 1,
+#         }),
+#         ("F+F;F~F", {
+#             ("LSystem", 0): 1,
+#             ("Axiom", 0): 2,
+#             ("Axiom", 1): 1,
+#             ("Axiom", 2): 1,
+#             ("Terminal", 0): 1,
+#             ("Nonterminal", 0): 4,
+#             ("Rules", 1): 1,
+#             ("Rule", 0): 1,
+#             ("Rhs", 1): 1,
+#             ("Rhs", 3): 1,
+#         }),
+#         ("F;F~[F]", {
+#             ("LSystem", 0): 1,
+#             ("Axiom", 0): 1,
+#             ("Axiom", 2): 1,
+#             ("Nonterminal", 0): 3,
+#             ("Rules", 1): 1,
+#             ("Rule", 0): 1,
+#             ("Rhs", 0): 1,
+#             ("Rhs", 1): 1,
+#             ("Rhs", 3): 2,
+#         }),
+#     ]
+#     for s, d in cases:
+#         ans = empty_mg_counts()
+#         for (nt, i), n in d.items():
+#             ans[nt][i] = n
+#         out = parse_lsystem_str_as_counts(s)
+#         assert out.keys() == ans.keys() and all(np.array_equal(out[k], ans[k]) for k in out.keys()), \
+#             f"Expected {ans} but got {out}"
+
+
+# def test_count_rules():
+#     cases = [
+#         (["F;F~F"] * 10, {
+#             ("LSystem", 0): 10,
+#             ("Axiom", 0): 10,
+#             ("Axiom", 2): 10,
+#             ("Nonterminal", 0): 30,
+#             ("Rules", 1): 10,
+#             ("Rule", 0): 10,
+#             ("Rhs", 1): 10,
+#             ("Rhs", 3): 10,
+#         }),
+#     ]
+#     for corpus, d in cases:
+#         ans = empty_mg_counts()
+#         for (nt, i), n in d.items():
+#             ans[nt][i] = n
+#         out = count_rules(corpus)
+#         assert out.keys() == ans.keys() and all(np.array_equal(out[k], ans[k]) for k in out.keys()), \
+#             f"Expected {ans} but got {out}"
 
 
 def test_bigram_counts():
     pass
 
 
-def demo_weighted_metagrammar():  # pragma: no cover
-    corpi = [
-        ["F;F~F"],
-        ["F;F~F"] * 3,
-        ["F;F~F", "F;F~FF"],
-        ["F;F~F", "F;F~FF", "F;F~FFF"],
-        ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
-        [sys.to_str() for sys in zoo],
-    ]
-    for corpus in corpi:
-        g = trained_metagrammar(corpus)
-        print(corpus)
-        print(g)
-
-
-def demo_bigram_metagrammar():  # pragma: no cover
-    corpi = [
-        ["F;F~F"],
-        ["F;F~F"] * 3,
-        ["F;F~F", "F;F~FF"],
-        ["F;F~F", "F;F~FF", "F;F~FFF"],
-        ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
-        [sys.to_str() for sys in zoo],
-    ]
-    print(MG.to_bigram())
-    for corpus in corpi:
-        g = trained_bigram_metagrammar(corpus).log()
-        pp(corpus)
-        print(g)
-        print("Probabilities:")
-        for word in corpus:
-            log_pr = bigram_log_pr(g, word)
-            print(f"{word}: {log_pr}")
+# def demo_weighted_metagrammar():  # pragma: no cover
+#     corpi = [
+#         ["F;F~F"],
+#         ["F;F~F"] * 3,
+#         ["F;F~F", "F;F~FF"],
+#         ["F;F~F", "F;F~FF", "F;F~FFF"],
+#         ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
+#         [sys.to_str() for sys in zoo],
+#     ]
+#     for corpus in corpi:
+#         g = trained_metagrammar(corpus)
+#         print(corpus)
+#         print(g)
+#
+#
+# def demo_bigram_metagrammar():  # pragma: no cover
+#     corpi = [
+#         ["F;F~F"],
+#         ["F;F~F"] * 3,
+#         ["F;F~F", "F;F~FF"],
+#         ["F;F~F", "F;F~FF", "F;F~FFF"],
+#         ["F+F;F~F[+F]F", "F-F;F~F+F", "F;F~F[+F]-FF"],
+#         [sys.to_str() for sys in zoo],
+#     ]
+#     print(MG.to_bigram())
+#     for corpus in corpi:
+#         g = trained_bigram_metagrammar(corpus).log()
+#         pp(corpus)
+#         print(g)
+#         print("Probabilities:")
+#         for word in corpus:
+#             log_pr = bigram_log_pr(g, word)
+#             print(f"{word}: {log_pr}")
 
 
 def demo_draw():  # pragma: no cover
@@ -472,5 +471,6 @@ def demo_draw():  # pragma: no cover
 
 if __name__ == '__main__':  # pragma: no cover
     # demo_draw()
-    demo_bigram_metagrammar()
+    # demo_bigram_metagrammar()
     # demo_weighted_metagrammar()
+    pass

@@ -1,7 +1,7 @@
-from inout import *
-import util
-from lindenmayer import MG, S0LSystem
-import zoo as zoo
+from ..inout import *
+from ..util import vec_approx_eq
+# from ..lindenmayer import S0LSystem
+# from ..zoo import zoo
 
 
 def test_inward_diag():
@@ -69,8 +69,7 @@ def test_io_pizza_1():
               ["She", "eats", "pizza", "without", "hesitation"]]
     g_fit = inside_outside(g, corpus)
     # make sure that g_fit assigns the same weight to 'anchovies' and 'hesitation'
-    assert util.vec_approx_eq(g_fit.weight("N", ["anchovies"]),
-                              g_fit.weight("N", ["hesitation"]))
+    assert vec_approx_eq(g_fit.weight("N", ["anchovies"]), g_fit.weight("N", ["hesitation"]))
 
 
 def test_io_pizza_2():
@@ -104,21 +103,21 @@ def test_autograd_io_pizza():
 def compare_pizza_cfgs(g: PCFG, g_anchovies: PCFG, g_hesitation: PCFG):
     assert g_anchovies.weight("N", ["anchovies"]) > g_anchovies.weight("N", ["hesitation"])
     assert g_hesitation.weight("N", ["hesitation"]) > g_hesitation.weight("N", ["anchovies"])
-    assert util.vec_approx_eq(g_anchovies.weight("N", ["anchovies"]),
-                              g_hesitation.weight("N", ["hesitation"]))
-    assert util.vec_approx_eq(g_anchovies.weight("N", ["hesitation"]),
-                              g_hesitation.weight("N", ["anchovies"]))
+    assert vec_approx_eq(g_anchovies.weight("N", ["anchovies"]),
+                         g_hesitation.weight("N", ["hesitation"]))
+    assert vec_approx_eq(g_anchovies.weight("N", ["hesitation"]),
+                         g_hesitation.weight("N", ["anchovies"]))
 
     for nt in g.nonterminals:
         if nt == "N":
             for succ in g.successors(nt):
                 if succ not in [["anchovies"], ["hesitation"]]:
                     w1, w2 = g_anchovies.weight(nt, succ), g_hesitation.weight(nt, succ)
-                    assert util.vec_approx_eq(w1, w2), \
+                    assert vec_approx_eq(w1, w2), \
                         f"Unexpected weight variation for rules {nt} -> {succ}: {w1} != {w2}"
         else:
             w1, w2 = g_anchovies.weights[nt], g_hesitation.weights[nt]
-            assert util.vec_approx_eq(w1, w2), \
+            assert vec_approx_eq(w1, w2), \
                 f"Unexpected weight variation for nonterminal {nt}: {w1} != {w2}"
 
 
@@ -135,20 +134,20 @@ def test_io_small():
     assert g_a.weight("A", ["a"]) > 0.9
 
 
-def demo_io():  # pragma: no cover
-    cases = [
-        (PCFG.from_CFG(MG.to_CNF()).normalized(),
-         [sys.to_sentence() for sys in zoo.zoo]),
-    ]
-    for g, corpus in cases:
-        print(corpus, '\n', g, '\n')
-        # g_io = inside_outside(g, corpus, verbose=False)
-        # print("io", g_io)
-        g_log = g.apply_to_weights(T.log)
-        g_log.log_mode = True
-        g_logio = log_io(g_log, corpus, verbose=True)
-        print("logio:", g_logio.apply_to_weights(T.exp))
-        # autograd_io(g, corpus)
+# def demo_io():  # pragma: no cover
+#     cases = [
+#         (PCFG.from_CFG(MG.to_CNF()).normalized(),
+#          [sys.to_sentence() for sys in zoo]),
+#     ]
+#     for g, corpus in cases:
+#         print(corpus, '\n', g, '\n')
+#         # g_io = inside_outside(g, corpus, verbose=False)
+#         # print("io", g_io)
+#         g_log = g.apply_to_weights(T.log)
+#         g_log.log_mode = True
+#         g_logio = log_io(g_log, corpus, verbose=True)
+#         print("logio:", g_logio.apply_to_weights(T.exp))
+#         # autograd_io(g, corpus)
 
 
 def test_log_io_matches_standard_io():
@@ -208,21 +207,22 @@ def demo_autograd_outside_pizza():  # pragma: no cover
     print(g, g_fit)
 
 
-def demo_autograd_outside_lsystem():  # pragma: no cover
-    g = PCFG.from_CFG(MG.to_CNF())
-    corpus = [
-        s.to_sentence()
-        for s in [
-            S0LSystem("F", {"F": ["F+F", "F-F"]}),
-            S0LSystem("F", {"F": ["FF"]}),
-            S0LSystem("F", {"F": ["F++F", "FF"]}),
-        ]
-    ]
-    g_fit = autograd_outside(g, corpus, iters=100)
-    print(g, g_fit)
+# def demo_autograd_outside_lsystem():  # pragma: no cover
+#     g = PCFG.from_CFG(MG.to_CNF())
+#     corpus = [
+#         s.to_sentence()
+#         for s in [
+#             S0LSystem("F", {"F": ["F+F", "F-F"]}),
+#             S0LSystem("F", {"F": ["FF"]}),
+#             S0LSystem("F", {"F": ["F++F", "FF"]}),
+#         ]
+#     ]
+#     g_fit = autograd_outside(g, corpus, iters=100)
+#     print(g, g_fit)
 
 
 if __name__ == '__main__':  # pragma: no cover
     # demo_io()
     # demo_autograd_outside_pizza()
-    demo_autograd_outside_lsystem()
+    # demo_autograd_outside_lsystem()
+    pass

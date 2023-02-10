@@ -1,13 +1,10 @@
-import pdb
-
-from featurizers import *
-from zoo import zoo
 from torchvision.io import read_image, ImageReadMode
 from sklearn.neighbors import NearestNeighbors
 from typing import *
-from lindenmayer import S0LSystem
 from os import listdir
-import util
+from ..featurizers import *
+from ..lindenmayer import S0LSystem
+from ..util import plot
 
 N_ROWS = 128
 N_COLS = 128
@@ -45,7 +42,7 @@ def check_resnet_classifier(popn: List[Tuple[S0LSystem, float]], n_samples: int)
 
     # check resnet classes
     for i in range(n):
-        util.plot(imgs=images[i], shape=(1, n_samples), labels=labels[i])
+        plot(imgs=images[i], shape=(1, n_samples), labels=labels[i])
 
 
 def check_resnet_with_images(dirpath: str):  # pragma: no cover
@@ -59,7 +56,7 @@ def check_resnet_with_images(dirpath: str):  # pragma: no cover
         print(f"  shape: {img.shape}")
         features = classifier.apply(img)
         labels = classifier.top_k_classes(features, 3)
-        util.plot(imgs=[img[0]], shape=(1, 1), labels=["\n".join(labels)])
+        plot(imgs=[img[0]], shape=(1, 1), labels=["\n".join(labels)])
 
 
 def check_featurizer(featurizer: Featurizer, popn: List[Tuple[S0LSystem, float]], n_samples: int, n_neighbors: int):  # pragma: no cover
@@ -76,10 +73,10 @@ def check_featurizer(featurizer: Featurizer, popn: List[Tuple[S0LSystem, float]]
         neighbor_indices = indices[distances.argsort()]
         all_imgs = np.concatenate((images[i].reshape(1, n_samples, N_ROWS, N_COLS),
                                    images[neighbor_indices]), axis=0).reshape((-1, N_ROWS, N_COLS))
-        util.plot(title=str(featurizer),
-                  imgs=all_imgs,
-                  shape=(n_samples, n_neighbors + 1),
-                  labels=[""] + [f"{x:.4e}" for x in np.repeat(distances, n_samples).tolist()])
+        plot(title=str(featurizer),
+             imgs=all_imgs,
+             shape=(n_samples, n_neighbors + 1),
+             labels=[""] + [f"{x:.4e}" for x in np.repeat(distances, n_samples).tolist()])
 
 
 if __name__ == '__main__':  # pragma: no cover

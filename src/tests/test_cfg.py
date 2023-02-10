@@ -1,7 +1,7 @@
 import pytest
 import math
-from cfg import *
 from typing import Callable
+from ..cfg import *
 
 
 def test_cfg_check_rep():
