@@ -1,5 +1,5 @@
-from ..inout import *
-from ..util import vec_approx_eq
+from inout import *
+from util import vec_approx_eq
 # from ..lindenmayer import S0LSystem
 # from ..zoo import zoo
 

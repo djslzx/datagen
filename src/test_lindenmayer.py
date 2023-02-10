@@ -1,9 +1,9 @@
 import matplotlib.pyplot as plt
 from pprint import pp
 
-from ..lindenmayer import *
-from ..util import vec_approx_eq
-from ..zoo import zoo
+from lindenmayer import *
+from util import vec_approx_eq
+from zoo import zoo
 
 
 def test_D0L_expand():

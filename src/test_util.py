@@ -1,5 +1,5 @@
 import pytest
-from ..util import *
+from util import *
 
 
 def test_find_closing_bracket():

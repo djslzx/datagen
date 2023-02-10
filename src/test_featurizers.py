@@ -2,9 +2,9 @@ from torchvision.io import read_image, ImageReadMode
 from sklearn.neighbors import NearestNeighbors
 from typing import *
 from os import listdir
-from ..featurizers import *
-from ..lindenmayer import S0LSystem
-from ..util import plot
+from featurizers import *
+from lindenmayer import S0LSystem
+from util import plot
 
 N_ROWS = 128
 N_COLS = 128

@@ -1,4 +1,4 @@
-from ..grammar import *
+from grammar import *
 
 simple_components = {
     "add": ["expr", "expr", "expr"],
