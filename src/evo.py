@@ -18,7 +18,6 @@ from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
 
 # Set up file paths
 PCFG_CACHE_PREFIX = ".cache/"
-IMG_CACHE_PREFIX = ".cache/imgs/"
 
 for directory in [".cache/", ".cache/imgs/"]:
     try:

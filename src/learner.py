@@ -17,8 +17,6 @@ from zoo import zoo
 import parse
 import util
 
-Tree: TypeAlias = lark.Tree
-
 
 def eval_ttree_as_lsys(p: Tuple, level=3):
     sys_str = parse.eval_ttree_as_str(p)
@@ -103,30 +101,34 @@ def simplify_file(in_path: str, out_path: str, score_thresh=None):
           f"        {n_low_score} lines b/c of low score (< 0.001)")
 
 
-def check_compression(in_file: str, out_file: str, n_lines: int):
+def check_compression(in_file: str, out_file: str):
     # in-file # lines, out-file # lines
-    mat = np.empty((n_lines, 2), dtype=int)
+    x, y = [], []
     with open(in_file, 'r') as f_in, open(out_file, 'r') as f_out:
-        for i, line in enumerate(f_in.readlines()):
-            mat[i, 0] = len(line)
-        for i, line in enumerate(f_out.readlines()):
-            mat[i, 1] = len(line)
+        for f, arr in [(f_in, x), (f_out, y)]:
+            for i, line in enumerate(f.readlines()):
+                if not line.strip().startswith("#"):
+                    arr.append(len(line))
+    x = np.array(x, dtype=int)
+    y = np.array(y, dtype=int)
 
     # print n_lines stats
-    print(f"in_file mean: {np.mean(mat[:, 0])}, "
-          f"std dev: {np.std(mat[:, 0])}, "
-          f"out_file mean: {np.mean(mat[:, 1])}, "
-          f"std dev: {np.std(mat[:, 1])}, ")
+    print(f"in: [mean: {np.mean(x)}, std: {np.std(x)}, max: {np.max(x)}, min: {np.min(x)}]\n"
+          f"out: [mean: {np.mean(y)}, std: {np.std(y)}, max: {np.max(y)}, min: {np.min(y)}]")
+
+    # diagonal guide line
+    ax = plt.gca()
+    x_max = np.max(x)
+    ax.plot([0, x_max], [0, x_max], color='gray', markersize=1)
+
+    # plot lengths
+    plt.scatter(x=x, y=y, s=1)
+    plt.show()
 
     # print compression ratio
-    compression = mat[:, 1] / mat[:, 0]
+    compression = y / x
     print(f"compression mean: {np.mean(compression, 0)}, "
           f"std dev: {np.std(compression, 0)}")
-
-    # plt.plot(mat, label=("in", "out"))
-    plt.scatter(np.arange(n_lines), compression)
-    # plt.plot(compression)
-    plt.show()
 
 
 def lg_kwargs():
@@ -146,7 +148,6 @@ def lg_kwargs():
 
 
 def train_learner(train_filenames: List[str], epochs: int):
-    # book_examples = [parse_str_to_tuple(s.to_code()) for s in zoo]
     lg = LearnedGrammar(**lg_kwargs())
     train_dataset = LSystemDataset.from_files(train_filenames)
     train_loader = Tdata.DataLoader(train_dataset, shuffle=True)
@@ -217,9 +218,9 @@ if __name__ == "__main__":
         simplify_file(in_path, out_path, thresh)
 
     elif choice == "check_compression":
-        assert len(args) == 3, "Usage: learner.py check_compression PATH1 PATH2 N_LINES"
-        path1, path2, n_lines = args
-        check_compression(path1, path2, n_lines)
+        assert len(args) == 2, "Usage: learner.py check_compression PATH1 PATH2"
+        path1, path2 = args
+        check_compression(path1, path2)
 
     else:
         usage()
