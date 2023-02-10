@@ -225,6 +225,6 @@ _zoo: List[Tuple[S0LSystem, int]] = [
     # ), 90),
 ]
 
-zoo = [S0LSystem.from_sentence(["F" if char in ["f", "X"] else char
+zoo = [S0LSystem.from_sentence(["F" if char in ["X"] else char
                                 for char in sys.to_sentence()])
        for sys, _ in _zoo]
