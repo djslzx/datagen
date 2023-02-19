@@ -9,6 +9,7 @@ import sys
 from glob import glob
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from grammar import Grammar, LearnedGrammar, ConvFeatureExtractor
 from lindenmayer import S0LSystem
@@ -101,34 +102,87 @@ def simplify_file(in_path: str, out_path: str, score_thresh=None):
           f"        {n_low_score} lines b/c of low score (< 0.001)")
 
 
-def check_compression(in_file: str, out_file: str):
-    # in-file # lines, out-file # lines
-    x, y = [], []
-    with open(in_file, 'r') as f_in, open(out_file, 'r') as f_out:
-        for f, arr in [(f_in, x), (f_out, y)]:
-            for i, line in enumerate(f.readlines()):
-                if not line.strip().startswith("#"):
-                    arr.append(len(line))
-    x = np.array(x, dtype=int)
-    y = np.array(y, dtype=int)
+def summary_stats(arr: np.ndarray) -> str:
+    return f"in: [mean: {np.mean(arr)}, std: {np.std(arr)}, max: {np.max(arr)}, min: {np.min(arr)}]"
 
-    # print n_lines stats
-    print(f"in: [mean: {np.mean(x)}, std: {np.std(x)}, max: {np.max(x)}, min: {np.min(x)}]\n"
-          f"out: [mean: {np.mean(y)}, std: {np.std(y)}, max: {np.max(y)}, min: {np.min(y)}]")
+
+def plot_egg_scatter(x: List[str], y: List[str]):
+    xs = np.array([len(s) for s in x], dtype=int)
+    ys = np.array([len(s) for s in y], dtype=int)
+
+    # count up (x,y) pairs
+    counts = {}
+    for x, y in zip(xs, ys):
+        counts[x, y] = counts.get((x, y), 0) + 1
+    data = np.array([[x, y, n] for (x, y), n in counts.items()])
 
     # diagonal guide line
     ax = plt.gca()
-    x_max = np.max(x)
+    x_max = np.max(xs)
     ax.plot([0, x_max], [0, x_max], color='gray', markersize=1)
 
     # plot lengths
-    plt.scatter(x=x, y=y, s=1)
+    sns.scatterplot(x=data[:, 0], y=data[:, 1], size=data[:, 2], legend=False, sizes=(10, 1000))
     plt.show()
 
-    # print compression ratio
-    compression = y / x
-    print(f"compression mean: {np.mean(compression, 0)}, "
-          f"std dev: {np.std(compression, 0)}")
+
+def pluck_egg_examples(x: List[str], y: List[str], k=10):
+    n = len(x)
+    x = np.array(x, dtype=object)
+    y = np.array(y, dtype=object)
+    x_lens = np.array([len(s) for s in x], dtype=int)
+    y_lens = np.array([len(s) for s in y], dtype=int)
+
+    # remove lines that were empty after simplification (i.e. invalid lines) or which weren't simplified at all
+    filter_idx = np.nonzero(y_lens * (x_lens - y_lens))[0]
+    x = x[filter_idx]
+    y = y[filter_idx]
+    x_lens = x_lens[filter_idx]
+    y_lens = y_lens[filter_idx]
+
+    def show_progs(indices: List[int] | np.ndarray):
+        for i in indices:
+            p_x, p_y, n = x[i], y[i], (x_lens[i] - y_lens[i]).item()
+            print(f"{n} tokens removed: {p_x} => {p_y} ({i})")
+
+    print(f"Filtered {len(filter_idx)} programs out of {n}.")
+    idx = np.argsort(-(x_lens - y_lens))  # sort by reduction in length from egg
+    print("Max:")
+    show_progs(idx[:k])
+    print("Median:")
+    m = len(idx) // 2
+    show_progs(idx[m:m + k])
+    print("Min:")
+    show_progs(idx[-10:])
+
+
+def plot_egg_cdf(x: List[str], y: List[str]):
+    x_lens = np.array([len(s) for s in x], dtype=int)
+    y_lens = np.array([len(s) for s in y], dtype=int)
+    sns.displot(x=x_lens - y_lens, kind="ecdf")
+    plt.show()
+
+
+def plot_egg_pdf(x: List[str], y: List[str]):
+    x_lens = np.array([len(s) for s in x], dtype=int)
+    y_lens = np.array([len(s) for s in y], dtype=int)
+    sns.displot(x=x_lens - y_lens, kind="kde")
+    plt.show()
+
+
+def read_files(in_file: str, out_file: str) -> Tuple[List[str], List[str]]:
+    x, y = [], []
+    with open(in_file, 'r') as f_in, open(out_file, 'r') as f_out:
+        for f, arr in [(f_in, x), (f_out, y)]:
+            for line in f.readlines():
+                if line.strip().startswith("#"):
+                    continue
+                if ":" in line:
+                    arr.append(line.split(" : ")[0])
+                else:
+                    arr.append(line.strip())
+
+    return x, y
 
 
 def lg_kwargs():
@@ -187,7 +241,7 @@ def compare_models(model1_chkpt: str, model2_chkpt: str, datasets: List[str]):
 
 if __name__ == "__main__":
     def usage():
-        print("Usage: learner.py train|compare|simplify|check_compression *args")
+        print("Usage: learner.py train|compare|simplify|egg_scatter|egg_cdf|egg_pdf|egg_pluck *args")
         exit(1)
 
     if len(sys.argv) <= 1:
@@ -217,10 +271,27 @@ if __name__ == "__main__":
             thresh = float(thresh)
         simplify_file(in_path, out_path, thresh)
 
-    elif choice == "check_compression":
-        assert len(args) == 2, "Usage: learner.py check_compression PATH1 PATH2"
-        path1, path2 = args
-        check_compression(path1, path2)
+    # Show egg stats
+
+    elif choice == "egg_scatter":
+        assert len(args) == 2, "Usage: learner.py egg_scatter PATH1 PATH2"
+        x, y = read_files(*args)
+        plot_egg_scatter(x, y)
+
+    elif choice == "egg_cdf":
+        assert len(args) == 2, "Usage: learner.py egg_cdf PATH1 PATH2"
+        x, y = read_files(*args)
+        plot_egg_cdf(x, y)
+
+    elif choice == "egg_pdf":
+        assert len(args) == 2, "Usage: learner.py egg_pdf PATH1 PATH2"
+        x, y = read_files(*args)
+        plot_egg_pdf(x, y)
+
+    elif choice == "egg_pluck":
+        assert len(args) == 2, "Usage: learner.py egg_pluck PATH1 PATH2"
+        x, y = read_files(*args)
+        pluck_egg_examples(x, y)
 
     else:
         usage()
