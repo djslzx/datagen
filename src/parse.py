@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import *
 import lark
 import eggy
+import sys
 
 
 # grammar over lsystems
@@ -168,8 +169,9 @@ def simplify(s: str) -> str:
     ltree = parse_lsys_as_ltree(s)
     sexp = ltree_to_sexp(ltree)
     sexp_simpl = eggy.simplify(sexp)
-    # FIXME: hacky fix to unexpected grammar elts
-    if 'nil' in sexp_simpl:
+    if "nil" in sexp_simpl:
+        if sexp_simpl != "nil":
+            print(f"WARNING: found nil in unsimplified expression: {sexp_simpl}", file=sys.stderr)
         raise ParseError(f"Unexpected 'nil' token in simplified expr: {sexp_simpl}")
     ttree = sexp_to_ttree(sexp_simpl)
     s_simpl = eval_ttree_as_str(ttree)
@@ -208,10 +210,32 @@ def demo_simplify():
         "F;F~F,F~FF,F~F,F~FF",
         "F;F~F[+F]F,F~F,F~F[+F]F",
         "F;F~[-+-+---]F[++++]",
+        "+;F~F",
+        "[++];F~F",
+        "[++];F~[F]",
+        "[++];F~[F][+++]",
+        "F;F~+",
+        "F;F~F,F~+",
+        "F;F~+,F~+",
+        "F;F~F,F~+,F~+",
     ]
     for s in strs:
-        s_simpl = simplify(s)
-        print(f"{s} => {s_simpl}")
+        try:
+            s_simpl = simplify(s)
+            print(f"{s} => {s_simpl}")
+        except ParseError:
+            print(f"Got nil on {s}")
+
+
+def demo_to_sexp():
+    strs = [
+        "F;F~+",
+        "F;F~F,F~+",
+        "F;F~+,F~+",
+        "F;F~F,F~+,F~+",
+    ]
+    for s in strs:
+        print(to_sexp(s))
 
 
 def to_sexp(s: str) -> str:
@@ -222,3 +246,4 @@ def to_sexp(s: str) -> str:
 
 if __name__ == '__main__':
     demo_simplify()
+    # demo_to_sexp()
