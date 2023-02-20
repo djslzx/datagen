@@ -71,29 +71,36 @@ pub fn simplify(s: &str) -> String {
             "(symbols nil ?x)" => "?x"),
         rw!("collapse-nil-symbol";
             "(symbol nil)" => "nil"),
+        rw!("collapse-nil-axiom";
+            "(lsystem nil ?x)" => "nil"),
+        rw!("collapse-nil-rhs";
+            "(arrow ?x nil)" => "nil"),
+        rw!("collapse-nil-rule";
+            "(rule nil)" => "nil"),
+        rw!("collapse-nil-rules";
+            "(lsystem ?x nil)" => "nil"),
 
         // retracing: X[X] => X
         rw!("retracing";
             "(symbols (bracket ?x) ?x)" => "?x"),
 
-        // unnecessary brackets: X~[Y] => X~Y
-        rw!("unnecessary-brackets";
-            "(arrow ?x (symbol (bracket ?y)))" => "(arrow ?x ?y)"),
+        // nested brackets: [[E]] -> [E]
+        rw!("nested-brackets";
+            "(bracket (symbol (bracket ?x)))" => "(bracket ?x)"),
+        // nested brackets: [E[E]] -> [EE]: TODO (need annotations?)
 
-        // bracket with only turns
+        // only turns
         rw!("brackets-with-turns-only";
             "(bracket ?x)" => "nil"
-            if has_only_turns(var("?x"))
-        ),
-
-        // axiom with only turns
+            if has_only_turns(var("?x"))),
         rw!("axiom-with-turns-only";
             "(axiom ?x)" => "nil"
-            if has_only_turns(var("?x"))
+            if has_only_turns(var("?x"))),
+        // disallow only having turns in rule rhs
+        rw!("rhs-with-turns-only";
+            "(arrow ?x ?y)" => "nil"
+            if has_only_turns(var("?y"))
         ),
-
-        // nested brackets: [[E]] -> [E]
-        // nested brackets: [E[E]] -> [EE]
     ];
 
     // parse the expression, the type annotation tells it which Language to use
@@ -140,17 +147,25 @@ mod tests {
 
     #[test]
     fn test_extra_brackets() {
-        // unnecessary brackets: X~[Y] => X~Y
-        // F;F~[F]
-        assert_eq!(
+        // keep rhs brackets: X~[Y] => X~Y
+        assert_eq!( // F;F~[F]
             simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbol (nonterm F)))))))"),
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbol (nonterm F)))))))"
         );
-        // F;F~[FF+FF]
-        assert_eq!(
+        assert_eq!( // F;F~[FF+FF]
             simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))))"),
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))"
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))))"
         );
+
+        // rm nested brackets: [[X]] -> [X]
+        assert_eq!( // [[F]];F~F -> [F];F~F
+            simplify("(lsystem (axiom (symbol (bracket (symbol (bracket (symbol (nonterm F))))))) (rule (arrow F (symbol (nonterm F)))))"),
+            "(lsystem (axiom (symbol (bracket (symbol (nonterm F))))) (rule (arrow F (symbol (nonterm F)))))"
+        );
+        assert_eq!( // [[[[[[[F]]]]]]];F~F -> [F];F~F
+            simplify("(lsystem (axiom (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (nonterm F))))))))))))))))) (rule (arrow F (symbol (nonterm F)))))"),
+            "(lsystem (axiom (symbol (bracket (symbol (nonterm F))))) (rule (arrow F (symbol (nonterm F)))))"
+        )
     }
 
     #[test]
@@ -184,7 +199,7 @@ mod tests {
     fn test_bracketed_turns_only() {
         // only turns in brackets: [---+-+...--+] => empty symbols
         assert_eq!(
-            // F;F~[-+-+---]F[++++] -> F;F~F
+            // F;F~[-+-+---]F[++++] => F;F~F
             simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (bracket (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term -) (symbol (term -))))))))) (symbols (nonterm F) (symbol (bracket (symbols (term +) (symbols (term +) (symbols (term +) (symbol (term +))))))))))))"),
             "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
         );
@@ -193,5 +208,19 @@ mod tests {
     #[test]
     fn test_axiom_turns_only() {
         // only turns in axiom => empty axiom
+        assert_eq!(
+            // [---];F~F => empty
+            simplify("(lsystem (axiom (symbol (bracket (symbols (term -) (symbols (term -) (symbol (term -))))))) (rule (arrow F (symbol (nonterm F)))))"),
+            "nil"
+        )
+    }
+
+     #[test]
+    fn test_empty_rules() {
+        assert_eq!(
+            // F;F~+ => empty
+            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (term +)))))"),
+            "nil"
+        )
     }
 }
