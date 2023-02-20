@@ -73,37 +73,6 @@ def parse_str_to_tuple(s: str) -> Tuple:
     return parse.ltree_to_ttree(ltree)
 
 
-def simplify_file(in_path: str, out_path: str, score_thresh=None):
-    print(f"Writing simplified file to {out_path}")
-    n_parse_failures, n_low_score = 0, 0
-    with open(in_path, 'r') as f_in, open(out_path, 'w') as f_out:
-        for i, line in enumerate(f_in.readlines()):
-            if line.startswith("#"):  # skip comments
-                f_out.write(line)
-                continue
-            if ":" in line:  # split out scores
-                line, score = line.split(" : ")
-                if score_thresh is not None:
-                    # skip lines with low score
-                    score = float(score.replace("*", ""))
-                    if score <= score_thresh:
-                        print(f"Skipping line {i} because of low score: {score}")
-                        f_out.write("\n")
-                        n_low_score += 1
-                        continue
-            # simplify line
-            try:
-                s = parse.simplify(line)
-                print(f"{i}: {s}")
-                f_out.write(s + "\n")
-            except (lark.UnexpectedCharacters, lark.UnexpectedToken, parse.ParseError):
-                print(f"Skipping line {i}")
-                f_out.write("\n")
-                n_parse_failures += 1
-    print(f"Skipped {n_parse_failures} lines b/c of parsing failure,\n"
-          f"        {n_low_score} lines b/c of low score (< 0.001)")
-
-
 def lg_kwargs():
     g = Grammar.from_components(components=parse.rule_types, gram=2)
     fe = ConvFeatureExtractor(n_features=1000,
