@@ -65,10 +65,10 @@ pub fn simplify(s: &str) -> String {
             "(symbols (term -) (symbol (term +)))" => "nil"),
 
         // nil handling
-        rw!("collapse-nil-symbols-rhs";
-            "(symbols ?x nil)" => "(symbol ?x)"),
         rw!("collapse-nil-symbols-lhs";
             "(symbols nil ?x)" => "?x"),
+        rw!("collapse-nil-symbols-rhs";
+            "(symbols ?x nil)" => "(symbol ?x)"),
         rw!("collapse-nil-symbol";
             "(symbol nil)" => "nil"),
         rw!("collapse-nil-axiom";
@@ -77,7 +77,11 @@ pub fn simplify(s: &str) -> String {
             "(arrow ?x nil)" => "nil"),
         rw!("collapse-nil-rule";
             "(rule nil)" => "nil"),
-        rw!("collapse-nil-rules";
+        rw!("collapse-nil-rules-lhs";
+            "(rules nil ?x)" => "?x"),
+        rw!("collapse-nil-rules-rhs";
+            "(rules ?x nil)" => "(rule ?x)"),
+        rw!("collapse-nil-all-rules";
             "(lsystem ?x nil)" => "nil"),
 
         // retracing: X[X] => X
@@ -222,5 +226,28 @@ mod tests {
             simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (term +)))))"),
             "nil"
         )
+    }
+
+    #[test]
+    fn test_nil_collapse() {
+        // F;F~nil => nil
+        assert_eq!(
+            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol nil))))"),
+            "nil"
+        );
+        // F;F~F,F~nil => F;F~F
+        assert_eq!(
+            simplify("(lsystem (axiom (symbol (nonterm F))) \
+                                  (rules (arrow F (symbol (nonterm F))) \
+                                         (rule (arrow F (symbol nil))))))"),
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
+        );
+        // F;F~nil,F~nil => nil
+        assert_eq!(
+            simplify("(lsystem (axiom (symbol (nonterm F))) \
+                               (rules (arrow F nil) \
+                                      (rule (arrow F nil))))"),
+            "nil"
+        );
     }
 }
