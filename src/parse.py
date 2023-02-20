@@ -207,19 +207,18 @@ def demo_simplify():
         "F;F~F,F~+F-,F~F",
         "F;F~F,F~FF,F~F,F~FF",
         "F;F~F[+F]F,F~F,F~F[+F]F",
+        "F;F~[-+-+---]F[++++]",
     ]
     for s in strs:
         s_simpl = simplify(s)
         print(f"{s} => {s_simpl}")
 
 
+def to_sexp(s: str) -> str:
+    lt = parse_lsys_as_ltree(s)
+    sxp = ltree_to_sexp(lt)
+    return sxp
+
+
 if __name__ == '__main__':
-    # demo_simplify()
-    strs = [
-        "F;F~[-+-+---]F[++++]",
-        "F;F~F",
-    ]
-    for s in strs:
-        lt = parse_lsys_as_ltree(s)
-        sxp = ltree_to_sexp(lt)
-        print(sxp)
+    demo_simplify()
