@@ -1,71 +1,108 @@
-use egg::*;
+use egg::{*, rewrite as rw};
 
 define_language! {
     enum LSystem {
         "lsystem" = LSystem([Id; 2]),
-        "axiom" = Axiom([Id; 1]),
+        "axiom" = Axiom(Id),
         "symbols" = Symbols([Id; 2]),
-        "symbol" = Symbol([Id; 1]),
-        "bracket" = Bracket([Id; 1]),
-        "nonterm" = Nonterm([Id; 1]),
-        "term" = Term([Id; 1]),
+        "symbol" = Symbol(Id),
+        "bracket" = Bracket(Id),
+        "nonterm" = Nonterm(Id),
+        "term" = Term(Id),
         "rules" = Rules([Id; 2]),
-        "rule" = Rule([Id; 1]),
+        "rule" = Rule(Id),
         "arrow" = Arrow([Id; 2]),
         "F" = Draw,
-        "f" = Jump,
+        "f" = Hop,
         "+" = Add,
         "-" = Sub,
         "nil" = Nil,
     }
 }
 
-fn make_rules() -> Vec<Rewrite<LSystem, ()>> {
-    vec![
-        // empty turn
-        rewrite!("empty-turn-plus-minus";
-            "(symbols (term +) (symbols (term -) ?x))" =>
-            "?x"
-        ),
-        rewrite!("empty-turn-minus-plus";
-            "(symbols (term -) (symbols (term +) ?x))" =>
-            "?x"
-        ),
-        rewrite!("empty-turn-plus-minus-end";
-            "(symbols (term +) (symbol (term -)))" =>
-            "nil"
-        ),
-        rewrite!("empty-turn-minus-plus-end";
-            "(symbols (term -) (symbol (term +)))" =>
-            "nil"
-        ),
-        rewrite!("collapse-nil";
-            "(symbols ?x nil)" =>
-            "(symbol ?x)"
-        ),
-        // retracing: X[X] => X
-        rewrite!("retracing";
-            "(symbols (bracket ?x) ?x)" =>
-            "?x"
-        ),
-        // unnecessary brackets: X~[Y] => X~Y
-        rewrite!("unnecessary-brackets";
-            "(arrow ?x (symbol (bracket ?y)))" =>
-            "(arrow ?x ?y)"
-        ),
-        // axiom with only turns
-        // bracket with only turns
-    ]
+type EGraph = egg::EGraph<LSystem, TurnFold>;
+
+// Annotate e-graph with whether an e-class has at least one draw or hop.
+// We need this to do simplifications like [(-|+)*] => empty
+#[derive(Default)]
+pub struct TurnFold;
+impl Analysis<LSystem> for TurnFold {
+    type Data = bool;  // defines the domain D: true if expression has Draw/Hop
+
+    fn make(egraph: &EGraph, enode: &LSystem) -> Self::Data {
+        match enode {
+            LSystem::Draw | LSystem::Hop => true,
+            LSystem::Add | LSystem::Sub | LSystem::Nil => false,
+            _ => enode.any(|c| egraph[c].data)
+        }
+    }
+
+    fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {
+        merge_max(to, from)
+    }
+}
+
+fn var(s: &str) -> Var {
+    s.parse().unwrap()
+}
+
+fn has_only_turns(v: Var) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+    // Check that the substitution's data is false (i.e. no Draw/Hop)
+    move |egraph, _, subst| !egraph[subst[v]].data
 }
 
 /// parse an expression, simplify it using egraph, and pretty print it back out
 pub fn simplify(s: &str) -> String {
+    let rules = &[
+        // empty turn
+        rw!("empty-turn-plus-minus";
+            "(symbols (term +) (symbols (term -) ?x))" => "?x"),
+        rw!("empty-turn-minus-plus";
+            "(symbols (term -) (symbols (term +) ?x))" => "?x"),
+        rw!("empty-turn-plus-minus-end";
+            "(symbols (term +) (symbol (term -)))" => "nil"),
+        rw!("empty-turn-minus-plus-end";
+            "(symbols (term -) (symbol (term +)))" => "nil"),
+
+        // nil handling
+        rw!("collapse-nil-symbols-rhs";
+            "(symbols ?x nil)" => "(symbol ?x)"),
+        rw!("collapse-nil-symbols-lhs";
+            "(symbols nil ?x)" => "?x"),
+        rw!("collapse-nil-symbol";
+            "(symbol nil)" => "nil"),
+
+        // retracing: X[X] => X
+        rw!("retracing";
+            "(symbols (bracket ?x) ?x)" => "?x"),
+
+        // unnecessary brackets: X~[Y] => X~Y
+        rw!("unnecessary-brackets";
+            "(arrow ?x (symbol (bracket ?y)))" => "(arrow ?x ?y)"),
+
+        // bracket with only turns
+        rw!("brackets-with-turns-only";
+            "(bracket ?x)" => "nil"
+            if has_only_turns(var("?x"))
+        ),
+
+        // axiom with only turns
+        rw!("axiom-with-turns-only";
+            "(axiom ?x)" => "nil"
+            if has_only_turns(var("?x"))
+        ),
+
+        // nested brackets: [[E]] -> [E]
+        // nested brackets: [E[E]] -> [EE]
+    ];
+
     // parse the expression, the type annotation tells it which Language to use
     let expr: RecExpr<LSystem> = s.parse().unwrap();
 
     // simplify the expression using a Runner, which creates an e-graph with
     // the given expression and runs the given rules over it
-    let runner = Runner::default().with_expr(&expr).run(&make_rules());
+    let runner = Runner::<LSystem, TurnFold, ()>::default()
+        .with_expr(&expr).run(rules);
 
     // the Runner knows which e-class the expression given with `with_expr` is in
     let root = runner.roots[0];
@@ -114,7 +151,6 @@ mod tests {
             simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))))"),
             "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))"
         );
-
     }
 
     #[test]
@@ -147,6 +183,11 @@ mod tests {
     #[test]
     fn test_bracketed_turns_only() {
         // only turns in brackets: [---+-+...--+] => empty symbols
+        assert_eq!(
+            // F;F~[-+-+---]F[++++] -> F;F~F
+            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (bracket (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term -) (symbol (term -))))))))) (symbols (nonterm F) (symbol (bracket (symbols (term +) (symbols (term +) (symbols (term +) (symbol (term +))))))))))))"),
+            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
+        );
     }
 
     #[test]

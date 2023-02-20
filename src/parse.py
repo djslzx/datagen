@@ -214,4 +214,12 @@ def demo_simplify():
 
 
 if __name__ == '__main__':
-    demo_simplify()
+    # demo_simplify()
+    strs = [
+        "F;F~[-+-+---]F[++++]",
+        "F;F~F",
+    ]
+    for s in strs:
+        lt = parse_lsys_as_ltree(s)
+        sxp = ltree_to_sexp(lt)
+        print(sxp)
