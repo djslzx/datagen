@@ -146,15 +146,35 @@ class Grammar:
         Destructively modifies grammar so that the continuous parameters come from the provided pytorch tensor
         """
         assert tensor.shape[0] == self.n_parameters
-        index = 0
+        i = 0
         for symbol in sorted(self.rules.keys(), key=str):
-            for i in range(len(self.rules[symbol])):
-                _, form = self.rules[symbol][i]
-                self.rules[symbol][i] = (tensor[index], form)
-                index += 1
-        assert self.n_parameters == index
+            for j in range(len(self.rules[symbol])):
+                _, form = self.rules[symbol][j]
+                self.rules[symbol][j] = (tensor[i], form)
+                i += 1
+        assert self.n_parameters == i
+
+    def from_tensor(self, tensor: T.Tensor) -> "Grammar":
+        """
+        Generates a new grammar whose continuous parameters come from the provided pytorch tensor.
+        Non-destructive, unlike from_tensor_.
+        """
+        assert tensor.shape[0] == self.n_parameters, \
+            f"Grammar has {self.n_parameters} params but received a tensor with shape {tensor.shape}"
+        rules = copy.deepcopy(self.rules)
+        i = 0
+        for sym in sorted(rules.keys(), key=str):
+            n = len(rules[sym])
+            for j in range(n):
+                _, form = rules[sym][j]
+                rules[sym][j] = (tensor[i], form)
+                i += 1
+        g = Grammar(rules)
+        assert g.n_parameters == i
+        return g
 
     def to_tensor(self) -> T.Tensor:
+        """Returns a tensor containing the continuous parameters of the grammar"""
         n_params = self.n_parameters
         weights = T.empty(n_params)
         i = 0
