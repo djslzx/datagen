@@ -61,43 +61,41 @@ class Grammar:
         gram=1: unigram
         gram=2: bigram
         """
-        assert gram in [1, 2]
-        symbols = {typ for component_type in components.values() for typ in component_type}
-
+        # "symbols" is the set of nonterminals in the grammar (also construed as types)
+        symbols = {t
+                   for comp_t in components.values()
+                   for t in comp_t}
         if gram == 1:
-            def make_form(name, tp):
-                assert len(tp) >= 1
-                if len(tp) == 1: return name
-                else: return tuple([name] + list(tp[:-1]))
-
-            rules = {symbol: [(0., make_form(component_name, component_type))
-                              for component_name, component_type in
-                              components.items() if component_type[-1] == symbol]
-                     for symbol in symbols}
-
+            def make_form(name, t):
+                assert len(t) >= 1
+                if len(t) == 1: return name
+                else: return tuple([name] + list(t[:-1]))
+            rules = {sym: [(0., make_form(comp, comp_t))
+                           for comp, comp_t in components.items()
+                           if comp_t[-1] == sym]
+                     for sym in symbols}
         elif gram == 2:
-            for parent, parent_type in components.items():
-                if len(parent_type) == 1: continue  # this is not a function, so cannot be a parent
-                for argument_index, argument_type in enumerate(parent_type[:-1]):
-                    symbols.add((parent, argument_index, argument_type))
-
+            # add symbols of the form (sym1, 0, sym2) given that sym1's first arg can be sym2
+            symbols |= {
+                (parent, arg_i, arg_t)
+                for parent, parent_t in components.items()
+                if len(parent_t) > 1
+                for arg_i, arg_t in enumerate(parent_t[:-1])
+            }
             rules = {}
-            for symbol in symbols:
-                rules[symbol] = []
-                if isinstance(symbol, tuple):
-                    return_type = symbol[-1]
-                else:
-                    return_type = symbol
-
-                for component, component_type in components.items():
-                    if component_type[-1] == return_type:
-                        if len(component_type) == 1:
-                            form = component
+            for sym in symbols:
+                rules[sym] = []
+                sym_t = sym[-1] if isinstance(sym, tuple) else sym
+                for comp, comp_t in components.items():
+                    if comp_t[-1] == sym_t:
+                        if len(comp_t) == 1:
+                            form = comp
                         else:
-                            form = tuple([component] +
-                                         [(component, argument_index, argument_type)
-                                          for argument_index, argument_type in enumerate(component_type[:-1])])
-                        rules[symbol].append((0., form))
+                            form = tuple([comp] + [(comp, arg_i, arg_t)
+                                                   for arg_i, arg_t in enumerate(comp_t[:-1])])
+                        rules[sym].append((0., form))
+        else:
+            raise ValueError(f"Expected gram in {{1, 2}} but got {gram}")
 
         return Grammar(rules)
 
