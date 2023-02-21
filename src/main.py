@@ -33,11 +33,11 @@ def pluck_egg_examples(df: pd.DataFrame, k=10):
             s += f"{row['in']} =>\n  {row['out']}, {row['diff']} tokens reduced\n"
         return s
 
-    for source in df["id"].unique():
+    for id in df["id"].unique():
         fdf = df.loc[(df["diff"] > 0) &
                      (df["out length"] > 0) &
-                     (df["id"] == source)].sort_values(by="diff", ascending=False)
-        print(f"Filtered {source}: {(df['source'] == source).size} => {fdf.size}")
+                     (df["id"] == id)].sort_values(by="diff", ascending=False)
+        print(f"Filtered {id}: {(df['id'] == id).size} => {fdf.size}")
         m = len(fdf)//2
         print("Max:\n", view(fdf.head(k)))
         print("Med:\n", view(fdf[m:m + k]))
@@ -121,7 +121,6 @@ def plot():
         ("random", "2"), "../datasets/random/random_100k.txt", "../datasets/random/random_100k_simpl2.txt",
         ("random", "3"), "../datasets/random/random_100k.txt", "../datasets/random/random_100k_simpl3.txt",
     ]
-
     df = make_df(test_paths[::3], test_paths[1::3], test_paths[2::3])
     # filtered_df = df.loc[(df["diff"] > 0) & (df["out length"] > 0)]
     print(df)
@@ -137,6 +136,6 @@ def plot():
 if __name__ == "__main__":
     # simplify_file("../datasets/ns/ns.txt", "../datasets/ns/ns-simpl3.txt")
     # simplify_file("../datasets/ns/ns.txt", "../datasets/ns/ns-filt3.txt", 0.001)
-    simplify_file("../datasets/random/random_100k.txt", "../datasets/random/random_100k_simpl3.txt")
+    # simplify_file("../datasets/random/random_100k.txt", "../datasets/random/random_100k_simpl3.txt")
     plot()
 
