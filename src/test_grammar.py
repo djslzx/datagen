@@ -30,8 +30,7 @@ def test_to_from_tensor():
     for g in grammars:
         # g -> [t] -> h
         t = g.to_tensor()
-        h = deepcopy(g)
-        h.from_tensor_(t)
+        h = g.from_tensor(t)
         assert h == g, f"g={g}, h={h}"
 
         # [t] -> h -> [t']
