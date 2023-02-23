@@ -16,7 +16,8 @@ class Grammar:
 
     Symbol = str
 
-    def __init__(self, rules: Dict[Symbol, List[Tuple[float | T.Tensor, Tuple | Symbol]]]):
+    def __init__(self, rules: Dict[Symbol | tuple, List[Tuple[float | T.Tensor, tuple | Symbol]]],
+                 components: Dict[Symbol, List[Symbol]]):
         """
         Probabilistic Context Free Grammar (PCFG) over program expressions
 
@@ -33,6 +34,7 @@ class Grammar:
         such as strings, integers, and tuples of strings/integers.
         """
         self.rules = rules
+        self.components = components
 
     def __str__(self) -> str:
         return self.pretty_print()
@@ -42,14 +44,14 @@ class Grammar:
 
     def pretty_print(self) -> str:
         pretty = ""
-        for symbol, productions in self.rules.items():
-            for probability, form in productions:
-                pretty += f"{symbol} ::= "
+        for nt, prods in self.rules.items():
+            for w, form in prods:
+                pretty += f"{nt} ::= "
                 if isinstance(form, tuple):
                     pretty += f"constructor='{form[0]}', args={','.join(map(str, form[1:]))}"
                 else:
                     pretty += f"constructor={form}"
-                pretty += "\tw.p. " + str(probability) + "\n"
+                pretty += "\tw.p. " + str(np.exp(w)) + "\n"
         return pretty
 
     @staticmethod
@@ -75,7 +77,9 @@ class Grammar:
                            if comp_t[-1] == sym]
                      for sym in symbols}
         elif gram == 2:
-            # add symbols of the form (sym1, 0, sym2) given that sym1's first arg can be sym2
+            # Add symbols of the form (sym1, 0, sym2) given that sym1's first arg can be sym2.
+            # We won't really use the old symbols, but they'll come in handy when we want to grow expressions
+            # without knowing where the start nt came from.
             symbols |= {
                 (parent, arg_i, arg_t)
                 for parent, parent_t in components.items()
@@ -97,28 +101,57 @@ class Grammar:
         else:
             raise ValueError(f"Expected gram in {{1, 2}} but got {gram}")
 
-        return Grammar(rules)
+        return Grammar(rules, components)
 
-    def normalize_(self) -> 'Grammar':
+    def from_bigram_counts_(self, counts: Dict[Tuple[str, int, str], int], alpha=0):
         """
-        Destructively modifies grammar so that all the probabilities sum to one
-        Has some extra logic so that if the log probabilities are coming from a neural network,
-         everything is handled properly, but you don't have to worry about that
-        """
+        Reweight the grammar using counts of how many times each rule was observed.
+        `alpha` is the additive smoothing parameter.
 
-        def norm(productions):
-            z, _ = productions[0]
-            if isinstance(z, T.Tensor):
-                z = T.logsumexp(T.stack([log_probability for log_probability, _ in productions]), 0)
+        Counts should have keys of the form (x, i, y), where
+        - x is the parent node
+        - i is the index of the child node in the parent's argument list
+        - y is the child node
+        """
+        for nt, prods in self.rules.items():
+            if isinstance(nt, tuple):
+                for i, (w, form) in enumerate(prods):
+                    parent, j, *_ = nt
+                    child = form[0] if isinstance(form, tuple) else form
+                    k = counts.get((parent, j, child), 0)
+                    self.rules[nt][i] = np.log(k), form
+        self.normalize_(alpha)
+
+    def normalize_(self, alpha=0) -> 'Grammar':
+        """
+        Destructively modifies grammar so that all the probabilities sum to one.
+        `alpha` is the additive smoothing parameter.
+
+        Has some extra logic so that everything is handled properly if the
+         log probabilities come from a neural network.
+         """
+        def add_log(a: T.Tensor | float, b: float) -> T.Tensor | float:
+            if alpha > 0:
+                if isinstance(a, T.Tensor):
+                    return T.logaddexp(a, T.Tensor(b).log())
+                else:
+                    return np.logaddexp(a, np.log(b))
             else:
-                for log_probability, _ in productions[1:]:
-                    z = np.logaddexp(z, log_probability)
+                return a
 
-            return [(log_probability - z, production) for log_probability, production in productions]
+        def norm(prods):
+            z, _ = prods[0]
+            d = len(prods)
+            if isinstance(z, T.Tensor):
+                z = T.logsumexp(T.stack([w for w, _ in prods]), 0)
+            else:
+                for w, _ in prods[1:]:
+                    z = np.logaddexp(z, w)
+            return [(add_log(w, alpha) - add_log(z, alpha * d), form)
+                    for w, form in prods]
 
         self.rules = {symbol: norm(productions)
                       for symbol, productions in self.rules.items()}
-
         return self
 
     def uniform_(self) -> 'Grammar':
@@ -167,7 +200,7 @@ class Grammar:
                 _, form = rules[sym][j]
                 rules[sym][j] = (tensor[i], form)
                 i += 1
-        g = Grammar(rules)
+        g = Grammar(rules, self.components)
         assert g.n_parameters == i
         return g
 
