@@ -11,10 +11,11 @@ import time
 import Levenshtein
 import itertools as it
 
-from cfg import CFG, PCFG
+from grammar import Grammar
 from zoo import zoo
 from lindenmayer import S0LSystem
 from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
+import parse
 
 # Set up file paths
 PCFG_CACHE_PREFIX = ".cache/"
@@ -36,26 +37,18 @@ DRAW_ARGS = {
     'n_cols': 128,
 }
 ROLLOUT_DEPTH = 3
+START = "LSystem"
 
 
-def next_gen(metagrammar: PCFG, n_next_gen: int, p_arkv: float, sentence_limit: int) -> Tuple[np.ndarray, Set]:
+def next_gen(metagrammar: Grammar, n_next_gen: int, p_arkv: float, sentence_limit: int) -> Tuple[np.ndarray, Set]:
     popn = np.empty(n_next_gen, dtype=object)
     arkv = set()
     for i in range(n_next_gen):  # parallel
-        retried = False
-        while True:
-            sentence = tuple(metagrammar.iterate_fully())
-            if len(sentence) <= sentence_limit and \
-               all(sentence != stored for stored in popn[:i]):
-                break
-            print(i if not retried else '.', end='')
-            retried = True
-        if retried: print(', ', end='')
-
+        ttree = metagrammar.sample(START)
+        sentence = parse.eval_ttree_as_str(ttree)
         popn[i] = sentence
         if np.random.random() < p_arkv:
             arkv.add(sentence)
-    print()
     return popn, arkv
 
 
@@ -68,7 +61,7 @@ def semantic_score(prev_gen: np.ndarray, new_gen: np.ndarray,
     t_feat = time.time()
     popn_features = np.empty((len(prev_gen), n_features * n_samples))
     for i, s in enumerate(prev_gen):  # parallel
-        sys = S0LSystem.from_sentence(s)
+        sys = S0LSystem.from_sentence(list(s))
         for j in range(n_samples):
             bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
             popn_features[i, j * n_features: (j + 1) * n_features] = featurizer.apply(bmp)
@@ -83,7 +76,7 @@ def semantic_score(prev_gen: np.ndarray, new_gen: np.ndarray,
     scores = np.empty(len(new_gen))
     for i, s in enumerate(new_gen):  # parallel
         features = np.empty((1, n_features * n_samples))
-        sys = S0LSystem.from_sentence(s)
+        sys = S0LSystem.from_sentence(list(s))
         for j in range(n_samples):
             bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
             features[0, j * n_features: (j + 1) * n_features] = featurizer.apply(bmp)
@@ -103,7 +96,7 @@ def syntactic_semantic_score(popn: np.ndarray, semantic_scores: np.ndarray) -> n
     return scores
 
 
-def novelty_search(init_popn: List[CFG.Sentence],
+def novelty_search(init_popn: List[str],
                    max_popn_size: int,
                    iters: int,
                    featurizer: Featurizer,
@@ -114,6 +107,7 @@ def novelty_search(init_popn: List[CFG.Sentence],
                    sentence_limit: int,
                    measure_novelty_within_generation: bool = False,
                    name: str = "") -> Set[Iterable[str]]:
+    # todo: use tensorboard via lightning?
 
     logparams = locals()
     del logparams['init_popn']
@@ -121,6 +115,7 @@ def novelty_search(init_popn: List[CFG.Sentence],
     arkv = set()
     popn = np.array(init_popn, dtype=object)
     n_next_gen = max_popn_size * next_gen_ratio
+    metagrammar = Grammar.from_components(parse.rule_types, gram=2)
 
     for iter in range(iters):
         print(f"[Novelty search: iter {iter}]")
@@ -129,7 +124,9 @@ def novelty_search(init_popn: List[CFG.Sentence],
         # generate next gen
         print("Fitting metagrammar...")
         t_io = time.time()
-        metagrammar = trained_bigram_metagrammar(["".join(x) for x in popn], alpha=0.1)
+        corpus = [parse.parse_lsys(x) for x in popn]
+        counts = parse.multi_count_bigram(corpus)
+        metagrammar.from_bigram_counts_(counts)
         print(f"Fitting took {time.time() - t_io}s.")
 
         print("Generating next gen...")
@@ -145,7 +142,7 @@ def novelty_search(init_popn: List[CFG.Sentence],
         if measure_novelty_within_generation:
             prev_gen = new_gen
         else:
-            prev_gen = np.concatenate((popn, np.array(list(arkv), dtype=object)), axis=0)
+            prev_gen = np.concatenate((np.array(popn), np.array(list(arkv), dtype=object)), axis=0)
         scores = semantic_score(prev_gen=prev_gen,
                                 new_gen=new_gen,
                                 featurizer=featurizer,
@@ -199,7 +196,7 @@ def novelty_search(init_popn: List[CFG.Sentence],
 
 
 def main(name: str):
-    seed_popn = [tuple(x.to_sentence()) for x in zoo]
+    seed_popn = [x.to_str() for x in zoo]
     t = int(time.time())
 
     # choices for each param
