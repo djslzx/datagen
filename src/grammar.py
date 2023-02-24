@@ -14,9 +14,9 @@ import util
 
 class Grammar:
 
-    Symbol = str
+    Symbol = Union[str, tuple]
 
-    def __init__(self, rules: Dict[Symbol | tuple, List[Tuple[float | T.Tensor, tuple | Symbol]]],
+    def __init__(self, rules: Dict[Symbol, List[Tuple[float | T.Tensor, tuple | Symbol]]],
                  components: Dict[Symbol, List[Symbol]]):
         """
         Probabilistic Context Free Grammar (PCFG) over program expressions
@@ -44,15 +44,21 @@ class Grammar:
 
     def pretty_print(self) -> str:
         pretty = ""
-        for nt, prods in self.rules.items():
+        for nt, prods in sorted(self.rules.items(), key=lambda x: str(x[0])):
             for w, form in prods:
                 pretty += f"{nt} ::= "
                 if isinstance(form, tuple):
                     pretty += f"constructor='{form[0]}', args={','.join(map(str, form[1:]))}"
                 else:
                     pretty += f"constructor={form}"
-                pretty += "\tw.p. " + str(np.exp(w)) + "\n"
+                pretty += "\tw.p. " + str(w) + "\n"
         return pretty
+
+    def weight(self, nt: Symbol, form: Symbol) -> float:
+        for w, prod in self.rules[nt]:
+            if form == prod:
+                return w
+        return -np.inf
 
     @staticmethod
     def from_components(components: Dict[Symbol, List[Symbol]], gram) -> 'Grammar':
@@ -103,7 +109,7 @@ class Grammar:
 
         return Grammar(rules, components)
 
-    def from_bigram_counts_(self, counts: Dict[Tuple[str, int, str], int], alpha=0):
+    def from_bigram_counts_(self, counts: Dict[Tuple[str, int, str], int], alpha=0.):
         """
         Reweight the grammar using counts of how many times each rule was observed.
         `alpha` is the additive smoothing parameter.
@@ -119,10 +125,10 @@ class Grammar:
                     parent, j, *_ = nt
                     child = form[0] if isinstance(form, tuple) else form
                     k = counts.get((parent, j, child), 0)
-                    self.rules[nt][i] = np.log(k), form
-        self.normalize_(alpha)
+                    self.rules[nt][i] = np.log(k + alpha), form  # k can be 0 -> issues
+        self.normalize_(0.)
 
-    def normalize_(self, alpha=0) -> 'Grammar':
+    def normalize_(self, alpha=0.) -> 'Grammar':
         """
         Destructively modifies grammar so that all the probabilities sum to one.
         `alpha` is the additive smoothing parameter.
@@ -130,10 +136,13 @@ class Grammar:
         Has some extra logic so that everything is handled properly if the
          log probabilities come from a neural network.
          """
+        assert isinstance(alpha, float) or isinstance(alpha, int), \
+            f"Expected alpha to be a float or int but got {type(alpha)}"
+
         def add_log(a: T.Tensor | float, b: float) -> T.Tensor | float:
             if alpha > 0:
                 if isinstance(a, T.Tensor):
-                    return T.logaddexp(a, T.Tensor(b).log())
+                    return T.logaddexp(a, T.tensor(b).log())
                 else:
                     return np.logaddexp(a, np.log(b))
             else:
@@ -141,13 +150,12 @@ class Grammar:
 
         def norm(prods):
             z, _ = prods[0]
-            d = len(prods)
             if isinstance(z, T.Tensor):
                 z = T.logsumexp(T.stack([w for w, _ in prods]), 0)
             else:
                 for w, _ in prods[1:]:
                     z = np.logaddexp(z, w)
-            return [(add_log(w, alpha) - add_log(z, alpha * d), form)
+            return [(add_log(w, alpha) - add_log(z, alpha * len(prods)), form)
                     for w, form in prods]
 
         self.rules = {symbol: norm(productions)
@@ -178,9 +186,8 @@ class Grammar:
         """
         assert tensor.shape[0] == self.n_parameters
         i = 0
-        for symbol in sorted(self.rules.keys(), key=str):
-            for j in range(len(self.rules[symbol])):
-                _, form = self.rules[symbol][j]
+        for symbol, prods in sorted(self.rules.items(), key=lambda x: str(x[0])):
+            for j, (_, form) in enumerate(prods):
                 self.rules[symbol][j] = (tensor[i], form)
                 i += 1
         assert self.n_parameters == i
@@ -194,10 +201,8 @@ class Grammar:
             f"Grammar has {self.n_parameters} params but received a tensor with shape {tensor.shape}"
         rules = copy.deepcopy(self.rules)
         i = 0
-        for sym in sorted(rules.keys(), key=str):
-            n = len(rules[sym])
-            for j in range(n):
-                _, form = rules[sym][j]
+        for sym, prods in sorted(rules.items(), key=lambda x: str(x[0])):
+            for j, (_, form) in enumerate(prods):
                 rules[sym][j] = (tensor[i], form)
                 i += 1
         g = Grammar(rules, self.components)
@@ -206,16 +211,13 @@ class Grammar:
 
     def to_tensor(self) -> T.Tensor:
         """Returns a tensor containing the continuous parameters of the grammar"""
-        n_params = self.n_parameters
-        weights = T.empty(n_params)
+        t = T.empty(self.n_parameters)
         i = 0
-        for symbol in sorted(self.rules.keys(), key=str):
-            for j in range(len(self.rules[symbol])):
-                w, _ = self.rules[symbol][j]
-                weights[i] = w
+        for sym in sorted(self.rules.keys(), key=str):
+            for w, _ in self.rules[sym]:
+                t[i] = w
                 i += 1
-        assert i == n_params
-        return weights
+        return t
 
     def sample(self, nonterminal):
         """
