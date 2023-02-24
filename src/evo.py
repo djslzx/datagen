@@ -19,6 +19,7 @@ from lindenmayer import S0LSystem
 from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
 import parse
 from util import Timing
+import random_baseline
 
 # Hyper-parameters
 DRAW_ARGS = {
@@ -168,19 +169,19 @@ def novelty_search(init_popn: List[str],
 
 
 def main(name: str):
-    seed_popn = [x.to_str() for x in zoo]
     t = int(time.time())
 
     # choices for each param
-    popn_sizes = [10, 100, 1000, 10000]
-    arkv_growth_rates = [1, 2, 4, 8]
-    iterations = [10, 100, 1000]
-    neighborhood_sizes = [1, 10, 100]
-    novelty_within_gen = [False, True]
+    popn_sizes = [100]  # [10, 100, 1000, 10000]
+    arkv_growth_rates = [2]  # [1, 2, 4, 8]
+    iterations = [10]  # [10, 100, 1000]
+    neighborhood_sizes = [10]  # [1, 10, 100]
+    novelty_within_gen = [False]  # [False, True]
+    seed_methods = ["random"]  # ["zoo", "random"]
 
     for i, args in enumerate(it.product(popn_sizes, arkv_growth_rates, iterations,
-                                        neighborhood_sizes, novelty_within_gen)):
-        popn_size, arkv_growth_rate, iters, neighborhood_size, novelty_within = args
+                                        neighborhood_sizes, novelty_within_gen, seed_methods)):
+        popn_size, arkv_growth_rate, iters, neighborhood_size, novelty_within, seed_method = args
         out_dir = f"{OUTDIR}/{t}-{name}-{i}"
 
         try:
@@ -192,9 +193,16 @@ def main(name: str):
         except IsADirectoryError:
             pass
 
+        # seed method
+        seed_size = popn_size
+        if seed_method == "random":
+            seed = [random_baseline.sample_mg() for _ in range(seed_size)]
+        else:
+            seed = [x.to_str() for x in zoo]
+
         params = {
             'out_dir': out_dir,
-            'init_popn': seed_popn,
+            'init_popn': seed,
             'iters': iters,
             'featurizer': ResnetFeaturizer(disable_last_layer=False,
                                            softmax_outputs=True),
