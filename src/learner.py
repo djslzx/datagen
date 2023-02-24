@@ -141,7 +141,7 @@ def lg_kwargs():
         "grammar": g,
         "parse": parse_str_to_tuple,
         "start_symbol": "LSystem",
-        "learning_rate": 0.001,
+        "learning_rate": 1e-5,
     }
 
 
@@ -152,8 +152,8 @@ def train_learner(train_filenames: List[str], epochs: int):
     train_loader = Tdata.DataLoader(train_dataset, shuffle=True)
     val_dataset = LSystemDataset([sys.to_str() for sys in zoo])
     val_loader = Tdata.DataLoader(val_dataset)
-    trainer = pl.Trainer(max_epochs=epochs, auto_lr_find=True)
-    trainer.tune(model=lg, train_dataloaders=train_loader, val_dataloaders=val_loader)
+    trainer = pl.Trainer(max_epochs=epochs, auto_lr_find=False)
+    trainer.tune(model=lg, train_dataloaders=train_loader)
     trainer.fit(model=lg, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
     print("Untrained grammar")
