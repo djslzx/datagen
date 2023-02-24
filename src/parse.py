@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import *
 import lark
 import eggy
+import sys
 
 
 # grammar over lsystems
@@ -85,12 +86,16 @@ def parse_lsys_as_ltree(s: str) -> lark.Tree:
     return parser.parse(s)
 
 
-def ltree_to_ttree(node: lark.Tree | lark.Token):
+def ltree_to_ttree(node: lark.Tree | lark.Token) -> Tuple:
     """Convert a lark tree into a nested tuple of strings"""
     if isinstance(node, lark.Tree):
         return tuple([node.data] + [ltree_to_ttree(x) for x in node.children])
     else:
         return node.value
+
+
+def parse_lsys(s: str) -> Tuple:
+    return ltree_to_ttree(parse_lsys_as_ltree(s))
 
 
 def ltree_to_sexp(node: lark.Tree | lark.Token) -> str:
@@ -159,6 +164,50 @@ def eval_ttree_as_str(ttree: Tuple) -> str:
     return rule_str_semantics[symbol](*str_args)
 
 
+def count_unigram(ttree: Tuple) -> Dict[str, int]:
+    counts = {}
+
+    def traverse(node: Tuple):
+        symbol, *args = node
+        counts[symbol] = counts.get(symbol, 0) + 1
+        for arg in args:
+            traverse(arg)
+
+    traverse(ttree)
+    return counts
+
+
+def count_bigram(ttree: Tuple) -> Dict[Tuple[str, int, str], int]:
+    counts = {}
+
+    def traverse(node: Tuple):
+        name, *args = node
+        for i, arg in enumerate(args):
+            k = (name, i, arg[0])
+            counts[k] = counts.get(k, 0) + 1
+            traverse(arg)
+
+    traverse(ttree)
+    # counts["$", 0, ttree[0]] = 1      # add in transitions from start
+    return counts
+
+
+def multi_count_bigram(ttrees: List[Tuple]) -> Dict[Tuple[str, int, str], int]:
+    counts = {}
+    for ttree in ttrees:
+        b = count_bigram(ttree)
+        for k, v in b.items():
+            counts[k] = counts.get(k, 0) + v
+    return counts
+
+
+def sum_counts(a: Dict[Any, float], b: Dict[Any, float]) -> Dict[Any, float]:
+    return {k: a.get(k, 0) + b.get(k, 0)
+            for k in a.keys() | b.keys()}
+
+
+# Simplification
+
 class ParseError(Exception):
     pass
 
@@ -168,8 +217,9 @@ def simplify(s: str) -> str:
     ltree = parse_lsys_as_ltree(s)
     sexp = ltree_to_sexp(ltree)
     sexp_simpl = eggy.simplify(sexp)
-    # FIXME: hacky fix to unexpected grammar elts
-    if 'nil' in sexp_simpl:
+    if "nil" in sexp_simpl:
+        if sexp_simpl != "nil":
+            print(f"WARNING: found nil in unsimplified expression: {sexp_simpl}", file=sys.stderr)
         raise ParseError(f"Unexpected 'nil' token in simplified expr: {sexp_simpl}")
     ttree = sexp_to_ttree(sexp_simpl)
     s_simpl = eval_ttree_as_str(ttree)
@@ -207,11 +257,53 @@ def demo_simplify():
         "F;F~F,F~+F-,F~F",
         "F;F~F,F~FF,F~F,F~FF",
         "F;F~F[+F]F,F~F,F~F[+F]F",
+        "F;F~[-+-+---]F[++++]",
+        "+;F~F",
+        "[++];F~F",
+        "[++];F~[F]",
+        "[++];F~[F][+++]",
+        "F;F~+",
+        "F;F~F,F~+",
+        "F;F~+,F~+",
+        "F;F~F,F~+,F~+",
     ]
     for s in strs:
-        s_simpl = simplify(s)
-        print(f"{s} => {s_simpl}")
+        try:
+            s_simpl = simplify(s)
+            print(f"{s} => {s_simpl}")
+        except ParseError:
+            print(f"Got nil on {s}")
+
+
+def demo_to_sexp():
+    strs = [
+        "F;F~+",
+        "F;F~F,F~+",
+        "F;F~+,F~+",
+        "F;F~F,F~+,F~+",
+    ]
+    for s in strs:
+        print(to_sexp(s))
+
+
+def to_sexp(s: str) -> str:
+    lt = parse_lsys_as_ltree(s)
+    sxp = ltree_to_sexp(lt)
+    return sxp
+
+
+def test_count_unigram():
+    cases = [
+        "(a)", {"a": 1},
+        "(a a a a)", {"a": 4},
+        "(a (a k) a (b k (c k) (c k)))", {"a": 3, "b": 1, "c": 2, "k": 4},
+    ]
+    for sexp, d in zip(cases[::2], cases[1::2]):
+        ttree = sexp_to_ttree(sexp)
+        out = count_unigram(ttree)
+        assert out == d, f"Expected {d} but got {out}"
 
 
 if __name__ == '__main__':
     demo_simplify()
+    # demo_to_sexp()

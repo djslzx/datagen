@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+
 import lark
 import torch as T
 import lightning as pl
@@ -9,6 +11,7 @@ import sys
 from glob import glob
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from grammar import Grammar, LearnedGrammar, ConvFeatureExtractor
 from lindenmayer import S0LSystem
@@ -16,8 +19,6 @@ from evo import DRAW_ARGS
 from zoo import zoo
 import parse
 import util
-
-Tree: TypeAlias = lark.Tree
 
 
 def eval_ttree_as_lsys(p: Tuple, level=3):
@@ -72,63 +73,6 @@ def parse_str_to_tuple(s: str) -> Tuple:
     return parse.ltree_to_ttree(ltree)
 
 
-def simplify_file(in_path: str, out_path: str, score_thresh=None):
-    print(f"Writing simplified file to {out_path}")
-    n_parse_failures, n_low_score = 0, 0
-    with open(in_path, 'r') as f_in, open(out_path, 'w') as f_out:
-        for i, line in enumerate(f_in.readlines()):
-            if line.startswith("#"):  # skip comments
-                f_out.write(line)
-                continue
-            if ":" in line:  # split out scores
-                line, score = line.split(" : ")
-                if score_thresh is not None:
-                    # skip lines with low score
-                    score = float(score.replace("*", ""))
-                    if score <= score_thresh:
-                        print(f"Skipping line {i} because of low score: {score}")
-                        f_out.write("\n")
-                        n_low_score += 1
-                        continue
-            # simplify line
-            try:
-                s = parse.simplify(line)
-                print(f"{i}: {s}")
-                f_out.write(s + "\n")
-            except (lark.UnexpectedCharacters, lark.UnexpectedToken, parse.ParseError):
-                print(f"Skipping line {i}")
-                f_out.write("\n")
-                n_parse_failures += 1
-    print(f"Skipped {n_parse_failures} lines b/c of parsing failure,\n"
-          f"        {n_low_score} lines b/c of low score (< 0.001)")
-
-
-def check_compression(in_file: str, out_file: str, n_lines: int):
-    # in-file # lines, out-file # lines
-    mat = np.empty((n_lines, 2), dtype=int)
-    with open(in_file, 'r') as f_in, open(out_file, 'r') as f_out:
-        for i, line in enumerate(f_in.readlines()):
-            mat[i, 0] = len(line)
-        for i, line in enumerate(f_out.readlines()):
-            mat[i, 1] = len(line)
-
-    # print n_lines stats
-    print(f"in_file mean: {np.mean(mat[:, 0])}, "
-          f"std dev: {np.std(mat[:, 0])}, "
-          f"out_file mean: {np.mean(mat[:, 1])}, "
-          f"std dev: {np.std(mat[:, 1])}, ")
-
-    # print compression ratio
-    compression = mat[:, 1] / mat[:, 0]
-    print(f"compression mean: {np.mean(compression, 0)}, "
-          f"std dev: {np.std(compression, 0)}")
-
-    # plt.plot(mat, label=("in", "out"))
-    plt.scatter(np.arange(n_lines), compression)
-    # plt.plot(compression)
-    plt.show()
-
-
 def lg_kwargs():
     g = Grammar.from_components(components=parse.rule_types, gram=2)
     fe = ConvFeatureExtractor(n_features=1000,
@@ -146,7 +90,6 @@ def lg_kwargs():
 
 
 def train_learner(train_filenames: List[str], epochs: int):
-    # book_examples = [parse_str_to_tuple(s.to_code()) for s in zoo]
     lg = LearnedGrammar(**lg_kwargs())
     train_dataset = LSystemDataset.from_files(train_filenames)
     train_loader = Tdata.DataLoader(train_dataset, shuffle=True)
@@ -186,7 +129,7 @@ def compare_models(model1_chkpt: str, model2_chkpt: str, datasets: List[str]):
 
 if __name__ == "__main__":
     def usage():
-        print("Usage: learner.py train|compare|simplify|check_compression *args")
+        print("Usage: learner.py train|compare|simplify *args")
         exit(1)
 
     if len(sys.argv) <= 1:
@@ -215,11 +158,6 @@ if __name__ == "__main__":
             in_path, out_path, thresh = args
             thresh = float(thresh)
         simplify_file(in_path, out_path, thresh)
-
-    elif choice == "check_compression":
-        assert len(args) == 3, "Usage: learner.py check_compression PATH1 PATH2 N_LINES"
-        path1, path2, n_lines = args
-        check_compression(path1, path2, n_lines)
 
     else:
         usage()

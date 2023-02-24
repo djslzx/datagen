@@ -4,6 +4,27 @@ import torch as T
 import itertools as it
 from typing import *
 import matplotlib.pyplot as plt
+import time
+import sys
+
+
+class Timing(object):
+    """
+    Use Timing blocks to time blocks of code.
+    Adapted from DreamCoder.
+    """
+    def __init__(self, msg: str, file=sys.stdout):
+        self.msg = msg
+        self.file = file
+
+    def __enter__(self):
+        print(f"{self.msg}...", file=self.file)
+        self.start = time.time()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        dt = time.time() - self.start
+        print(f"{self.msg} took {dt:.4e} seconds", file=self.file)
 
 
 def cut_ext(filename: str) -> str:
@@ -128,4 +149,4 @@ def vec_approx_eq(a: T.Tensor | np.ndarray, b: T.Tensor | np.ndarray, threshold=
     inf_mask = T.logical_not(T.isinf(a))
     return T.equal(T.isposinf(a), T.isposinf(b)) and \
         T.equal(T.isneginf(a), T.isneginf(b)) and \
-        T.all((a - b)[inf_mask].abs() <= threshold)
+        T.all(T.abs((a - b)[inf_mask]) <= threshold)
