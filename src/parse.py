@@ -22,6 +22,7 @@ from typing import *
 import lark
 import eggy
 import sys
+import numpy as np
 
 
 # grammar over lsystems
@@ -164,7 +165,7 @@ def eval_ttree_as_str(ttree: Tuple) -> str:
     return rule_str_semantics[symbol](*str_args)
 
 
-def count_unigram(ttree: Tuple) -> Dict[str, int]:
+def unigram_scan(ttree: Tuple) -> Dict[str, int]:
     counts = {}
 
     def traverse(node: Tuple):
@@ -177,14 +178,14 @@ def count_unigram(ttree: Tuple) -> Dict[str, int]:
     return counts
 
 
-def count_bigram(ttree: Tuple) -> Dict[Tuple[str, int, str], int]:
+def bigram_scan(ttree: Tuple, w=1.) -> Dict[Tuple[str, int, str], int]:
     counts = {}
 
     def traverse(node: Tuple):
         name, *args = node
         for i, arg in enumerate(args):
             k = (name, i, arg[0])
-            counts[k] = counts.get(k, 0) + 1
+            counts[k] = counts.get(k, 0) + w
             traverse(arg)
 
     traverse(ttree)
@@ -192,10 +193,15 @@ def count_bigram(ttree: Tuple) -> Dict[Tuple[str, int, str], int]:
     return counts
 
 
-def multi_count_bigram(ttrees: List[Tuple]) -> Dict[Tuple[str, int, str], int]:
+def bigram_scans(ttrees: List[Tuple]) -> Dict[Tuple[str, int, str], int]:
+    return bigram_scans_weighted(ttrees, np.ones(len(ttrees)))
+
+
+def bigram_scans_weighted(ttrees: List[Tuple], weights: List[float] | np.ndarray) -> Dict[Tuple[str, int, str], int]:
+    assert len(ttrees) == len(weights)
     counts = {}
-    for ttree in ttrees:
-        b = count_bigram(ttree)
+    for ttree, weight in zip(ttrees, weights):
+        b = bigram_scan(ttree, weight)
         for k, v in b.items():
             counts[k] = counts.get(k, 0) + v
     return counts
@@ -212,6 +218,10 @@ class ParseError(Exception):
     pass
 
 
+class NilError(ParseError):
+    pass
+
+
 def simplify(s: str) -> str:
     """Simplifies an L-system repr `s` using egg."""
     ltree = parse_lsys_as_ltree(s)
@@ -220,7 +230,7 @@ def simplify(s: str) -> str:
     if "nil" in sexp_simpl:
         if sexp_simpl != "nil":
             print(f"WARNING: found nil in unsimplified expression: {sexp_simpl}", file=sys.stderr)
-        raise ParseError(f"Unexpected 'nil' token in simplified expr: {sexp_simpl}")
+        raise NilError(f"Unexpected 'nil' token in simplified expr: {sexp_simpl}")
     ttree = sexp_to_ttree(sexp_simpl)
     s_simpl = eval_ttree_as_str(ttree)
     s_dedup = dedup_rules(s_simpl)
@@ -271,7 +281,7 @@ def demo_simplify():
         try:
             s_simpl = simplify(s)
             print(f"{s} => {s_simpl}")
-        except ParseError:
+        except NilError:
             print(f"Got nil on {s}")
 
 
@@ -300,7 +310,7 @@ def test_count_unigram():
     ]
     for sexp, d in zip(cases[::2], cases[1::2]):
         ttree = sexp_to_ttree(sexp)
-        out = count_unigram(ttree)
+        out = unigram_scan(ttree)
         assert out == d, f"Expected {d} but got {out}"
 
 
