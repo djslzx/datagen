@@ -89,7 +89,7 @@ def test_from_bigram_counts_add():
     int -> add, int -> one
     """
     s = ('add', ('add', '1', '1'), '1')
-    counts = parse.count_bigram(s)
+    counts = parse.bigram_scan(s)
     assert counts == {('add', 0, 'add'): 1,
                       ('add', 0, '1'): 1,
                       ('add', 1, '1'): 2}
@@ -106,7 +106,7 @@ def test_from_bigram_counts_lsys():
         "F;F~F",
     ]
     parsed_corpus = [parse.parse_lsys(x) for x in corpus]
-    counts = parse.multi_count_bigram(parsed_corpus)
+    counts = parse.bigram_scan(parsed_corpus)
     g = Grammar.from_components(parse.rule_types, gram=2)
     g.from_bigram_counts_(counts, alpha=0)
     print(g)
