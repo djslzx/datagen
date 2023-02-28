@@ -190,6 +190,10 @@ class S0LSystem(LSystem):
         return "".join(self.to_sentence())
 
     @staticmethod
+    def from_str(s: str) -> 'S0LSystem':
+        return S0LSystem.from_sentence(list(s))
+
+    @staticmethod
     def from_sentence(s: List[str] | Tuple[str]) -> 'S0LSystem':
         """
         Accepts a single string with spaces between distinct tokens, and outputs an L-system.

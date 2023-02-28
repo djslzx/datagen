@@ -13,8 +13,11 @@ class ParamTester:
     we want to test first) and the order of values given for each
     parameter.
     """
-    def __init__(self, params: Dict[str, List[Any]]):
-        self.params = params
+    def __init__(self, params: Dict[str, List[Any] | Any]):
+        self.params = {
+            k: vs if isinstance(vs, list) else [vs]
+            for k, vs in params.items()
+        }
 
     def __iter__(self):
         # reverse so we get the right prioritization
@@ -28,7 +31,7 @@ class ParamTester:
 def test_param_tester():
     p = ParamTester({"a": [1, 2],
                      "b": [0, 1, 2],
-                     "c": [0]})
+                     "c": 0})
     configs = [
         {"a": 1, "b": 0, "c": 0},
         {"a": 2, "b": 0, "c": 0},

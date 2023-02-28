@@ -1,7 +1,6 @@
 """
 Test out evolutionary search algorithms for data augmentation.
 """
-import pdb
 import sys
 
 import numpy as np
@@ -11,7 +10,6 @@ from os import mkdir
 from pprint import pp
 import time
 import Levenshtein
-import itertools as it
 
 from grammar import Grammar
 from zoo import zoo
@@ -20,6 +18,7 @@ from featurizers import ResnetFeaturizer, Featurizer, RawFeaturizer
 import parse
 from util import Timing
 import random_baseline
+from param_tester import ParamTester
 
 # Hyper-parameters
 DRAW_ARGS = {
@@ -33,15 +32,26 @@ START = "LSystem"
 OUTDIR = "../out/evo"
 
 
-def next_gen(metagrammar: Grammar, n_next_gen: int, p_arkv: float) -> Tuple[np.ndarray, Set]:
+def next_gen(metagrammar: Grammar, n_next_gen: int, p_arkv: float, simplify: bool) -> Tuple[np.ndarray, Set]:
     popn = np.empty(n_next_gen, dtype=object)
     arkv = set()
+    n_simplified = 0
     for i in range(n_next_gen):  # parallel
-        ttree = metagrammar.sample(START)
-        sentence = parse.eval_ttree_as_str(ttree)
-        popn[i] = sentence
+        while True:  # retry until we get non-nil
+            ttree = metagrammar.sample(START)
+            stree = parse.eval_ttree_as_str(ttree)
+            if simplify:
+                try:
+                    n_old = len(stree)
+                    stree = parse.simplify(stree)
+                    n_simplified += n_old - len(stree)
+                    break
+                except parse.NilError:  # retry on nil
+                    pass
+        popn[i] = stree
         if np.random.random() < p_arkv:
-            arkv.add(sentence)
+            arkv.add(stree)
+    print(f"Simplified {n_simplified/n_next_gen:.3e} tokens on avg")
     return popn, arkv
 
 
@@ -53,7 +63,7 @@ def semantic_score(prev_gen: np.ndarray, new_gen: np.ndarray,
     with Timing("Computing features"):
         popn_features = np.empty((len(prev_gen), n_features * n_samples))
         for i, s in enumerate(prev_gen):  # parallel
-            sys = S0LSystem.from_sentence(list(s))
+            sys = S0LSystem.from_str(s)
             for j in range(n_samples):
                 bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
                 popn_features[i, j * n_features: (j + 1) * n_features] = featurizer.apply(bmp)
@@ -66,7 +76,7 @@ def semantic_score(prev_gen: np.ndarray, new_gen: np.ndarray,
         scores = np.empty(len(new_gen))
         for i, s in enumerate(new_gen):  # parallel
             features = np.empty((1, n_features * n_samples))
-            sys = S0LSystem.from_sentence(list(s))
+            sys = S0LSystem.from_str(s)
             for j in range(n_samples):
                 bmp = sys.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
                 features[0, j * n_features: (j + 1) * n_features] = featurizer.apply(bmp)
@@ -91,14 +101,14 @@ def novelty_search(init_popn: List[str],
                    iters: int,
                    featurizer: Featurizer,
                    n_samples: int,
-                   p_arkv: float,
+                   arkv_growth_rate: float,
                    n_neighbors: int,
                    next_gen_ratio: int,
-                   sentence_limit: int,
-                   measure_novelty_within_generation: bool,
-                   out_dir: str) -> Set[Iterable[str]]:
-    # todo: use tensorboard via lightning?
-    log_params = locals()  # Pull local variables so we can log the args that were passed to this function
+                   simplify: bool,       # use egg to simplify expressions between generations
+                   ingen_novelty: bool,  # measure novelty wrt current gen, not archive/past gens
+                   out_dir: str) -> Set[Iterable[str]]:  # store outputs here
+    log_params = locals()  # Pull local variables so that we can log the args that were passed to this function
+    p_arkv = arkv_growth_rate / max_popn_size
 
     arkv = set()
     popn = np.array(init_popn, dtype=object)
@@ -112,18 +122,19 @@ def novelty_search(init_popn: List[str],
         # generate next gen
         with Timing("Fitting metagrammar"):
             corpus = [parse.parse_lsys(x) for x in popn]
-            counts = parse.multi_count_bigram(corpus)
-            metagrammar.from_bigram_counts_(counts)
+            counts = parse.bigram_scans(corpus)
+            metagrammar.from_bigram_counts_(counts, alpha=1)
+
         with Timing("Generating next gen"):
-            new_gen, new_arkv = next_gen(metagrammar=metagrammar, n_next_gen=n_next_gen, p_arkv=p_arkv)
+            new_gen, new_arkv = next_gen(metagrammar=metagrammar,
+                                         n_next_gen=n_next_gen,
+                                         p_arkv=p_arkv,
+                                         simplify=simplify)
             arkv |= new_arkv
 
         # compute popn features, build knn data structure, and score next_gen
         with Timing("Scoring population"):
-            if measure_novelty_within_generation:
-                prev_gen = new_gen
-            else:
-                prev_gen = np.concatenate((np.array(popn), np.array(list(arkv), dtype=object)), axis=0)
+            prev_gen = new_gen if ingen_novelty else np.concatenate((np.array(popn), np.array(list(arkv), dtype=object)), axis=0)
             scores = semantic_score(prev_gen=prev_gen,
                                     new_gen=new_gen,
                                     featurizer=featurizer,
@@ -143,16 +154,8 @@ def novelty_search(init_popn: List[str],
             labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
                       for score in scores]
 
-        print("====================")
-        print(f"Completed iteration {iter} in {time.time() - t_start:.2f}s.")
-        print(f"New generation ({n_next_gen}):")
-        for agent, label in zip(new_gen, labels):
-            print(f"  {''.join(agent)} - {label}")
-        print(f"Population ({len(popn)}):")
-        pp([''.join(x) for x in popn])
-        print(f"Archive: ({len(arkv)})")
-        pp([''.join(x) for x in arkv])
-        print("====================")
+        # printing/saving
+        print(f"[Completed iteration {iter} in {time.time() - t_start:.2f}s.]")
 
         # save gen
         with open(f"{out_dir}/gen-{iter}.txt", "w") as f:
@@ -168,66 +171,52 @@ def novelty_search(init_popn: List[str],
     return arkv
 
 
+def try_mkdir(dir: str):
+    try:
+        f = open(dir, "r")
+        f.close()
+    except FileNotFoundError:
+        print(f"{dir} directory not found, making dir...", file=sys.stderr)
+        mkdir(dir)
+    except IsADirectoryError:
+        pass
+
+
 def main(name: str):
     t = int(time.time())
-
-    # choices for each param
-    popn_sizes = [100]  # [10, 100, 1000, 10000]
-    arkv_growth_rates = [2]  # [1, 2, 4, 8]
-    iterations = [10]  # [10, 100, 1000]
-    neighborhood_sizes = [10]  # [1, 10, 100]
-    novelty_within_gen = [False]  # [False, True]
-    seed_methods = ["random"]  # ["zoo", "random"]
-
-    for i, args in enumerate(it.product(popn_sizes, arkv_growth_rates, iterations,
-                                        neighborhood_sizes, novelty_within_gen, seed_methods)):
-        popn_size, arkv_growth_rate, iters, neighborhood_size, novelty_within, seed_method = args
+    random_seed = [random_baseline.sample_mg() for _ in range(len(zoo))]
+    zoo_seed = [x.to_str() for x in zoo]
+    simple_seed = [
+        "F;F~F+F,F~F-F",
+        "F;F~FF,F~F-F",
+        "F;F~F",
+        "F;F~FF",
+        "F+F;F~FF",
+        "F-F;F~FF",
+    ]
+    p = ParamTester({
+        'init_popn': [zoo_seed, random_seed, simple_seed],
+        'simplify': [True, False],
+        'max_popn_size': [100, 1000],
+        'n_neighbors': [10, 100],
+        'arkv_growth_rate': [2, 4],
+        'iters': 1000,
+        'next_gen_ratio': 10,
+        'ingen_novelty': False,
+        'featurizer': ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True),
+        'n_samples': 3,
+    })
+    for i, params in enumerate(p):
         out_dir = f"{OUTDIR}/{t}-{name}-{i}"
-
-        try:
-            f = open(out_dir, "r")
-            f.close()
-        except FileNotFoundError:
-            print(f"{out_dir} directory not found, making dir...", file=sys.stderr)
-            mkdir(out_dir)
-        except IsADirectoryError:
-            pass
-
-        # seed method
-        seed_size = popn_size
-        if seed_method == "random":
-            seed = [random_baseline.sample_mg() for _ in range(seed_size)]
-        else:
-            seed = [x.to_str() for x in zoo]
-
-        params = {
-            'out_dir': out_dir,
-            'init_popn': seed,
-            'iters': iters,
-            'featurizer': ResnetFeaturizer(disable_last_layer=False,
-                                           softmax_outputs=True),
-            'max_popn_size': popn_size,
-            'n_neighbors': neighborhood_size,
-            'n_samples': 3,
-            'next_gen_ratio': 10,
-            'sentence_limit': 30,
-            'p_arkv': arkv_growth_rate / popn_size,
-            'measure_novelty_within_generation': novelty_within,
+        try_mkdir(out_dir)
+        params |= {
+            "out_dir": out_dir,
         }
         print("****************")
-        print(f"Running {i}-th novelty search with parameters: {params}")
+        print(f"Running {i}-th novelty search with parameters:\n{pp(params)}")
         novelty_search(**params)
 
 
 if __name__ == '__main__':
-    # simple_seed_systems = [
-    #     S0LSystem("F", {"F": ["F+F", "F-F"]}),
-    #     S0LSystem("F", {"F": ["FF", "F-F"]}),
-    #     S0LSystem("F", {"F": ["F"]}),
-    #     S0LSystem("F", {"F": ["FF"]}),
-    #     S0LSystem("F", {"F": ["FFF"]}),
-    #     S0LSystem("F+F", {"F": ["FF"]}),
-    #     S0LSystem("F-F", {"F": ["FF"]}),
-    # ]
     main('test')
 
