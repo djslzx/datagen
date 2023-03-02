@@ -2,6 +2,8 @@ from math import sqrt, ceil
 from glob import glob
 import sys
 
+import numpy as np
+from tqdm import tqdm
 from evo import ROLLOUT_DEPTH, DRAW_ARGS
 from lindenmayer import S0LSystem
 from featurizers import ResnetFeaturizer
@@ -11,11 +13,11 @@ import util
 classifier = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
 
 
-def plot_outputs(filename: str, batch_size=36, save=True):
+def plot_outputs(filename: str, batch_size=36, len_cap=300, save=True):
     with open(filename, "r") as f:
         imgs = []
         labels = []
-        for line in f.readlines():
+        for line in tqdm(f.readlines()):
             # skip comment lines
             if line.startswith('#'):
                 print(line)
@@ -27,15 +29,21 @@ def plot_outputs(filename: str, batch_size=36, save=True):
                 sys_str = line
                 score = ""
 
-            sys = S0LSystem.from_sentence(list(sys_str))
-            img = S0LSystem.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
-            imgs.append(img)
+            # skip l-systems that take too long to render (b/c they're too long)
+            if len(sys_str) <= len_cap:
+                sys = S0LSystem.from_sentence(list(sys_str))
+                render_str = sys.nth_expansion(ROLLOUT_DEPTH)
+                img = S0LSystem.draw(render_str, **DRAW_ARGS)
+                imgs.append(img)
 
-            # check resnet classifier output
-            features = classifier.apply(img)
-            top_class = classifier.top_k_classes(features, k=1)[0]
-            score += f" ({top_class})"
-            labels.append(f"{score}")
+                # check resnet classifier output
+                features = classifier.apply(img)
+                top_class = classifier.top_k_classes(features, k=1)[0]
+                score += f" ({top_class})"
+                labels.append(f"{score}")
+            else:
+                imgs.append(np.zeros((DRAW_ARGS['n_rows'], DRAW_ARGS['n_cols'])))
+                labels.append("skipped")
 
     n_cols = ceil(sqrt(batch_size))
     n_rows = ceil(batch_size / n_cols)
@@ -52,9 +60,12 @@ def plot_outputs(filename: str, batch_size=36, save=True):
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
-        print("Usage: view.py FILE_GLOB SAVE")
-        print(sys.argv)
-        exit(1)
+        if len(sys.argv) == 2:
+            sys.argv.append("False")
+        else:
+            print("Usage: view.py FILE_GLOB SAVE")
+            print(sys.argv)
+            exit(1)
 
     file_glob, save = sys.argv[1:]
     save = save == "True"
