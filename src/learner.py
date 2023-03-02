@@ -130,73 +130,86 @@ def compare_models(model1_chkpt: str, model2_chkpt: str, datasets: List[str]):
               f"  model2 loss: {-model2.grammar.log_probability(model2.start_symbol, ttree)}")
 
 
-def test_model(model: LearnedGrammar, s: str, k: int,
+def run_model(model: LearnedGrammar, s: str, k: int,
                n_tries: int, n_renders_per_try: int):
     featurizer = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
-
     in_lsys = S0LSystem.from_str(s)
     in_img = sample_from_lsys(in_lsys)
     in_v = featurizer.apply(in_img)
-    in_class = featurizer.top_k_classes(in_v, 1)[0]
     mg = model.forward(in_lsys, in_img)
 
-    # top_k = np.empty(k, dtype=object)  # store tuple of (str, img, dist)
-    dists = np.empty(n_tries)
-    imgs = np.empty(n_tries, dtype=object)
-    strs = np.empty(n_tries, dtype=object)
-    for i in range(n_tries):
+    def best_render(lsys: S0LSystem) -> Tuple[float, np.ndarray]:
+        # find best render in `n_renders_pre_try` tries
+        min_dist = np.inf
+        min_img = None
+        for _ in range(n_renders_per_try):
+            img = sample_from_lsys(lsys)
+            v = featurizer.apply(img)
+            dist = np.linalg.norm(in_v - v, ord=2)
+            if dist < min_dist:
+                min_img = img
+                min_dist = dist
+        return min_dist, min_img
+
+    # track `k` best outcomes of `n_tries` attempts
+    dists = np.repeat(np.inf, k)
+    imgs = np.empty((k, DRAW_ARGS["n_rows"], DRAW_ARGS["n_cols"]), dtype=np.uint8)
+    for _ in range(n_tries):
+        # sample an L-system from the grammar
         sample_s = parse.eval_ttree_as_str(mg.sample("LSystem"))
         sample_sys = S0LSystem.from_str(sample_s)
 
-        best_dist = np.inf
-        best_img = None
+        # choose representative render w/ distance in feature space
+        d, img = best_render(sample_sys)
 
-        for j in range(n_renders_per_try):
-            sample_img = sample_from_lsys(sample_sys)
-            sample_v = featurizer.apply(sample_img)
-            d = np.linalg.norm(in_v - sample_v, ord=2)
-            if d < best_dist:
-                best_img = sample_img
-                best_dist = d
+        # update cache of best attempts
+        i = np.searchsorted(dists, d)  # sort decreasing
+        if i < k and d < dists[-1]:
+            dists_update = np.insert(dists, i, d)[:k]
+            print(f"Updating {dists} -> {dists_update}")
+            dists = dists_update
+            imgs = np.insert(imgs, i, img, axis=0)[:k]
 
-        np.searchsorted
+    return in_img, list(zip(dists, imgs))
 
-        strs[i] = sample_s
-        dists[i] = best_dist
-        imgs[i] = best_img
 
-    guesses = [
-        (strs[i], dists[i], imgs[i])
-        for i in np.argsort(-dists)[:10]
-    ]
+def run_models(named_models: Dict[str, LearnedGrammar], dataset: List[str], k: int,
+               n_tries: int, n_renders_per_try: int):
+    n = len(named_models)
+    for datum in dataset:
+        f, axes = plt.subplots(k + 1, n)  # show target + attempts
+        plt.suptitle(f"Target: {datum}")
 
-    for guess, dist, img in guesses:
-        feats = featurizer.apply(img)
-        cls = featurizer.top_k_classes(feats, 1)[0]
+        for col, (name, model) in enumerate(named_models.items()):
+            in_img, guesses = run_model(model, datum, k, n_tries, n_renders_per_try)
+            # plot target in top row
+            axes[0, col].imshow(in_img)
+            axes[0, col].title.set_text(name)
 
-        f, ax = plt.subplots(1, 2)
-        ax[0].imshow(in_img)
-        ax[0].title.set_text(f"Target={s}\n"
-                             f"class={in_class}")
-        ax[1].imshow(img)
-        ax[1].title.set_text(f"Guess={guess}\n"
-                             f"@ dist={dist:.3e},\n"
-                             f"class={cls}")
+            for row, (dist, img) in enumerate(guesses, 1):
+                axes[row, col].imshow(img)
+                axes[row, col].title.set_text(f"{dist:.3e}")
+
         plt.show()
 
 
 if __name__ == "__main__":
-    path = "../models/291573_ns/epoch=43-step=3005904.ckpt"
-    model = load_learned_grammar(path)
-    print(f"Model loaded from {path}")
+    paths = {
+        "ns": "../models/291573_ns/epoch=43-step=3005904.ckpt",
+        # "ns_egg": "../models/291507_ns_egg/epoch=43-step=2999568.ckpt",
+        # "ns_egg_nov": "../models/294291_ns_egg_nov/epoch=49-step=2871100.ckpt",
+        "random": "../models/294289_rand/epoch=41-step=4200000.ckpt",
+        # "random_egg": "../models/294290_rand_egg/epoch=47-step=4239744.ckpt",
+    }
+    models = {
+        name: load_learned_grammar(path)
+        for name, path in paths.items()
+    }
+    print("Loaded models: " + ", ".join(models.keys()))
     data = [
         "F;F~F[+F[+F]F[+F]F]F",
         "F;F~F[-F[+F[+F]F[+F]F]F]F[-F]F",
-        "F;F~F",
-        "F;F~FF",
-        "F;F~FFF",
-        "-F;F~+F",
+        # "F;F~F",
+        # "F;F~FF",
     ]
-    for s in data:
-        test_model(model, s, 100, 3)
-
+    run_models(models, data, k=5, n_tries=10, n_renders_per_try=1)
