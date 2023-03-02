@@ -19,6 +19,7 @@ import parse
 from util import Timing
 import random_baseline
 from param_tester import ParamTester
+import util
 
 # Hyper-parameters
 DRAW_ARGS = {
@@ -171,17 +172,6 @@ def novelty_search(init_popn: List[str],
     return arkv
 
 
-def try_mkdir(d: str):
-    try:
-        f = open(d, "r")
-        f.close()
-    except FileNotFoundError:
-        print(f"{d} directory not found, making dir...", file=sys.stderr)
-        mkdir(d)
-    except IsADirectoryError:
-        pass
-
-
 def main(name: str):
     t = int(time.time())
     random_seed = [random_baseline.sample_mg() for _ in range(len(zoo))]
@@ -208,7 +198,7 @@ def main(name: str):
     })
     for i, params in enumerate(p):
         out_dir = f"{OUTDIR}/{t}-{name}-{i}"
-        try_mkdir(out_dir)
+        util.try_mkdir(out_dir)
         params.update({
             "out_dir": out_dir,
         })

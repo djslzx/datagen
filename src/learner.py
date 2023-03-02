@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import itertools
-
 import lark
 import torch as T
 import lightning as pl
@@ -11,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
+import time
 
 import parse
 import util
@@ -131,21 +130,16 @@ def compare_models(model1_chkpt: str, model2_chkpt: str, datasets: List[str]):
               f"  model2 loss: {-model2.grammar.log_probability(model2.start_symbol, ttree)}")
 
 
-def run_model(name: str, model: LearnedGrammar, s: str, k: int, n_tries: int, n_renders_per_try: int):
-    featurizer = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
-    in_lsys = S0LSystem.from_str(s)
-    in_img = sample_from_lsys(in_lsys)
-    in_v = featurizer.apply(in_img)
-    mg = model.forward(in_lsys, in_img)
-
+def run_model(name: str, mg: Grammar, v_in: np.ndarray, featurizer: ResnetFeaturizer,
+              k: int, n_tries: int, n_renders_per_try: int):
     def best_render(lsys: S0LSystem) -> Tuple[float, np.ndarray]:
-        # find best render in `n_renders_pre_try` tries
+        """find best render in `n_renders_pre_try` tries"""
         min_dist = np.inf
         min_img = None
         for _ in range(n_renders_per_try):
             img = sample_from_lsys(lsys)
             v = featurizer.apply(img)
-            dist = np.linalg.norm(in_v - v, ord=2)
+            dist = np.linalg.norm(v_in - v, ord=2)
             if dist < min_dist:
                 min_img = img
                 min_dist = dist
@@ -170,22 +164,40 @@ def run_model(name: str, model: LearnedGrammar, s: str, k: int, n_tries: int, n_
             dists = np.insert(dists, i, d)[:k]
             imgs = np.insert(imgs, i, img, axis=0)[:k]
 
-    return in_img, list(zip(dists, imgs))
+    return list(zip(dists, imgs))
 
 
 def run_models(named_models: Dict[str, LearnedGrammar], dataset: List[str], k: int,
-               n_tries: int, n_renders_per_try: int):
+               n_tries: int, n_renders_per_try: int, save_dir: str):
     sns.set_theme(style="white")
     n = len(named_models)
-    for datum in dataset:
+    featurizer = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
+
+    for i, datum in enumerate(dataset):
+        print(f"Sampling from models {list(named_models.keys())} for L-system {i}:{datum}...")
+
         fig, axes = plt.subplots(k + 1, n)  # show target + attempts
         plt.suptitle(f"Target: {datum}")
 
+        # plot image once
+        lsys_in = S0LSystem.from_str(datum)
+        img_in = sample_from_lsys(lsys_in)
+        v_in = featurizer.apply(img_in)
+
         for col, (name, model) in enumerate(named_models.items()):
-            in_img, guesses = run_model(name, model, datum, k, n_tries, n_renders_per_try)
+            guesses = run_model(
+                name=name,
+                mg=model.forward(lsys_in, img_in),
+                featurizer=featurizer,
+                v_in=v_in,
+                k=k,
+                n_tries=n_tries,
+                n_renders_per_try=n_renders_per_try,
+            )
+
             # plot target in top row
             ax = axes[0, col]
-            ax.imshow(in_img)
+            ax.imshow(img_in)
             ax.set_title(name, pad=2, fontsize=5)
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
@@ -200,7 +212,7 @@ def run_models(named_models: Dict[str, LearnedGrammar], dataset: List[str], k: i
 
         fig.set_size_inches(10, 10)
         plt.subplots_adjust(wspace=0.1, hspace=0.3)
-        plt.savefig('test.png', bbox_inches='tight', dpi=300)
+        plt.savefig(f"{save_dir}/plot-{i}.png", bbox_inches='tight', dpi=300)
 
 
 if __name__ == "__main__":
@@ -228,4 +240,7 @@ if __name__ == "__main__":
         "F;F~F,F~F[+F[-F]F[-F]F]F",
         "F;F~F[+F[+F]F[+F]F]F",
     ]
-    run_models(models, data, k=5, n_tries=1000, n_renders_per_try=2)
+    t = int(time.time())
+    save_dir = f"../out/plots/{t}-sample"
+    util.try_mkdir(save_dir)
+    run_models(models, data, k=5, n_tries=1000, n_renders_per_try=2, save_dir=save_dir)

@@ -6,6 +6,7 @@ from typing import *
 import matplotlib.pyplot as plt
 import time
 import sys
+from os import mkdir
 
 
 class Timing(object):
@@ -150,3 +151,14 @@ def vec_approx_eq(a: T.Tensor | np.ndarray, b: T.Tensor | np.ndarray, threshold=
     return T.equal(T.isposinf(a), T.isposinf(b)) and \
         T.equal(T.isneginf(a), T.isneginf(b)) and \
         T.all(T.abs((a - b)[inf_mask]) <= threshold)
+
+
+def try_mkdir(dir: str):
+    try:
+        f = open(dir, "r")
+        f.close()
+    except FileNotFoundError:
+        print(f"{dir} directory not found, making dir...", file=sys.stderr)
+        mkdir(dir)
+    except IsADirectoryError:
+        pass
