@@ -130,3 +130,20 @@ dmypy.json
 
 # Images
 *.png
+
+# Slurm outputs, scripts
+*.out
+*.err
+slurm/*
+
+# logs
+lightning_logs/*
+src/lightning_logs/*
+
+# Cargo
+Cargo.lock
+
+# big files
+datasets/*
+profiles/*
+out/*
