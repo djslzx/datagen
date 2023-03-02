@@ -171,13 +171,13 @@ def novelty_search(init_popn: List[str],
     return arkv
 
 
-def try_mkdir(dir: str):
+def try_mkdir(d: str):
     try:
-        f = open(dir, "r")
+        f = open(d, "r")
         f.close()
     except FileNotFoundError:
-        print(f"{dir} directory not found, making dir...", file=sys.stderr)
-        mkdir(dir)
+        print(f"{d} directory not found, making dir...", file=sys.stderr)
+        mkdir(d)
     except IsADirectoryError:
         pass
 
@@ -197,11 +197,11 @@ def main(name: str):
     p = ParamTester({
         'init_popn': [zoo_seed, random_seed, simple_seed],
         'simplify': [True, False],
-        'max_popn_size': [100, 1000],
-        'n_neighbors': [10, 100],
-        'arkv_growth_rate': [2, 4],
-        'iters': 1000,
-        'next_gen_ratio': 10,
+        'max_popn_size': [25],
+        'n_neighbors': [5],
+        'arkv_growth_rate': [1],
+        'iters': 100,
+        'next_gen_ratio': 5,
         'ingen_novelty': False,
         'featurizer': ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True),
         'n_samples': 3,
@@ -209,14 +209,14 @@ def main(name: str):
     for i, params in enumerate(p):
         out_dir = f"{OUTDIR}/{t}-{name}-{i}"
         try_mkdir(out_dir)
-        params |= {
+        params.update({
             "out_dir": out_dir,
-        }
+        })
         print("****************")
         print(f"Running {i}-th novelty search with parameters:\n{pp(params)}")
         novelty_search(**params)
 
 
 if __name__ == '__main__':
-    main('test')
+    main('intrasimpl')
 
