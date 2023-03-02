@@ -10,6 +10,7 @@ from typing import *
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from tqdm import tqdm
 
 import parse
 import util
@@ -130,8 +131,7 @@ def compare_models(model1_chkpt: str, model2_chkpt: str, datasets: List[str]):
               f"  model2 loss: {-model2.grammar.log_probability(model2.start_symbol, ttree)}")
 
 
-def run_model(model: LearnedGrammar, s: str, k: int,
-               n_tries: int, n_renders_per_try: int):
+def run_model(name: str, model: LearnedGrammar, s: str, k: int, n_tries: int, n_renders_per_try: int):
     featurizer = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
     in_lsys = S0LSystem.from_str(s)
     in_img = sample_from_lsys(in_lsys)
@@ -154,9 +154,11 @@ def run_model(model: LearnedGrammar, s: str, k: int,
     # track `k` best outcomes of `n_tries` attempts
     dists = np.repeat(np.inf, k)
     imgs = np.empty((k, DRAW_ARGS["n_rows"], DRAW_ARGS["n_cols"]), dtype=np.uint8)
-    for _ in range(n_tries):
+    print(f"Sampling from {name}...")
+    for _ in tqdm(range(1, n_tries+1)):
         # sample an L-system from the grammar
         sample_s = parse.eval_ttree_as_str(mg.sample("LSystem"))
+        if len(sample_s) > 1000: continue  # skip absurdly long L-systems
         sample_sys = S0LSystem.from_str(sample_s)
 
         # choose representative render w/ distance in feature space
@@ -165,9 +167,7 @@ def run_model(model: LearnedGrammar, s: str, k: int,
         # update cache of best attempts
         i = np.searchsorted(dists, d)  # sort decreasing
         if i < k and d < dists[-1]:
-            dists_update = np.insert(dists, i, d)[:k]
-            print(f"Updating {dists} -> {dists_update}")
-            dists = dists_update
+            dists = np.insert(dists, i, d)[:k]
             imgs = np.insert(imgs, i, img, axis=0)[:k]
 
     return in_img, list(zip(dists, imgs))
@@ -175,41 +175,52 @@ def run_model(model: LearnedGrammar, s: str, k: int,
 
 def run_models(named_models: Dict[str, LearnedGrammar], dataset: List[str], k: int,
                n_tries: int, n_renders_per_try: int):
+    sns.set_theme(style="white")
     n = len(named_models)
     for datum in dataset:
-        f, axes = plt.subplots(k + 1, n)  # show target + attempts
+        fig, axes = plt.subplots(k + 1, n)  # show target + attempts
         plt.suptitle(f"Target: {datum}")
 
         for col, (name, model) in enumerate(named_models.items()):
-            in_img, guesses = run_model(model, datum, k, n_tries, n_renders_per_try)
+            in_img, guesses = run_model(name, model, datum, k, n_tries, n_renders_per_try)
             # plot target in top row
-            axes[0, col].imshow(in_img)
-            axes[0, col].title.set_text(name)
+            ax = axes[0, col]
+            ax.imshow(in_img)
+            ax.set_title(name, pad=2, fontsize=5)
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
 
+            # plot guesses
             for row, (dist, img) in enumerate(guesses, 1):
-                axes[row, col].imshow(img)
-                axes[row, col].title.set_text(f"{dist:.3e}")
+                ax = axes[row, col]
+                ax.imshow(img)
+                ax.set_title(f"{dist:.6e}", pad=2, fontsize=5)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
 
-        plt.show()
+        fig.set_size_inches(10, 10)
+        plt.subplots_adjust(wspace=0.1, hspace=0.3)
+        plt.savefig('test.png', bbox_inches='tight', dpi=300)
 
 
 if __name__ == "__main__":
     paths = {
         "ns": "../models/291573_ns/epoch=43-step=3005904.ckpt",
-        # "ns_egg": "../models/291507_ns_egg/epoch=43-step=2999568.ckpt",
-        # "ns_egg_nov": "../models/294291_ns_egg_nov/epoch=49-step=2871100.ckpt",
+        "ns_egg": "../models/291507_ns_egg/epoch=43-step=2999568.ckpt",
+        "ns_egg_nov": "../models/294291_ns_egg_nov/epoch=49-step=2871100.ckpt",
         "random": "../models/294289_rand/epoch=41-step=4200000.ckpt",
-        # "random_egg": "../models/294290_rand_egg/epoch=47-step=4239744.ckpt",
+        "random_egg": "../models/294290_rand_egg/epoch=47-step=4239744.ckpt",
     }
-    models = {
-        name: load_learned_grammar(path)
-        for name, path in paths.items()
-    }
+    models = {}
+    for name, path in paths.items():
+        print(f"Loading model {name} from {path}...")
+        models[name] = load_learned_grammar(path)
+
     print("Loaded models: " + ", ".join(models.keys()))
     data = [
         "F;F~F[+F[+F]F[+F]F]F",
-        "F;F~F[-F[+F[+F]F[+F]F]F]F[-F]F",
+        # "F;F~F[-F[+F[+F]F[+F]F]F]F[-F]F",
         # "F;F~F",
         # "F;F~FF",
     ]
-    run_models(models, data, k=5, n_tries=10, n_renders_per_try=1)
+    run_models(models, data, k=10, n_tries=200, n_renders_per_try=1)
