@@ -218,9 +218,14 @@ if __name__ == "__main__":
 
     print("Loaded models: " + ", ".join(models.keys()))
     data = [
+        # zoo
+        "-F;F~FF-F-F+F+F-F-FF+F+FFF-F+F+FF+F-FF-F-F+F+FF,"
+        "F~+FF-F-F+F+FF+FFF-F-F+FFF-F-FF+F+F-F-F+F+FF",
+        "F;F~F[+F]F[-F]F",
+        "F;F~F-[[F]+F]+F[+FF]-F,F~FF",
+
+        # ns data (filt/simpl)
+        "F;F~F,F~F[+F[-F]F[-F]F]F",
         "F;F~F[+F[+F]F[+F]F]F",
-        # "F;F~F[-F[+F[+F]F[+F]F]F]F[-F]F",
-        # "F;F~F",
-        # "F;F~FF",
     ]
-    run_models(models, data, k=10, n_tries=200, n_renders_per_try=1)
+    run_models(models, data, k=5, n_tries=1000, n_renders_per_try=2)
