@@ -369,6 +369,13 @@ class LearnedGrammar(pl.LightningModule):
     def configure_optimizers(self) -> Any:
         return T.optim.Adam(self.f_theta.parameters(), lr=self.learning_rate)
 
+    def forward(self, x, y) -> Grammar:
+        features = self.feature_extractor.extract([x], [y]).float()
+        projected_features = self.f_theta(features)
+        self.grammar.from_tensor_(projected_features.detach())
+        self.grammar.normalize_()
+        return self.grammar
+
     def training_step(self, batch, batch_idx):
         """
         Train learned model, which adjusts $theta$ to maximize the log probability of training examples

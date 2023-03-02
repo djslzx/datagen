@@ -126,11 +126,11 @@ def plot():
     print(df)
     # print(filtered_df)
 
-    plot_egg_scatter(df)
+    # plot_egg_scatter(df)
     # plot_egg_cdf(df)
     # plot_egg_pdf(df)
-    plt.show()
-    # pluck_egg_examples(df, k=3)
+    # plt.show()
+    pluck_egg_examples(df, k=3)
 
 
 if __name__ == "__main__":

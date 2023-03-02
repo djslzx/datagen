@@ -7,24 +7,27 @@ import torch as T
 import lightning as pl
 import torch.utils.data as Tdata
 from typing import *
-import sys
-from glob import glob
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+import parse
+import util
 from grammar import Grammar, LearnedGrammar, ConvFeatureExtractor
 from lindenmayer import S0LSystem
 from evo import DRAW_ARGS
 from zoo import zoo
-import parse
-import util
+from featurizers import ResnetFeaturizer, Featurizer
 
 
 def eval_ttree_as_lsys(p: Tuple, level=3):
     sys_str = parse.eval_ttree_as_str(p)
     sys = S0LSystem.from_sentence(list(sys_str))
-    render_str = sys.nth_expansion(level)
+    return sample_from_lsys(sys, level)
+
+
+def sample_from_lsys(lsys: S0LSystem, level=3) -> np.ndarray:
+    render_str = lsys.nth_expansion(level)
     return S0LSystem.draw(render_str, **DRAW_ARGS)
 
 
@@ -127,37 +130,73 @@ def compare_models(model1_chkpt: str, model2_chkpt: str, datasets: List[str]):
               f"  model2 loss: {-model2.grammar.log_probability(model2.start_symbol, ttree)}")
 
 
+def test_model(model: LearnedGrammar, s: str, k: int,
+               n_tries: int, n_renders_per_try: int):
+    featurizer = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
+
+    in_lsys = S0LSystem.from_str(s)
+    in_img = sample_from_lsys(in_lsys)
+    in_v = featurizer.apply(in_img)
+    in_class = featurizer.top_k_classes(in_v, 1)[0]
+    mg = model.forward(in_lsys, in_img)
+
+    # top_k = np.empty(k, dtype=object)  # store tuple of (str, img, dist)
+    dists = np.empty(n_tries)
+    imgs = np.empty(n_tries, dtype=object)
+    strs = np.empty(n_tries, dtype=object)
+    for i in range(n_tries):
+        sample_s = parse.eval_ttree_as_str(mg.sample("LSystem"))
+        sample_sys = S0LSystem.from_str(sample_s)
+
+        best_dist = np.inf
+        best_img = None
+
+        for j in range(n_renders_per_try):
+            sample_img = sample_from_lsys(sample_sys)
+            sample_v = featurizer.apply(sample_img)
+            d = np.linalg.norm(in_v - sample_v, ord=2)
+            if d < best_dist:
+                best_img = sample_img
+                best_dist = d
+
+        np.searchsorted
+
+        strs[i] = sample_s
+        dists[i] = best_dist
+        imgs[i] = best_img
+
+    guesses = [
+        (strs[i], dists[i], imgs[i])
+        for i in np.argsort(-dists)[:10]
+    ]
+
+    for guess, dist, img in guesses:
+        feats = featurizer.apply(img)
+        cls = featurizer.top_k_classes(feats, 1)[0]
+
+        f, ax = plt.subplots(1, 2)
+        ax[0].imshow(in_img)
+        ax[0].title.set_text(f"Target={s}\n"
+                             f"class={in_class}")
+        ax[1].imshow(img)
+        ax[1].title.set_text(f"Guess={guess}\n"
+                             f"@ dist={dist:.3e},\n"
+                             f"class={cls}")
+        plt.show()
+
+
 if __name__ == "__main__":
-    def usage():
-        print("Usage: learner.py train|compare|simplify *args")
-        exit(1)
+    path = "../models/291573_ns/epoch=43-step=3005904.ckpt"
+    model = load_learned_grammar(path)
+    print(f"Model loaded from {path}")
+    data = [
+        "F;F~F[+F[+F]F[+F]F]F",
+        "F;F~F[-F[+F[+F]F[+F]F]F]F[-F]F",
+        "F;F~F",
+        "F;F~FF",
+        "F;F~FFF",
+        "-F;F~+F",
+    ]
+    for s in data:
+        test_model(model, s, 100, 3)
 
-    if len(sys.argv) <= 1:
-        usage()
-
-    choice, *args = sys.argv[1:]
-    if choice == "train":
-        assert len(args) == 2, "Usage: learner.py train DATASETS EPOCHS"
-        train_glob, epochs = args
-        train_filenames = sorted(glob(train_glob))
-        epochs = int(epochs)
-        train_learner(train_filenames, epochs)
-
-    elif choice == "compare":
-        assert len(args) == 3, "Usage: learner.py compare MODEL1 MODEL2 DATASETS"
-        model1_path, model2_path, datasets_glob = args
-        dataset_paths = sorted(glob(datasets_glob))
-        compare_models(model1_path, model2_path, dataset_paths)
-
-    elif choice == "simplify":
-        assert len(args) in [2, 3], "Usage: learner.py simplify IN_PATH OUT_PATH [THRESH]"
-        if len(args) == 2:
-            in_path, out_path = args
-            thresh = None
-        else:
-            in_path, out_path, thresh = args
-            thresh = float(thresh)
-        simplify_file(in_path, out_path, thresh)
-
-    else:
-        usage()
