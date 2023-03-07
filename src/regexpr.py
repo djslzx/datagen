@@ -152,6 +152,24 @@ class Regex(Language):
                 raise ValueError(f"Regex internal nodes must be operators, "
                                  f"but found char class {t.value} in tree {t}")
 
+    @property
+    def str_semantics(self) -> Dict:
+        return {
+            "maybe": lambda r: f"{r}?",
+            "star": lambda r: f"{r}*",
+            "plus": lambda r: f"{r}+",
+            "bracket": lambda r: f"({r})",
+            "or": lambda r, s: f"{r}|{s}",
+            "seq": lambda r, s: f"{r}{s}",
+            "dot": lambda: r"\.",
+            "alpha": lambda: r"\w",
+            "digit": lambda: r"\d",
+            "upper": lambda: r"\p",
+            "lower": lambda: r"\l",
+            "whitespace": lambda: r"\s",
+            "literal": lambda x: x,
+        }
+
     def simplify(self, t: Tree) -> Tree:
         raise NotImplementedError
 
@@ -166,6 +184,6 @@ if __name__ == "__main__":
     r = Regex()
     for ex in examples:
         p = r.parse(ex)
-        print(ex, p)
+        print(ex, r.to_str(p))
         for _ in range(10):
             print(r.eval(p, env={}))

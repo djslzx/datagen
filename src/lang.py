@@ -147,6 +147,13 @@ class Language:
         """Executes a tree in the language"""
         raise NotImplementedError
 
+    def to_str(self, t: Tree) -> str:
+        return t.to_str(self.str_semantics)
+
+    @property
+    def str_semantics(self) -> Dict:
+        raise NotImplementedError
+
     def features(self, batch: List[Tree], env: Dict[str, Any]) -> np.ndarray:
         out = []
         for tree in batch:
