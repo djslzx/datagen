@@ -36,7 +36,7 @@ class Regex(Language):
          | "(" e ")"     -> bracket
          | e "|" e       -> or
          | e e           -> seq
-         | "."           -> dot
+         | "\."           -> dot
          | "\w"          -> alpha
          | "\d"          -> digit
          | "\p"          -> upper
@@ -100,7 +100,7 @@ class Regex(Language):
             # operators (nodes)
             "maybe": uniform(2),
             "star": uniform(2),
-            "plus": uniform(1),
+            # plus: E+ is implemented as EE*
             "or": uniform(2),
 
             # character classes (leaves)
@@ -146,6 +146,8 @@ class Regex(Language):
             elif t.value == "seq":
                 a, b = t.children
                 return self.eval(a, env) + self.eval(b, env)
+            elif t.value == "literal":
+                return t.children[0].value
             else:
                 raise ValueError(f"Regex internal nodes must be operators, "
                                  f"but found char class {t.value} in tree {t}")
@@ -156,12 +158,14 @@ class Regex(Language):
 
 if __name__ == "__main__":
     examples = [
-        ".",
+        "\.",
         r"-\p-(\p-)+",
-        r"-\p-\p-.*",
+        r"-\p-\p-\.*",
         r"sch\d\d\d@sfusd.\l\l\l",
     ]
     r = Regex()
     for ex in examples:
         t = r.parse(ex)
-        print(t)
+        print(ex, t)
+        for _ in range(10):
+            print(r.eval(t, env={}))

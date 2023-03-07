@@ -86,7 +86,7 @@ class Language:
     Defines a domain that can be used with novelty search.
     """
 
-    Symbol = (tuple | str)
+    Symbol = Union[tuple, str]
     Type = str
 
     def __init__(self, parser_grammar: str, start: str, model: Grammar, featurizer: Featurizer):
