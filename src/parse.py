@@ -156,60 +156,17 @@ def sexp_to_ttree(s: str) -> Tuple:
     return to_ast_h(1, len(tokens) - 1)
 
 
-def eval_ttree_as_str(ttree: Tuple) -> str:
+def eval_ttree_as_str(semantics: Dict, ttree: Tuple) -> str:
     if isinstance(ttree, tuple):
         symbol, *args = ttree
     else:
         symbol, args = ttree, []
-    str_args = [eval_ttree_as_str(arg) for arg in args]
-    return rule_str_semantics[symbol](*str_args)
+    str_args = [eval_ttree_as_str(semantics, arg) for arg in args]
 
-
-def unigram_scan(ttree: Tuple) -> Dict[str, int]:
-    counts = {}
-
-    def traverse(node: Tuple):
-        symbol, *args = node
-        counts[symbol] = counts.get(symbol, 0) + 1
-        for arg in args:
-            traverse(arg)
-
-    traverse(ttree)
-    return counts
-
-
-def bigram_scan(ttree: Tuple, w=1.) -> Dict[Tuple[str, int, str], int]:
-    counts = {}
-
-    def traverse(node: Tuple):
-        name, *args = node
-        for i, arg in enumerate(args):
-            k = (name, i, arg[0])
-            counts[k] = counts.get(k, 0) + w
-            traverse(arg)
-
-    traverse(ttree)
-    # counts["$", 0, ttree[0]] = 1      # add in transitions from start
-    return counts
-
-
-def bigram_scans(ttrees: List[Tuple]) -> Dict[Tuple[str, int, str], int]:
-    return bigram_scans_weighted(ttrees, np.ones(len(ttrees)))
-
-
-def bigram_scans_weighted(ttrees: List[Tuple], weights: List[float] | np.ndarray) -> Dict[Tuple[str, int, str], int]:
-    assert len(ttrees) == len(weights)
-    counts = {}
-    for ttree, weight in zip(ttrees, weights):
-        b = bigram_scan(ttree, weight)
-        for k, v in b.items():
-            counts[k] = counts.get(k, 0) + v
-    return counts
-
-
-def sum_counts(a: Dict[Any, float], b: Dict[Any, float]) -> Dict[Any, float]:
-    return {k: a.get(k, 0) + b.get(k, 0)
-            for k in a.keys() | b.keys()}
+    if symbol in semantics:
+        return semantics[symbol](*str_args)
+    else:
+        return symbol
 
 
 # Simplification
