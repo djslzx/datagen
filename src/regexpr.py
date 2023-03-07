@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import *
 import numpy as np
 
-import parse
 from lang import Language, Tree, Grammar
 from featurizers import TextClassifier
 
@@ -60,8 +59,9 @@ class Regex(Language):
         "upper": ["Regex"],
         "lower": ["Regex"],
         "whitespace": ["Regex"],
-        "literal": ["Regex"],
+        "literal": ["Char", "Regex"],
     }
+
     upper = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
     lower = list("abcdefghijklmnopqrstuvwxyz")
     digit = list("0123456789")
@@ -76,6 +76,8 @@ class Regex(Language):
         "lower": lower,
         "whitespace": whitespace,
     }
+    # add all allowed characters to Char type for literals
+    types.update({x: ["Char"] for x in dot})
 
     def __init__(self, eval_weights: Dict[str, np.ndarray] = None):
         """
@@ -86,7 +88,8 @@ class Regex(Language):
         TODO: should the evaluator eval_weights be learned as in Luke Hewitt's paper?
         """
         super().__init__(parser_grammar=Regex.metagrammar,
-                         start="e",
+                         parser_start="e",
+                         root_type="Regex",
                          model=Grammar.from_components(Regex.types, gram=2),
                          featurizer=TextClassifier())
         self.eval_weights = eval_weights if eval_weights is not None else Regex.uniform_weights()
@@ -110,7 +113,7 @@ class Regex(Language):
             "upper": uniform(len(Regex.upper)),
             "lower": uniform(len(Regex.lower)),
             "whitespace": uniform(len(Regex.whitespace)),
-            # literals don't need probabilities
+            "literal": uniform(1),
         }
 
     def eval(self, t: Tree, env: Dict[str, str]) -> str:
@@ -187,3 +190,12 @@ if __name__ == "__main__":
         print(ex, r.to_str(p))
         for _ in range(10):
             print(r.eval(p, env={}))
+
+    print("Fitting...")
+    corpus = [r.parse(ex) for ex in examples]
+    r.fit(corpus, alpha=1)
+
+    print("Sampling...")
+    for _ in range(10):
+        p = r.sample()
+        print(p, r.to_str(p))

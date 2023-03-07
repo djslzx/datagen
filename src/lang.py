@@ -20,7 +20,17 @@ class Tree:
 
     @staticmethod
     def from_tuple(t: Tuple):
-        return Tree(*t)
+        if not isinstance(t, tuple):
+            return Tree(t)
+
+        sym, *args = t
+        children = []
+        for arg in args:
+            if isinstance(arg, tuple):
+                children.append(Tree.from_tuple(arg))
+            else:
+                children.append(Tree(arg))
+        return Tree(sym, *children)
 
     @staticmethod
     def from_lark(ltree: lark.Tree | lark.Token):
@@ -29,7 +39,7 @@ class Tree:
         elif isinstance(ltree, lark.Token):
             return Tree(ltree.value)
         else:
-            raise ValueError("Lark trees must be Trees or Tokens")
+            raise ValueError(f"Lark trees must be Trees or Tokens, but got {type(ltree)}")
 
     @staticmethod
     def from_sexp(s: str):
@@ -119,16 +129,17 @@ class Language:
     Symbol = Union[tuple, str]
     Type = str
 
-    def __init__(self, parser_grammar: str, start: str, model: Grammar, featurizer: Featurizer):
-        self.start = start
-        self.parser_grammar = parser_grammar
-        self.parser = lark.Lark(parser_grammar, start=start, parser='lalr')
+    def __init__(self, parser_grammar: str, parser_start: str, root_type: str,
+                 model: Grammar, featurizer: Featurizer):
+        self.parser = lark.Lark(parser_grammar, start=parser_start, parser='lalr')
+        self.start = root_type
         self.model = model
+        self.model.normalize_()
         self.featurizer = featurizer
 
     def parse(self, s: str) -> Tree:
         """Parses a string into an AST in the language"""
-        ltree = self.parser.parse(s, start=self.start)
+        ltree = self.parser.parse(s)
         return Tree.from_lark(ltree)
 
     def simplify(self, t: Tree) -> Tree:
@@ -137,11 +148,13 @@ class Language:
 
     def sample(self) -> Tree:
         """Probabilistically sample a tree from the language"""
-        return Tree.from_tuple(self.model.sample(self.start))
+        s = self.model.sample(self.start)
+        t = Tree.from_tuple(s)
+        return t
 
-    def fit(self, corpus: List[Tree]):
+    def fit(self, corpus: List[Tree], alpha=0.):
         counts = bigram_scans(corpus, weights=np.ones(len(corpus)))
-        self.model.from_bigram_counts_(counts)
+        self.model.from_bigram_counts_(counts, alpha=alpha)
 
     def eval(self, t: Tree, env: Dict[str, Any]) -> Any:
         """Executes a tree in the language"""
