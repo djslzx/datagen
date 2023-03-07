@@ -13,7 +13,7 @@ class Regex(Language):
     "Learning to learn generative programs with Memoised Wake-Sleep" (Hewitt et al.)
 
     Token types:
-    .       : any character
+    \\.      : any character (need backslash to distinguish from literal .)
     \\w      : alphanumeric char
     \\d      : digit
     \\u      : uppercase char
@@ -158,14 +158,14 @@ class Regex(Language):
 
 if __name__ == "__main__":
     examples = [
-        "\.",
+        r"\.",
         r"-\p-(\p-)+",
         r"-\p-\p-\.*",
         r"sch\d\d\d@sfusd.\l\l\l",
     ]
     r = Regex()
     for ex in examples:
-        t = r.parse(ex)
-        print(ex, t)
+        p = r.parse(ex)
+        print(ex, p)
         for _ in range(10):
-            print(r.eval(t, env={}))
+            print(r.eval(p, env={}))
