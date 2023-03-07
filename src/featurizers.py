@@ -19,7 +19,7 @@ class TextClassifier(Featurizer):
     """Uses pytorch pretrained BERT model w/ text classification head"""
 
     def __init__(self):
-        raise NotImplementedError
+        pass
 
     def apply(self, img: np.ndarray) -> np.ndarray:
         raise NotImplementedError
@@ -33,7 +33,7 @@ class TextPredictor(Featurizer):
     """Uses pytorch pretrained BERT model w/ language modeling head"""
 
     def __init__(self):
-        raise NotImplementedError
+        pass
 
     def apply(self, img: np.ndarray) -> np.ndarray:
         raise NotImplementedError
