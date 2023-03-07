@@ -9,28 +9,6 @@ import numpy as np
 from featurizers import Featurizer
 from grammar import Grammar
 
-"""
-Program drawn from Grammar of Language
-Grammar specifies Language
-
-Language
-  parser: lark.Parser
-  model: Grammar
-  
-  parse(Str) -> Program:
-    use self.parser
-  fit(List[Str]):
-    use self.count
-  simplify(Program) -> Program:
-    use self.parser to get s-exp,
-    then use rust module
-  eval(Program) -> Value 
-    
-  sample() -> Program
-
-LSystem, Regex <: Language
-"""
-
 
 class Tree:
     """
@@ -53,6 +31,46 @@ class Tree:
         else:
             raise ValueError("Lark trees must be Trees or Tokens")
 
+    @staticmethod
+    def from_sexp(s: str):
+        def tokenize(s: str) -> List[str]:
+            """Split s into space-separated tokens - include parens"""
+            return s.replace("(", "( ").replace(")", " )").split()
+
+        def group_parens(tokens: List[str]) -> Dict[int, int]:
+            """Return a map from positions of open parens to the positions of their paired close parens"""
+            ends = {}
+            stack = []
+            for i, token in enumerate(tokens):
+                if token == "(":
+                    stack.append(i)
+                elif token == ")":
+                    ends[stack.pop()] = i
+            if stack:
+                raise ValueError(f"Mismatched parentheses in expression: {''.join(tokens)}")
+            return ends
+
+        def translate(i: int, j: int) -> Tree:
+            sym = None
+            args = []
+            r = i
+            while r < j:
+                if r not in ends:  # atom
+                    if sym is None:
+                        sym = tokens[r]
+                    else:
+                        args.append(Tree(tokens[r]))
+                    r += 1
+                else:  # s-exp
+                    args.append(translate(r + 1, ends[r]))
+                    r = ends[r] + 1
+            return Tree(sym, *args)
+
+        tokens = tokenize(s)
+        ends = group_parens(tokens)
+        assert tokens[0] == "(" and tokens[-1] == ")", f"Found unbracketed token sequence: {tokens}"
+        return translate(1, len(tokens) - 1)
+
     def is_leaf(self) -> bool:
         return not self.children
 
@@ -70,11 +88,23 @@ class Tree:
         else:
             return self.value
 
+    def to_str(self, semantics: Dict) -> str:
+        sym = self.value
+        args = [c.to_str(semantics) for c in self.children]
+        if sym in semantics:
+            return semantics[sym](*args)
+        else:
+            return sym
+
     def __repr__(self):
-        return self.to_sexp()
+        return str(self)
 
     def __str__(self):
-        return self.to_sexp()
+        if not self.is_leaf():
+            args = " ".join(c.to_sexp() for c in self.children)
+            return f"({self.value} {args})"
+        else:
+            return f"<{self.value}>"
 
     def __len__(self):
         # number of nodes in tree
@@ -162,3 +192,19 @@ def bigram_scans(trees: List[Tree], weights: List[float] | np.ndarray) -> Dict[T
 def sum_counts(a: Dict[Any, float], b: Dict[Any, float]) -> Dict[Any, float]:
     return {k: a.get(k, 0) + b.get(k, 0)
             for k in a.keys() | b.keys()}
+
+
+class ParseError(Exception):
+    pass
+
+
+def test_count_unigram():
+    cases = [
+        "(a)", {"a": 1.},
+        "(a a a a)", {"a": 4.},
+        "(a (a k) a (b k (c k) (c k)))", {"a": 3, "b": 1, "c": 2, "k": 4},
+    ]
+    for sexp, d in zip(cases[::2], cases[1::2]):
+        t = Tree.from_sexp(sexp)
+        out = unigram_scan(t)
+        assert out == d, f"Expected {d} but got {out}"
