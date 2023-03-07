@@ -198,7 +198,7 @@ class ParseError(Exception):
     pass
 
 
-def test_count_unigram():
+def test_unigram_scan():
     cases = [
         "(a)", {"a": 1.},
         "(a a a a)", {"a": 4.},
@@ -208,3 +208,23 @@ def test_count_unigram():
         t = Tree.from_sexp(sexp)
         out = unigram_scan(t)
         assert out == d, f"Expected {d} but got {out}"
+
+
+def test_bigram_scan():
+    cases = [
+        "(+ (- 1 2) 3)", {("+", 0, "-"): 1,
+                          ("+", 1, "3"): 1,
+                          ("-", 0, "1"): 1,
+                          ("-", 1, "2"): 1},
+        "(+ (- 1 2) "
+        "   (+ (- 1 2)"
+        "      (- 1 2)))", {("+", 0, "-"): 2,
+                            ("+", 1, "-"): 1,
+                            ("+", 1, "+"): 1,
+                            ("-", 0, "1"): 3,
+                            ("-", 1, "2"): 3}
+    ]
+    for sexp, counts in zip(cases[::2], cases[1::2]):
+        t = Tree.from_sexp(sexp)
+        out = bigram_scan(t)
+        assert out == counts, f"Expected {counts} but got {out}"
