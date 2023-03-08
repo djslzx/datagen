@@ -16,8 +16,10 @@ maturin  # build rust
 
 # pretrained LLMs + deps
 tqdm
-boto3
-requests
-regex
-sentencepiece
-sacremoses
+# boto3
+# requests
+# regex
+# sentencepiece
+# sacremoses
+transformers==4.23.0
+datasets

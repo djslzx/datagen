@@ -61,8 +61,7 @@ class LangDataset(Tdata.Dataset):
 def lg_kwargs(lang: Language):
     def parse(t: Tree) -> tuple:
         return t.to_tuple()
-
-    fe = ConvFeatureExtractor(n_features=1000,
+    fe = ConvFeatureExtractor(n_features=1000,  # FIXME: use n_parameters of featurizer
                               n_color_channels=1,
                               n_conv_channels=12,
                               bitmap_n_rows=128,
