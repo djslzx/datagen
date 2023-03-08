@@ -4,8 +4,7 @@ import sys
 
 import numpy as np
 from tqdm import tqdm
-from evo import ROLLOUT_DEPTH, DRAW_ARGS
-from lindenmayer import S0LSystem
+from lindenmayer import LSys
 from featurizers import ResnetFeaturizer
 import util
 
@@ -13,14 +12,14 @@ import util
 classifier = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
 
 
-def plot_outputs(filename: str, batch_size=36, len_cap=300, save=True):
+def plot_outputs(filename: str, batch_size=36, len_cap=10_000, save=True):
+    lsys = LSys(theta=45, step_length=3, render_depth=2, n_rows=128, n_cols=128)
     with open(filename, "r") as f:
         imgs = []
         labels = []
         for line in tqdm(f.readlines()):
-            # skip comment lines
             if line.startswith('#'):
-                print(line)
+                # skip comments
                 continue
             if ':' in line:
                 sys_str, score = line.split(' : ')
@@ -31,9 +30,8 @@ def plot_outputs(filename: str, batch_size=36, len_cap=300, save=True):
 
             # skip l-systems that take too long to render (b/c they're too long)
             if len(sys_str) <= len_cap:
-                sys = S0LSystem.from_sentence(list(sys_str))
-                render_str = sys.nth_expansion(ROLLOUT_DEPTH)
-                img = S0LSystem.draw(render_str, **DRAW_ARGS)
+                t = lsys.parse(sys_str)
+                img = lsys.eval(t, env={})
                 imgs.append(img)
 
                 # check resnet classifier output
@@ -42,7 +40,7 @@ def plot_outputs(filename: str, batch_size=36, len_cap=300, save=True):
                 score += f" ({top_class})"
                 labels.append(f"{score}")
             else:
-                imgs.append(np.zeros((DRAW_ARGS['n_rows'], DRAW_ARGS['n_cols'])))
+                imgs.append(np.zeros((128, 128)))
                 labels.append("skipped")
 
     n_cols = ceil(sqrt(batch_size))
