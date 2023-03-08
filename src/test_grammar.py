@@ -1,5 +1,6 @@
 from grammar import *
-import parse
+import lang
+from lindenmayer import LSys
 
 nat_components = {
     "add": ["Int", "Int", "Int"],
@@ -89,7 +90,7 @@ def test_from_bigram_counts_add():
     int -> add, int -> one
     """
     s = ('add', ('add', '1', '1'), '1')
-    counts = parse.bigram_scan(s)
+    counts = lang.bigram_scan(s)
     assert counts == {('add', 0, 'add'): 1,
                       ('add', 0, '1'): 1,
                       ('add', 1, '1'): 2}
@@ -100,13 +101,12 @@ def test_from_bigram_counts_add():
     assert T.equal(t, ans), f"Expected {ans} but got {t}"
 
 
-def test_from_bigram_counts_lsys():
+def test_fit_lsys():
     # doesn't actually test anything aside from checking that the pieces fit together
     corpus = [
         "F;F~F",
     ]
-    parsed_corpus = [parse.parse_lsys(x) for x in corpus]
-    counts = parse.bigram_scan(parsed_corpus)
-    g = Grammar.from_components(parse.rule_types, gram=2)
-    g.from_bigram_counts_(counts, alpha=0)
-    print(g)
+    lsys = LSys(90, 3, 3, 128, 128)
+    parsed_corpus = [lsys.parse(x) for x in corpus]
+    lsys.fit(parsed_corpus)
+    print(lsys.model)

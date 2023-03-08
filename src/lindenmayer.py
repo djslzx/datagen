@@ -5,8 +5,11 @@ from math import sin, cos, radians
 import numpy as np
 import skimage.draw
 import itertools as it
+from sys import stderr
 
-Tree: TypeAlias = Tuple
+from eggy import simplify_lsystem
+from lang import Language, Tree, Grammar, ParseError
+from featurizers import ResnetFeaturizer
 
 
 class LSystem:
@@ -56,8 +59,8 @@ class LSystem:
         Draw the turtle interpretation of the string `s` onto a `n_rows` x `n_cols` array,
         using scikit-image's drawing library (with anti-aliasing).
         """
-        r, c = n_rows//2, n_cols//2  # start at center of canvas
-        heading = 90  # start facing up (logo)
+        r, c = n_rows//2, n_cols//2  # parser_start at center of canvas
+        heading = 90  # parser_start facing up (logo)
         stack = []
         canvas = np.zeros((n_rows, n_cols), dtype=np.uint8)
         for char in s:
@@ -118,8 +121,6 @@ class S0LSystem(LSystem):
     A stochastic context-free Lindenmayer system
     where the alphabet is the collection of ASCII characters
     """
-
-    # TODO: add check-rep?
 
     def __init__(self,
                  axiom: str,
@@ -221,3 +222,158 @@ class S0LSystem(LSystem):
                 rules[lhs] = [rhs]
 
         return S0LSystem(axiom, rules, "uniform")
+
+
+class LSys(Language):
+    """
+    Defines the L-System domain used for novelty search.
+    """
+
+    metagrammar = r"""
+        lsystem: axiom ";" rules   -> lsystem
+        axiom: symbols             -> axiom
+        symbols: symbol symbols    -> symbols
+               | symbol            -> symbol
+        symbol: "[" symbols "]"    -> bracket
+              | NT                 -> nonterm
+              | T                  -> term
+        rules: rule "," rules      -> rules
+             | rule                -> rule
+        rule: NT "~" symbols       -> arrow
+        NT: "F"
+          | "f"
+        T: "+"
+         | "-"
+
+        %import common.WS
+        %ignore WS
+    """
+    types = {
+        "lsystem": ["Axiom", "Rules", "LSystem"],
+        "axiom": ["Symbols", "Axiom"],
+        "symbols": ["Symbol", "Symbols", "Symbols"],
+        "symbol": ["Symbol", "Symbols"],
+        "bracket": ["Symbols", "Symbol"],
+        "nonterm": ["Nonterm", "Symbol"],
+        "term": ["Term", "Symbol"],
+        "rules": ["Rule", "Rules", "Rules"],
+        "rule": ["Rule", "Rules"],
+        "arrow": ["Nonterm", "Symbols", "Rule"],
+        "F": ["Nonterm"],
+        "f": ["Nonterm"],
+        "+": ["Term"],
+        "-": ["Term"],
+    }
+
+    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int):
+        super().__init__(parser_grammar=LSys.metagrammar,
+                         parser_start="lsystem",
+                         root_type="LSystem",
+                         model=Grammar.from_components(LSys.types, gram=2),
+                         featurizer=ResnetFeaturizer(disable_last_layer=True,
+                                                     softmax_outputs=True))
+        self.theta = theta
+        self.step_length = step_length
+        self.render_depth = render_depth
+        self.n_rows = n_rows
+        self.n_cols = n_cols
+
+    def eval(self, t: Tree, env: Dict[str, Any]) -> np.ndarray:
+        s = self.to_str(t)
+        lsys = S0LSystem.from_str(s)
+        sample = lsys.nth_expansion(self.render_depth)
+        return LSystem.draw(sample, d=self.step_length, theta=self.theta,
+                            n_rows=self.n_rows, n_cols=self.n_cols)
+
+    @property
+    def str_semantics(self) -> Dict:
+        return {
+            "lsystem": lambda ax, rs: f"{ax};{rs}",
+            "axiom": lambda xs: xs,
+            "symbols": lambda x, xs: f"{x}{xs}",
+            "symbol": lambda x: x,
+            "bracket": lambda xs: f"[{xs}]",
+            "nonterm": lambda nt: nt,
+            "term": lambda t: t,
+            "rules": lambda r, rs: f"{r},{rs}",
+            "rule": lambda r: r,
+            "arrow": lambda nt, xs: f"{nt}~{xs}",
+            "F": lambda: "F",
+            "f": lambda: "f",
+            "+": lambda: "+",
+            "-": lambda: "-",
+        }
+
+    def simplify(self, t: Tree) -> Tree:
+        """Simplify using egg and deduplicate rules"""
+        sexp = t.to_sexp()
+        sexp_simpl = simplify_lsystem(sexp)
+        if "nil" in sexp_simpl:
+            if sexp_simpl != "nil":
+                print(f"WARNING: found nil in unsimplified expression: {sexp_simpl}", file=stderr)
+            raise NilError(f"Unexpected 'nil' token in simplified expr: {sexp_simpl}")
+        s_simpl = self.to_str(Tree.from_sexp(sexp_simpl))
+        s_dedup = LSys.dedup_rules(s_simpl)
+        return self.parse(s_dedup)
+
+    @staticmethod
+    def dedup_rules(s: str) -> str:
+        s_axiom, s_rules = s.split(";")
+        rules = set(s_rules.split(","))
+        s_rules = ",".join(sorted(rules, key=lambda x: (len(x), x)))
+        return f"{s_axiom};{s_rules}"
+
+
+class NilError(ParseError):
+    pass
+
+
+def test_lsys_simplify():
+    cases = {
+        "F;F~F": "F;F~F",
+        "F;F~+-+--+++--F": "F;F~F",
+        "F;F~-+F+-": "F;F~F",
+        "F;F~[F]F": "F;F~F",
+        "F;F~[FF]FF": "F;F~FF",
+        "F;F~[+F-F]+F-F": "F;F~+F-F",
+        "F;F~[F]": "F;F~[F]",
+        "F;F~[FF+FF]": "F;F~[FF+FF]",
+        "F;F~F,F~F,F~F": "F;F~F",
+        "F;F~F,F~+-F,F~F": "F;F~F",
+        "F;F~F,F~+F-": "F;F~F,F~+F-",
+        "F;F~F,F~+F-,F~F": "F;F~F,F~+F-",
+        "F;F~F,F~FF,F~F,F~FF": "F;F~F,F~FF",
+        "F;F~F[+F]F,F~F,F~F[+F]F": "F;F~F,F~F[+F]F",
+        "F;F~[-+-+---]F[++++]": "F;F~F",
+        "+;F~F": "nil",
+        "[++];F~F": "nil",
+        "[++];F~[F]": "nil",
+        "[++];F~[F][+++]": "nil",
+        "F;F~+": "nil",
+        "F;F~F,F~+": "F;F~F",
+        "F;F~+,F~+": "nil",
+        "F;F~F,F~+,F~+": "F;F~F",
+    }
+    L = LSys(theta=90, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    for x, y in cases.items():
+        t_x = L.parse(x)
+        try:
+            out = L.to_str(L.simplify(t_x))
+            assert out == y, f"Expected {x} => {y} but got {out}"
+        except NilError:
+            assert y == "nil", f"Got NilError on unexpected input {x}"
+
+
+if __name__ == "__main__":
+    examples = [
+        "F;F~+--+F",
+        "F;F~+--+F,F~F",
+        "F;F~[+F][-F]F,F~FF",
+    ]
+    L = LSys(theta=90, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    for ex in examples:
+        p = L.parse(ex)
+        print(ex, "=>", L.to_str(L.simplify(p)))
+        # for _ in range(3):
+        #     plt.imshow(lsystem.eval(p, env={}))
+        #     plt.show()

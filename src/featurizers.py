@@ -15,6 +15,34 @@ class Featurizer:
         raise NotImplementedError
 
 
+class TextClassifier(Featurizer):
+    """Uses pytorch pretrained BERT model w/ text classification head"""
+
+    def __init__(self):
+        pass
+
+    def apply(self, img: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
+
+    @property
+    def n_features(self) -> int:
+        raise NotImplementedError
+
+
+class TextPredictor(Featurizer):
+    """Uses pytorch pretrained BERT model w/ language modeling head"""
+
+    def __init__(self):
+        pass
+
+    def apply(self, img: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
+
+    @property
+    def n_features(self) -> int:
+        raise NotImplementedError
+
+
 class ResnetFeaturizer(Featurizer):
 
     def __init__(self, disable_last_layer=False, softmax_outputs=True):

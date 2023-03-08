@@ -11,34 +11,22 @@ import seaborn as sns
 from tqdm import tqdm
 import time
 
-import parse
 import util
+from lang import Language, Tree, ParseError
+from lindenmayer import LSys
 from grammar import Grammar, LearnedGrammar, ConvFeatureExtractor
-from lindenmayer import S0LSystem
-from evo import DRAW_ARGS
 from zoo import zoo
 from featurizers import ResnetFeaturizer, Featurizer
 
 
-def eval_ttree_as_lsys(p: Tuple, level=3):
-    sys_str = parse.eval_ttree_as_str(p)
-    sys = S0LSystem.from_sentence(list(sys_str))
-    return sample_from_lsys(sys, level)
-
-
-def sample_from_lsys(lsys: S0LSystem, level=3) -> np.ndarray:
-    render_str = lsys.nth_expansion(level)
-    return S0LSystem.draw(render_str, **DRAW_ARGS)
-
-
-class LSystemDataset(Tdata.Dataset):
+class LangDataset(Tdata.Dataset):
     """
     Reads in L-system strings and yields ASTs.
     """
 
     @staticmethod
-    def from_files(filenames: List[str]) -> "LSystemDataset":
-        lines = []
+    def from_files(filenames: List[str], lang: Language) -> "LangDataset":
+        data = []
         for filename in filenames:
             with open(filename, "r") as f:
                 for line in f.readlines():
@@ -46,38 +34,34 @@ class LSystemDataset(Tdata.Dataset):
                         continue
                     if ":" in line:  # split out scores
                         line = line.split(" : ")[0]
-                    # confirm that line is parseable
-                    # TODO: restructure so we don't parse twice
                     try:
-                        parse_str_to_tuple(line)
-                        lines.append(line.strip())
+                        t = lang.parse(line)
+                        data.append(t)
                     except (lark.UnexpectedCharacters,
-                            lark.UnexpectedToken):
+                            lark.UnexpectedToken,
+                            ParseError):
                         pass
-        return LSystemDataset(data=lines)
+        return LangDataset(data, lang)
 
-    def __init__(self, data: List[str]):
-        # TODO: allow a program to generate multiple outputs (probabilistic programs)
-        super(LSystemDataset).__init__()
+    def __init__(self, data: List[Tree], lang: Language):
+        super(LangDataset).__init__()
         self.data = data
+        self.lang = lang
 
     def __getitem__(self, item):
-        s = self.data[item]
-        ast = parse_str_to_tuple(s)
-        return s, eval_ttree_as_lsys(ast)
+        # TODO: allow a program to generate multiple outputs (probabilistic programs)
+        t = self.data[item]
+        y = self.lang.eval(t, env={})
+        return t, y
 
     def __len__(self):
         return len(self.data)
 
 
-def parse_str_to_tuple(s: str) -> Tuple:
-    """Parses an l-system from an l-system string s"""
-    ltree = parse.parse_lsys_as_ltree(s)
-    return parse.ltree_to_ttree(ltree)
+def lg_kwargs(lang: Language):
+    def parse(t: Tree) -> tuple:
+        return t.to_tuple()
 
-
-def lg_kwargs():
-    g = Grammar.from_components(components=parse.rule_types, gram=2)
     fe = ConvFeatureExtractor(n_features=1000,
                               n_color_channels=1,
                               n_conv_channels=12,
@@ -85,18 +69,18 @@ def lg_kwargs():
                               bitmap_n_cols=128)
     return {
         "feature_extractor": fe,
-        "grammar": g,
-        "parse": parse_str_to_tuple,
-        "start_symbol": "LSystem",
+        "grammar": lang.model,
+        "parse": parse,
+        "start_symbol": lang.start,
         "learning_rate": 1e-5,
     }
 
 
-def train_learner(train_filenames: List[str], epochs: int):
-    lg = LearnedGrammar(**lg_kwargs())
-    train_dataset = LSystemDataset.from_files(train_filenames)
+def train_learner(lang: Language, train_filenames: List[str], epochs: int):
+    lg = LearnedGrammar(**lg_kwargs(lang))
+    train_dataset = LangDataset.from_files(train_filenames, lang)
     train_loader = Tdata.DataLoader(train_dataset, shuffle=True)
-    val_dataset = LSystemDataset([sys.to_str() for sys in zoo])
+    val_dataset = LangDataset([sys.to_str() for sys in zoo], lang)
     val_loader = Tdata.DataLoader(val_dataset)
     trainer = pl.Trainer(max_epochs=epochs, auto_lr_find=False)
     trainer.tune(model=lg, train_dataloaders=train_loader)
@@ -108,36 +92,22 @@ def train_learner(train_filenames: List[str], epochs: int):
     print(lg.grammar)
 
 
-def load_learned_grammar(checkpt_path: str) -> LearnedGrammar:
+def load_learned_grammar(lang: Language, checkpt_path: str) -> LearnedGrammar:
     ckpt = T.load(checkpt_path)
     weights = ckpt["grammar_params"]
-    lg = LearnedGrammar.load_from_checkpoint(checkpoint_path=checkpt_path, **lg_kwargs())
+    lg = LearnedGrammar.load_from_checkpoint(checkpoint_path=checkpt_path, **lg_kwargs(lang))
     lg.grammar.from_tensor_(weights)
     return lg
 
 
-def compare_models(model1_chkpt: str, model2_chkpt: str, datasets: List[str]):
-    model1 = load_learned_grammar(model1_chkpt)
-    model2 = load_learned_grammar(model2_chkpt)
-    model1.eval()
-    model2.eval()
-    dataset = LSystemDataset.from_files(datasets)
-    dataloader = Tdata.DataLoader(dataset)
-    for (x,), y in dataloader:
-        ttree = parse_str_to_tuple(x)
-        print(f"{x}\n"
-              f"  model1 loss: {-model1.grammar.log_probability(model1.start_symbol, ttree)}\n"
-              f"  model2 loss: {-model2.grammar.log_probability(model2.start_symbol, ttree)}")
-
-
-def run_model(name: str, mg: Grammar, v_in: np.ndarray, featurizer: ResnetFeaturizer,
+def run_model(name: str, lang: Language, v_in: np.ndarray, featurizer: ResnetFeaturizer,
               k: int, n_tries: int, n_renders_per_try: int):
-    def best_render(lsys: S0LSystem) -> Tuple[float, np.ndarray]:
+    def best_render(t: Tree) -> Tuple[float, np.ndarray]:
         """find best render in `n_renders_pre_try` tries"""
         min_dist = np.inf
         min_img = None
         for _ in range(n_renders_per_try):
-            img = sample_from_lsys(lsys)
+            img = lang.eval(t, env={})
             v = featurizer.apply(img)
             dist = np.linalg.norm(v_in - v, ord=2)
             if dist < min_dist:
@@ -147,16 +117,15 @@ def run_model(name: str, mg: Grammar, v_in: np.ndarray, featurizer: ResnetFeatur
 
     # track `k` best outcomes of `n_tries` attempts
     dists = np.repeat(np.inf, k)
-    imgs = np.empty((k, DRAW_ARGS["n_rows"], DRAW_ARGS["n_cols"]), dtype=np.uint8)
+    imgs = np.empty((k, 128, 128), dtype=np.uint8)
     print(f"Sampling from {name}...")
     for _ in tqdm(range(1, n_tries+1)):
         # sample an L-system from the grammar
-        sample_s = parse.eval_ttree_as_str(mg.sample("LSystem"))
-        if len(sample_s) > 1000: continue  # skip absurdly long L-systems
-        sample_sys = S0LSystem.from_str(sample_s)
+        t = lang.sample()
+        if len(t) > 1000: continue  # skip absurdly long L-systems
 
         # choose representative render w/ distance in feature space
-        d, img = best_render(sample_sys)
+        d, img = best_render(t)
 
         # update cache of best attempts
         i = np.searchsorted(dists, d)  # sort decreasing
@@ -167,7 +136,7 @@ def run_model(name: str, mg: Grammar, v_in: np.ndarray, featurizer: ResnetFeatur
     return list(zip(dists, imgs))
 
 
-def run_models(named_models: Dict[str, LearnedGrammar], dataset: List[str], k: int,
+def run_models(named_models: Dict[str, LearnedGrammar], lang: Language, dataset: List[str], k: int,
                n_tries: int, n_renders_per_try: int, save_dir: str):
     sns.set_theme(style="white")
     n = len(named_models)
@@ -180,14 +149,14 @@ def run_models(named_models: Dict[str, LearnedGrammar], dataset: List[str], k: i
         plt.suptitle(f"Target: {datum}")
 
         # plot image once
-        lsys_in = S0LSystem.from_str(datum)
-        img_in = sample_from_lsys(lsys_in)
+        lsys_in = lang.parse(datum)
+        img_in = lang.eval(lsys_in, env={})
         v_in = featurizer.apply(img_in)
 
         for col, (name, model) in enumerate(named_models.items()):
             guesses = run_model(
                 name=name,
-                mg=model.forward(lsys_in, img_in),
+                lang=lang,
                 featurizer=featurizer,
                 v_in=v_in,
                 k=k,
@@ -243,4 +212,5 @@ if __name__ == "__main__":
     t = int(time.time())
     save_dir = f"../out/plots/{t}-sample"
     util.try_mkdir(save_dir)
+    lang = LSys(45, 3, 3, 128, 128)
     run_models(models, data, k=5, n_tries=1000, n_renders_per_try=2, save_dir=save_dir)
