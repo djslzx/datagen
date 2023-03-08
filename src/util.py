@@ -49,6 +49,12 @@ def test_param_tester():
     for i, config in enumerate(p):
         assert configs[i] == config, f"Expected {configs[i]} on iter {i} but got {config}"
 
+    # single config
+    p = ParamTester({"a": 0, "b": 1, "c": [2]})
+    config = {"a": 0, "b": 1, "c": 2}
+    for out in p:
+        assert out == config, f"Expected {config} but got {out}"
+
 
 class Timing(object):
     """
