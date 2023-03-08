@@ -12,7 +12,6 @@ from lang import Language, ParseError
 from lindenmayer import LSys
 from regexpr import Regex
 from zoo import zoo
-from featurizers import ResnetFeaturizer, Featurizer
 from util import Timing, ParamTester, try_mkdir
 
 # Hyper-parameters
@@ -46,30 +45,38 @@ def semantic_score(lang: Language, cur_gen: np.ndarray, new_gen: np.ndarray, n_s
     n_features = lang.featurizer.n_features
 
     # build knn data structure
+    eval_time = 0
     with Timing("Computing features"):
         popn_features = np.empty((len(cur_gen), n_features * n_samples))
         for i, s in enumerate(cur_gen):  # parallel
             t = lang.parse(s)
             for j in range(n_samples):
+                t_start = time.time()
                 bmp = lang.eval(t, env={})
+                eval_time += time.time() - t_start
                 # TODO: handle non-bitmaps too -- this should work for text outputs as well
                 popn_features[i, j * n_features: (j + 1) * n_features] = lang.featurizer.apply(bmp)
+    print(f"Spent {eval_time:.4e}s on evaluating current generation, "
+          f"{eval_time/(len(cur_gen) * n_samples)}s per individual")
 
-    with Timing("Building knn data structure"):
-        knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(cur_gen))).fit(popn_features)
+    knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(cur_gen))).fit(popn_features)
 
     # compute scores of next generation
+    eval_time = 0
     with Timing("Scoring instances"):
         scores = np.empty(len(new_gen))
         for i, s in enumerate(new_gen):  # parallel
             features = np.empty((1, n_features * n_samples))
             t = lang.parse(s)
             for j in range(n_samples):
+                t_start = time.time()
                 bmp = lang.eval(t, env={})
+                eval_time += time.time() - t_start
                 features[0, j * n_features: (j + 1) * n_features] = lang.featurizer.apply(bmp)
             distances, indices = knn.kneighbors(features)
-            scores[i] = distances.sum(axis=1).item()
-            # scores[i] = distances.mean(axis=1).item() ** 2 / len(s)  # prioritize shorter agents
+            scores[i] = distances.sum(axis=1).item() ** 2 / len(s)  # prioritize shorter individuals
+    print(f"Spent {eval_time:.4e}s on evaluating next generation, "
+          f"{eval_time / (len(cur_gen) * n_samples)}s per individual")
 
     return scores
 
