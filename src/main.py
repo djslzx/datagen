@@ -7,7 +7,8 @@ import seaborn as sns
 import pandas as pd
 import lark
 
-import parse
+from lang import Language, ParseError
+from lindenmayer import LSys
 
 
 def summary_stats(arr: np.ndarray) -> str:
@@ -77,7 +78,7 @@ def read_files(in_file: str, out_file: str) -> Tuple[List[str], List[str]]:
     return x, y
 
 
-def simplify_file(in_path: str, out_path: str, score_thresh=None):
+def simplify_file(lang: Language, in_path: str, out_path: str, score_thresh=None):
     print(f"Writing simplified file to {out_path}")
     n_parse_failures, n_low_score = 0, 0
     with open(in_path, 'r') as f_in, open(out_path, 'w') as f_out:
@@ -97,10 +98,11 @@ def simplify_file(in_path: str, out_path: str, score_thresh=None):
                         continue
             # simplify line
             try:
-                s = parse.simplify(line)
+                t = lang.simplify(lang.parse(line))
+                s = lang.to_str(t)
                 print(f"{i}: {s}")
                 f_out.write(s + "\n")
-            except (lark.UnexpectedCharacters, lark.UnexpectedToken, parse.ParseError):
+            except (lark.UnexpectedCharacters, lark.UnexpectedToken, ParseError):
                 print(f"Skipping line {i}")
                 f_out.write("\n")
                 n_parse_failures += 1
