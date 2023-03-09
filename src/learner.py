@@ -216,12 +216,13 @@ def run_models(named_models: Dict[str, LearnedGrammar], dataset: List[str], k: i
 
 
 if __name__ == "__main__":
+    prefix = "/home/djl328/prob-repl"
     paths = {
-        "ns": "../models/291573_ns/epoch=43-step=3005904.ckpt",
-        "ns_egg": "../models/291507_ns_egg/epoch=43-step=2999568.ckpt",
-        "ns_egg_nov": "../models/294291_ns_egg_nov/epoch=49-step=2871100.ckpt",
-        "random": "../models/294289_rand/epoch=41-step=4200000.ckpt",
-        "random_egg": "../models/294290_rand_egg/epoch=47-step=4239744.ckpt",
+        "ns":         f"{prefix}/models/291573_ns/epoch=43-step=3005904.ckpt",
+        "ns_egg":     f"{prefix}/models/291507_ns_egg/epoch=43-step=2999568.ckpt",
+        "ns_egg_nov": f"{prefix}/models/294291_ns_egg_nov/epoch=49-step=2871100.ckpt",
+        "random":     f"{prefix}/models/294289_rand/epoch=41-step=4200000.ckpt",
+        "random_egg": f"{prefix}/models/294290_rand_egg/epoch=47-step=4239744.ckpt",
     }
     models = {}
     for name, path in paths.items():
@@ -243,4 +244,4 @@ if __name__ == "__main__":
     t = int(time.time())
     save_dir = f"../out/plots/{t}-sample"
     util.try_mkdir(save_dir)
-    run_models(models, data, k=5, n_tries=1000, n_renders_per_try=2, save_dir=save_dir)
+    run_models(models, data, k=6, n_tries=1000, n_renders_per_try=3, save_dir=save_dir)
