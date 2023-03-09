@@ -1,11 +1,14 @@
+from typing import *
 import torch as T
 import numpy as np
 from torchvision.models import resnet50, ResNet50_Weights
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel  # language models
-from typing import *
+from transformers import AutoTokenizer, AutoModelForCausalLM  # language models
+from sentence_transformers import SentenceTransformer
 from sys import stderr
+from scipy.spatial import distance as dist
 from einops import rearrange
 from sklearn.random_projection import johnson_lindenstrauss_min_dim, SparseRandomProjection
+import Levenshtein
 
 import util
 
@@ -21,22 +24,16 @@ class Featurizer:
 
 class TextClassifier(Featurizer):
 
-    def __init__(self, n_components=2048):
-        self.tokenizer = AutoTokenizer.from_pretrained("microsoft/codebert-base")
-        self.model = AutoModel.from_pretrained("microsoft/codebert-base")
-        self.n_components = n_components
-        self.random_projection = SparseRandomProjection(n_components=n_components)
+    def __init__(self):
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def apply(self, batch: List[str]) -> np.ndarray:
-        tokens = self.tokenizer(batch, padding="max_length", return_tensors="pt")
-        embeddings = self.model(tokens["input_ids"])[0]  # [n, word_len_w_padding (512), 768]
-        embeddings = rearrange(embeddings, "b w c -> b (w c)").detach().numpy()
-        m = self.random_projection.fit_transform(embeddings)
-        return m
+        embeddings = self.model.encode(batch)  # [batch, seq, feat]
+        return embeddings
 
     @property
     def n_features(self) -> int:
-        return self.n_components
+        return 384
 
 
 class TextPredictor(Featurizer):
@@ -77,6 +74,7 @@ class ResnetFeaturizer(Featurizer):
         return 2048 if self.disable_last_layer else 1000
 
     def apply(self, batch: np.ndarray) -> np.ndarray:
+        # TODO: make this batched
         assert len(batch.shape) in [2, 3], f"Got imgs with shape {batch.shape}"
         assert isinstance(batch, np.ndarray), f"Expected ndarray, but got {type(batch)}"
 
@@ -92,7 +90,7 @@ class ResnetFeaturizer(Featurizer):
             batch = util.stack_repeat(batch[0], 3)
 
         # run resnet
-        batch = self.preprocess(T.from_numpy(batch))
+        batch = self.preprocess(T.from_numpy(batch)).unsqueeze(0)
         features = self.model(batch).squeeze()
         if self.softmax_outputs:
             features = features.softmax(0)
@@ -173,10 +171,38 @@ class DummyFeaturizer(Featurizer):
 
 
 if __name__ == "__main__":
-    t = TextClassifier()
-    x = t.apply(["hello there",
-                 "my name is bob nice to meet you",
-                 "how are you doing",
-                 "what what what what what what what what what what what what what what what what "
-                 "what what what what what what what what what what what what what what what what"])
-    print(x, x.shape)
+    C = TextClassifier()
+    corpus = [
+        "$100",
+        "$10,000",
+        "$10b",
+        "$10 billion",
+        "$10,000,000,000",
+        "10 TB",
+        "71 MB",
+        "100000000000 KB",
+        "0.001 MB",
+        "johndoe@mail.org",
+        "ellisk@cs.cornell.edu",
+        "djsl@cs.cornell.edu",
+        "djl328@cornell.edu",
+        "djl5@williams.edu",
+        "ab1@williams.edu",
+        "zz11@williams.edu",
+        "2023/10/01",
+        "2023/03/08",
+        "1970/01/01",
+    ]
+    x = C.apply(corpus)
+    with open("../out/embedding_dist.txt", "w") as f_embed, open("../out/leven_dist.txt", "w") as f_leven:
+        for a, u in zip(corpus, x):
+            embed_sort = sorted([(dist.minkowski(u, v), b) for b, v in zip(corpus, x)])
+            leven_sort = sorted([(Levenshtein.distance(a, b), b) for b in corpus])
+
+            f_embed.write(f"{a}:\n")
+            for _, b in embed_sort:
+                f_embed.write(f"  {b}\n")
+
+            f_leven.write(f"{a}:\n")
+            for _, b in leven_sort:
+                f_leven.write(f"  {b}\n")
