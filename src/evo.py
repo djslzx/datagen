@@ -130,11 +130,8 @@ def novelty_search(lang: Language,
                 scores = semantic_score(lang=lang, cur_gen=new_gen, new_gen=new_gen,
                                         n_neighbors=n_neighbors, n_samples=n_samples)
             else:
-                scores = semantic_score(lang=lang,
-                                        cur_gen=np.concatenate((arkv, popn), axis=0),
-                                        new_gen=new_gen,
-                                        n_neighbors=n_neighbors,
-                                        n_samples=n_samples)
+                scores = semantic_score(lang=lang, cur_gen=np.concatenate((arkv, popn), axis=0), new_gen=new_gen,
+                                        n_neighbors=n_neighbors, n_samples=n_samples)
 
         # cull popn
         with Timing("Culling popn"):

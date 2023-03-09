@@ -21,10 +21,11 @@ class Featurizer:
 
 class TextClassifier(Featurizer):
 
-    def __init__(self):
+    def __init__(self, n_components=2048):
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/codebert-base")
         self.model = AutoModel.from_pretrained("microsoft/codebert-base")
-        self.random_projection = SparseRandomProjection(n_components=1024)
+        self.n_components = n_components
+        self.random_projection = SparseRandomProjection(n_components=n_components)
 
     def apply(self, batch: List[str]) -> np.ndarray:
         tokens = self.tokenizer(batch, padding="max_length", return_tensors="pt")
@@ -35,7 +36,7 @@ class TextClassifier(Featurizer):
 
     @property
     def n_features(self) -> int:
-        return 1024  # reduced using random projection from 512 * 768
+        return self.n_components
 
 
 class TextPredictor(Featurizer):
