@@ -9,6 +9,17 @@ scikit-image
 Levenshtein
 lark     # parser
 maturin  # build rust
+
+# egraphs-good
 ./eggy/target/wheels/eggy-0.1.0-cp37-abi3-macosx_11_0_arm64.whl
 # ../eggy/target/wheels/eggy-0.1.0-cp37-abi3-linux_x86_64.whl
+
+# pretrained LLMs + deps
 tqdm
+# boto3
+# requests
+# regex
+# sentencepiece
+# sacremoses
+transformers==4.23.0
+datasets

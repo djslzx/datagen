@@ -6,27 +6,36 @@ from __future__ import annotations
 from typing import *
 import multiprocessing as mp
 
-from grammar import Grammar
-import parse
+from lindenmayer import LSys, NilError
 
 # init metagrammar
-MG = Grammar.from_components(components=parse.rule_types, gram=2)
-MG.normalize_()
+lsys = LSys(90, 3, 3, 128, 128)
 
 
-def sample_mg() -> str:
-    ttree = MG.sample("LSystem")
-    s = parse.eval_ttree_as_str(ttree)
+def sample(i) -> str:
+    t = lsys.sample()
+    s = lsys.to_str(t)
+    print(s)
     return s
+
+
+def sample_simplify(i) -> Optional[str]:
+    s = lsys.sample()
+    try:
+        s = lsys.simplify(s)
+        t = lsys.to_str(s)
+        return t
+    except NilError:
+        return None
 
 
 def take_samples_to_file(n_samples: int, out_file: str):
     with mp.Pool(16) as pool, open(out_file, 'w') as f:
-        for x in pool.imap(lambda _: sample_mg(), range(n_samples)):
+        for x in pool.imap(sample, range(n_samples)):
             f.write(x + "\n")
 
 
 if __name__ == '__main__':
     N_SAMPLES = 100_000
-    FILE = "../datasets/random_100k.txt"
+    FILE = "../datasets/random/random_100k_test.txt"
     take_samples_to_file(N_SAMPLES, FILE)

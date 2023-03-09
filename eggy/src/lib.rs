@@ -1,13 +1,13 @@
 use pyo3::prelude::*;
-mod simpl;
+mod lsystem;
 
 #[pyfunction]
-fn simplify(s: &str) -> PyResult<String> {
-    Ok(simpl::simplify(s))
+fn simplify_lsystem(s: &str) -> PyResult<String> {
+    Ok(lsystem::simplify(s))
 }
 
 #[pymodule]
 fn eggy(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(simplify, m)?)?;
+    m.add_function(wrap_pyfunction!(simplify_lsystem, m)?)?;
     Ok(())
 }

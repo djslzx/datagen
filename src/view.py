@@ -2,8 +2,9 @@ from math import sqrt, ceil
 from glob import glob
 import sys
 
-from evo import ROLLOUT_DEPTH, DRAW_ARGS
-from lindenmayer import S0LSystem
+import numpy as np
+from tqdm import tqdm
+from lindenmayer import LSys
 from featurizers import ResnetFeaturizer
 import util
 
@@ -11,14 +12,14 @@ import util
 classifier = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
 
 
-def plot_outputs(filename: str, batch_size=36, save=True):
+def plot_outputs(filename: str, batch_size=36, len_cap=10_000, save=True):
+    lsys = LSys(theta=45, step_length=3, render_depth=2, n_rows=128, n_cols=128)
     with open(filename, "r") as f:
         imgs = []
         labels = []
-        for line in f.readlines():
-            # skip comment lines
+        for line in tqdm(f.readlines()):
             if line.startswith('#'):
-                print(line)
+                # skip comments
                 continue
             if ':' in line:
                 sys_str, score = line.split(' : ')
@@ -27,15 +28,20 @@ def plot_outputs(filename: str, batch_size=36, save=True):
                 sys_str = line
                 score = ""
 
-            sys = S0LSystem.from_sentence(list(sys_str))
-            img = S0LSystem.draw(sys.nth_expansion(ROLLOUT_DEPTH), **DRAW_ARGS)
-            imgs.append(img)
+            # skip l-systems that take too long to render (b/c they're too long)
+            if len(sys_str) <= len_cap:
+                t = lsys.parse(sys_str)
+                img = lsys.eval(t, env={})
+                imgs.append(img)
 
-            # check resnet classifier output
-            features = classifier.apply(img)
-            top_class = classifier.top_k_classes(features, k=1)[0]
-            score += f" ({top_class})"
-            labels.append(f"{score}")
+                # check resnet classifier output
+                features = classifier.apply(img)
+                top_class = classifier.top_k_classes(features, k=1)[0]
+                score += f" ({top_class})"
+                labels.append(f"{score}")
+            else:
+                imgs.append(np.zeros((128, 128)))
+                labels.append("skipped")
 
     n_cols = ceil(sqrt(batch_size))
     n_rows = ceil(batch_size / n_cols)
@@ -52,9 +58,12 @@ def plot_outputs(filename: str, batch_size=36, save=True):
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
-        print("Usage: view.py FILE_GLOB SAVE")
-        print(sys.argv)
-        exit(1)
+        if len(sys.argv) == 2:
+            sys.argv.append("False")
+        else:
+            print("Usage: view.py FILE_GLOB SAVE")
+            print(sys.argv)
+            exit(1)
 
     file_glob, save = sys.argv[1:]
     save = save == "True"
