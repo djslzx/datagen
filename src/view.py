@@ -14,13 +14,14 @@ import util
 
 def read_outfile(filename: str) -> Generator[Tuple[str, str], None, None]:
     with open(filename, "r") as f:
-        for line in tqdm(f.readlines()):
+        for line in f.readlines():
             if line.startswith('#'):
                 # skip comments
                 continue
             if ':' in line:
                 s, score = line.split(' : ')
-                if not score.strip().endswith('*'): continue  # skip unselected children
+                score = score.strip()
+                if not score.endswith('*'): continue  # skip unselected children
             else:
                 s = line
                 score = ""
