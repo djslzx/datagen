@@ -1,47 +1,51 @@
 from math import sqrt, ceil
 from glob import glob
 import sys
-
 import numpy as np
 from tqdm import tqdm
+from typing import *
+
+from lang import Language
 from lindenmayer import LSys
+from regexpr import Regex
 from featurizers import ResnetFeaturizer
 import util
 
 
-classifier = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
-
-
-def plot_outputs(filename: str, batch_size=36, len_cap=1000, save=True):
-    lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+def read_outfile(filename: str) -> Generator[Tuple[str, str], None, None]:
     with open(filename, "r") as f:
-        imgs = []
-        labels = []
         for line in tqdm(f.readlines()):
             if line.startswith('#'):
                 # skip comments
                 continue
             if ':' in line:
-                sys_str, score = line.split(' : ')
+                s, score = line.split(' : ')
                 if not score.strip().endswith('*'): continue  # skip unselected children
             else:
-                sys_str = line
+                s = line
                 score = ""
+            yield s, score
 
-            # skip l-systems that take too long to render (b/c they're too long)
-            if len(sys_str) <= len_cap:
-                t = lsys.parse(sys_str)
-                img = lsys.eval(t, env={})
-                imgs.append(img)
 
-                # check resnet classifier output
-                features = classifier.apply(img)
-                top_class = classifier.top_k_classes(features, k=1)[0]
-                score += f" ({top_class})"
-                labels.append(f"{score}")
-            else:
-                imgs.append(np.zeros((128, 128)))
-                labels.append("skipped")
+def plot_lsys_outputs(filename: str, batch_size=36, len_cap=1000, save=True):
+    lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    classifier = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
+    imgs = []
+    labels = []
+    for s, score in read_outfile(filename):
+        # skip l-systems that take too long to render
+        if len(s) <= len_cap:
+            t = lsys.parse(s)
+            img = lsys.eval(t, env={})
+            imgs.append(img)
+
+            # check resnet classifier output
+            features = classifier.apply(img)
+            top_class = classifier.top_k_classes(features, k=1)[0]
+            labels.append(f"{score} ({top_class})")
+        else:
+            imgs.append(np.zeros((128, 128)))
+            labels.append(f"skipped (len={len(s)})")
 
     n_cols = ceil(sqrt(batch_size))
     n_rows = ceil(batch_size / n_cols)
@@ -56,18 +60,34 @@ def plot_outputs(filename: str, batch_size=36, len_cap=1000, save=True):
                   saveto=f"{filename}-{i}.png" if save else None)
 
 
-if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        if len(sys.argv) == 2:
-            sys.argv.append("False")
-        else:
-            print("Usage: view.py FILE_GLOB SAVE")
-            print(sys.argv)
-            exit(1)
+def show_regex_outputs(filename: str, n_samples: int):
+    r = Regex()
+    for s, score in read_outfile(filename):
+        print(s)
+        t = r.parse(s)
+        print(f"Samples from {s} w/ score {score}:")
+        print([r.eval(t, env={}) for _ in range(n_samples)])
 
-    file_glob, save = sys.argv[1:]
-    save = save == "True"
+
+if __name__ == '__main__':
+    def usage():
+        print("Usage: view.py FILE_GLOB (regex | lsystem) [save]")
+        print(f"Received: {sys.argv}")
+        exit(1)
+
+    if len(sys.argv) < 2:
+        usage()
+
+    file_glob = sys.argv[1]
+    save = "save" in sys.argv[2:]
+    regex_kind = "regex" in sys.argv[2:]
+    lsys_kind = "lsystem" in sys.argv[2:]
 
     for fname in sorted(glob(file_glob)):
-        print(f"Plotting {fname} with save={save}")
-        plot_outputs(fname, save=save)
+        print(f"Viewing {fname} with save={save}")
+        if regex_kind:
+            show_regex_outputs(fname, n_samples=10)
+        elif lsys_kind:
+            plot_lsys_outputs(fname, save=save)
+        else:
+            usage()
