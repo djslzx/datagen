@@ -7,7 +7,8 @@ from typing import *
 from pprint import pp
 import time
 import Levenshtein
-from einops import rearrange
+from einops import rearrange, reduce
+from sys import stderr
 
 from lang import Language, Tree, ParseError
 from lindenmayer import LSys
@@ -41,15 +42,21 @@ def next_gen(lang: Language, n: int, p_arkv: float, simplify: bool) -> Tuple[np.
     return popn, np.array(list(arkv), dtype=object)
 
 
+def pad_array(arr: np.ndarray, batch_size: int) -> np.ndarray:
+    if (r := len(arr) % batch_size) != 0:
+        return np.concatenate((arr, np.empty(batch_size - r, dtype=object)))
+    else:
+        return arr
+
+
 def semantic_score(lang: Language, cur_gen: np.ndarray, new_gen: np.ndarray,
-                   n_samples: int, n_neighbors: int, batch_size: int = 64) -> np.ndarray:
+                   n_samples: int, n_neighbors: int, batch_size: int = 7) -> np.ndarray:
     n_new = len(new_gen)
+    n_cur = len(cur_gen)
     # batch cur_/next_gen
     # 1. add padding
-    if (r := len(cur_gen) % batch_size) != 0:
-        cur_gen = np.concatenate((cur_gen, np.empty(batch_size - r, dtype=object)))
-    if (r := len(new_gen) % batch_size) != 0:
-        new_gen = np.concatenate((new_gen, np.empty(batch_size - r, dtype=object)))
+    cur_gen = pad_array(cur_gen, batch_size)
+    new_gen = pad_array(new_gen, batch_size)
     # 2. reshape
     cur_gen = rearrange(cur_gen, "(b x) -> b x", x=batch_size)
     new_gen = rearrange(new_gen, "(b x) -> b x", x=batch_size)
@@ -62,9 +69,13 @@ def semantic_score(lang: Language, cur_gen: np.ndarray, new_gen: np.ndarray,
                        for _ in range(n_samples)]
             features = lang.featurizer.apply(outputs)
             popn_features.append(features)
-        popn_features = rearrange(np.array(popn_features), "b x f -> (b x) f")
+        popn_features = np.concatenate(popn_features)
 
-    knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(cur_gen))).fit(popn_features)
+    if n_neighbors > n_cur:
+        print(f"WARNING: number of neighbors ({n_neighbors}) is greater than #individuals in current generation ({n_cur})."
+              f"Lowering n_neighbors to {n_cur}.", file=stderr)
+        n_neighbors = n_cur
+    knn = NearestNeighbors(n_neighbors=n_neighbors).fit(popn_features)
 
     with Timing("Scoring instances"):
         scores = []
@@ -73,10 +84,10 @@ def semantic_score(lang: Language, cur_gen: np.ndarray, new_gen: np.ndarray,
                        for t in batch if t is not None
                        for _ in range(n_samples)]
             features = lang.featurizer.apply(outputs)
-            distances, indices = knn.kneighbors(features)
-            distances = rearrange(distances, "(n k) 1 -> n k", k=n_samples)
-            scores.append(distances.sum(axis=1))
-        scores = rearrange(np.array(scores), "b d -> (b d)")
+            distances, _ = knn.kneighbors(features)
+            batch_scores = reduce(distances, "(b s) n -> b", 'mean', s=n_samples, n=n_neighbors)
+            scores.append(batch_scores)
+        scores = np.concatenate(scores)
 
     assert len(scores) == n_new
     return scores
@@ -169,13 +180,13 @@ def main(name: str, lang: Language, init_popns: List[List]):
         'lang': lang,
         'init_popn': init_popns,
         'simplify': [False],
-        'max_popn_size': [5],
-        'n_neighbors': [3],
+        'max_popn_size': [25],
+        'n_neighbors': [5],
         'arkv_growth_rate': [1],
         'iters': 10,
         'next_gen_ratio': 5,
         'ingen_novelty': False,
-        'n_samples': 2,
+        'n_samples': 4,
     })
     for i, params in enumerate(p):
         out_dir = f"{OUTDIR}/{t}-{name}-{i}"
@@ -204,5 +215,5 @@ if __name__ == '__main__':
     # main('intrasimpl', lang=lsys, init_popns=list(lsys_seeds.values()))
 
     reg = Regex()
-    reg_seeds = [reg.sample() for _ in range(3)]
+    reg_seeds = [reg.sample() for _ in range(10)]
     main('regex', lang=reg, init_popns=[reg_seeds])
