@@ -66,7 +66,7 @@ class Regex(Language):
     lower = list("abcdefghijklmnopqrstuvwxyz")
     digit = list("0123456789")
     alpha = upper + lower + digit
-    whitespace = list("\t\r\n ")
+    whitespace = list("\t ")
     dot = alpha + whitespace + list("~`!@#$%^&*()-_=+[{]}\\|;:'\",<.>/?")
     char_classes = {
         "dot": dot,

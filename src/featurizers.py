@@ -24,17 +24,18 @@ class TextClassifier(Featurizer):
     def __init__(self):
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/codebert-base")
         self.model = AutoModel.from_pretrained("microsoft/codebert-base")
-        self.random_projection = SparseRandomProjection()
+        self.random_projection = SparseRandomProjection(n_components=1024)
 
     def apply(self, batch: List[str]) -> np.ndarray:
         tokens = self.tokenizer(batch, padding="max_length", return_tensors="pt")
         embeddings = self.model(tokens["input_ids"])[0]  # [n, word_len_w_padding (512), 768]
-        embeddings = rearrange(embeddings, "b w c -> b (w c)")
-        return self.random_projection.fit_transform(embeddings.detach().numpy())
+        embeddings = rearrange(embeddings, "b w c -> b (w c)").detach().numpy()
+        m = self.random_projection.fit_transform(embeddings)
+        return m
 
     @property
     def n_features(self) -> int:
-        return 1188  # reduced using random projection from 512 * 768
+        return 1024  # reduced using random projection from 512 * 768
 
 
 class TextPredictor(Featurizer):

@@ -7,8 +7,9 @@ from typing import *
 from pprint import pp
 import time
 import Levenshtein
+from einops import rearrange
 
-from lang import Language, ParseError
+from lang import Language, Tree, ParseError
 from lindenmayer import LSys
 from regexpr import Regex
 from zoo import zoo
@@ -18,7 +19,7 @@ from util import Timing, ParamTester, try_mkdir
 OUTDIR = "../out/evo"
 
 
-def next_gen(lang: Language, n: int, p_arkv: float, simplify: bool) -> Tuple[np.ndarray, Set]:
+def next_gen(lang: Language, n: int, p_arkv: float, simplify: bool) -> Tuple[np.ndarray, np.ndarray]:
     popn = np.empty(n, dtype=object)
     arkv = set()
     n_simplified = 0
@@ -33,51 +34,51 @@ def next_gen(lang: Language, n: int, p_arkv: float, simplify: bool) -> Tuple[np.
                     break
                 except ParseError:  # retry
                     t = lang.sample()
-        s = lang.to_str(t)
-        popn[i] = s
+        popn[i] = t
         if np.random.random() < p_arkv:
-            arkv.add(s)
+            arkv.add(t)
     print(f"Simplified {n_simplified / n:.3e} tokens on avg")
-    return popn, arkv
+    return popn, np.array(list(arkv), dtype=object)
 
 
-def semantic_score(lang: Language, cur_gen: np.ndarray, new_gen: np.ndarray, n_samples: int, n_neighbors: int) -> np.ndarray:
-    n_features = lang.featurizer.n_features
+def semantic_score(lang: Language, cur_gen: np.ndarray, new_gen: np.ndarray,
+                   n_samples: int, n_neighbors: int, batch_size: int = 64) -> np.ndarray:
+    n_new = len(new_gen)
+    # batch cur_/next_gen
+    # 1. add padding
+    if (r := len(cur_gen) % batch_size) != 0:
+        cur_gen = np.concatenate((cur_gen, np.empty(batch_size - r, dtype=object)))
+    if (r := len(new_gen) % batch_size) != 0:
+        new_gen = np.concatenate((new_gen, np.empty(batch_size - r, dtype=object)))
+    # 2. reshape
+    cur_gen = rearrange(cur_gen, "(b x) -> b x", x=batch_size)
+    new_gen = rearrange(new_gen, "(b x) -> b x", x=batch_size)
 
-    # build knn data structure
-    eval_time = 0
     with Timing("Computing features"):
-        popn_features = np.empty((len(cur_gen), n_features * n_samples))
-        for i, s in enumerate(cur_gen):  # parallel
-            t = lang.parse(s)
-            for j in range(n_samples):
-                t_start = time.time()
-                bmp = lang.eval(t, env={})
-                eval_time += time.time() - t_start
-                # TODO: handle non-bitmaps too -- this should work for text outputs as well
-                popn_features[i, j * n_features: (j + 1) * n_features] = lang.featurizer.apply(bmp)
-    print(f"Spent {eval_time:.4e}s on evaluating current generation, "
-          f"{eval_time/(len(cur_gen) * n_samples)}s per individual")
+        popn_features = []
+        for batch in cur_gen:
+            outputs = [lang.eval(t, env={})
+                       for t in batch if t is not None
+                       for _ in range(n_samples)]
+            features = lang.featurizer.apply(outputs)
+            popn_features.append(features)
+        popn_features = rearrange(np.array(popn_features), "b x f -> (b x) f")
 
     knn = NearestNeighbors(n_neighbors=min(n_neighbors, len(cur_gen))).fit(popn_features)
 
-    # compute scores of next generation
-    eval_time = 0
     with Timing("Scoring instances"):
-        scores = np.empty(len(new_gen))
-        for i, s in enumerate(new_gen):  # parallel
-            features = np.empty((1, n_features * n_samples))
-            t = lang.parse(s)
-            for j in range(n_samples):
-                t_start = time.time()
-                bmp = lang.eval(t, env={})
-                eval_time += time.time() - t_start
-                features[0, j * n_features: (j + 1) * n_features] = lang.featurizer.apply(bmp)
+        scores = []
+        for batch in new_gen:
+            outputs = [lang.eval(t, env={})
+                       for t in batch if t is not None
+                       for _ in range(n_samples)]
+            features = lang.featurizer.apply(outputs)
             distances, indices = knn.kneighbors(features)
-            scores[i] = distances.sum(axis=1).item() ** 2 / len(s)  # prioritize shorter individuals
-    print(f"Spent {eval_time:.4e}s on evaluating next generation, "
-          f"{eval_time / (len(cur_gen) * n_samples)}s per individual")
+            distances = rearrange(distances, "(n k) 1 -> n k", k=n_samples)
+            scores.append(distances.sum(axis=1))
+        scores = rearrange(np.array(scores), "b d -> (b d)")
 
+    assert len(scores) == n_new
     return scores
 
 
@@ -91,7 +92,7 @@ def syntactic_semantic_score(popn: np.ndarray, semantic_scores: np.ndarray) -> n
 
 
 def novelty_search(lang: Language,
-                   init_popn: List[str],
+                   init_popn: List[Tree],
                    max_popn_size: int,
                    iters: int,
                    n_samples: int,
@@ -100,11 +101,11 @@ def novelty_search(lang: Language,
                    next_gen_ratio: int,
                    simplify: bool,       # use egg to simplify expressions between generations
                    ingen_novelty: bool,  # measure novelty wrt current gen, not archive/past gens
-                   out_dir: str) -> Set[Iterable[str]]:  # store outputs here
+                   out_dir: str) -> np.ndarray:  # store outputs here
     log_params = locals()  # Pull local variables so that we can log the args that were passed to this function
     p_arkv = arkv_growth_rate / max_popn_size
 
-    arkv = set()
+    arkv = None
     popn = np.array(init_popn, dtype=object)
     n_next_gen = max_popn_size * next_gen_ratio
 
@@ -114,27 +115,23 @@ def novelty_search(lang: Language,
 
         # generate next gen
         with Timing("Fitting metagrammar"):
-            corpus = [lang.parse(x) for x in popn]
-            lang.fit(corpus, alpha=1)
+            lang.fit(popn, alpha=1)
 
         with Timing("Generating next gen"):
-            new_gen, new_arkv = next_gen(lang=lang,
-                                         n=n_next_gen,
-                                         p_arkv=p_arkv,
-                                         simplify=simplify)
-            arkv |= new_arkv
+            new_gen, new_arkv = next_gen(lang=lang, n=n_next_gen, p_arkv=p_arkv, simplify=simplify)
+            if arkv is not None:
+                arkv = np.concatenate((arkv, new_arkv), axis=0)
+            else:
+                arkv = new_arkv
 
         # compute popn features, build knn data structure, and score new_gen
         with Timing("Scoring population"):
             if ingen_novelty:
-                scores = semantic_score(lang=lang,
-                                        cur_gen=new_gen,
-                                        new_gen=new_gen,
-                                        n_neighbors=n_neighbors,
-                                        n_samples=n_samples)
+                scores = semantic_score(lang=lang, cur_gen=new_gen, new_gen=new_gen,
+                                        n_neighbors=n_neighbors, n_samples=n_samples)
             else:
                 scores = semantic_score(lang=lang,
-                                        cur_gen=np.concatenate((np.array(popn), np.array(list(arkv), dtype=object)), axis=0),
+                                        cur_gen=np.concatenate((arkv, popn), axis=0),
                                         new_gen=new_gen,
                                         n_neighbors=n_neighbors,
                                         n_samples=n_samples)
@@ -158,13 +155,13 @@ def novelty_search(lang: Language,
         # save gen
         with open(f"{out_dir}/gen-{iter}.txt", "w") as f:
             f.write(f"# {log_params}\n")
-            for agent, label in zip(new_gen, labels):
-                f.write("".join(agent) + f" : {label}\n")
+            for t, label in zip(new_gen, labels):
+                f.write("".join(lang.to_str(t)) + f" : {label}\n")
 
         # save arkv
         with open(f"{out_dir}/arkv.txt", "a") as f:
-            for agent in new_arkv:
-                f.write(''.join(agent) + "\n")
+            for t in new_arkv:
+                f.write(''.join(lang.to_str(t)) + "\n")
 
     return arkv
 
@@ -175,13 +172,13 @@ def main(name: str, lang: Language, init_popns: List[List]):
         'lang': lang,
         'init_popn': init_popns,
         'simplify': [False],
-        'max_popn_size': [25],
-        'n_neighbors': [5],
+        'max_popn_size': [5],
+        'n_neighbors': [3],
         'arkv_growth_rate': [1],
-        'iters': 1,
+        'iters': 10,
         'next_gen_ratio': 5,
         'ingen_novelty': False,
-        'n_samples': 3,
+        'n_samples': 2,
     })
     for i, params in enumerate(p):
         out_dir = f"{OUTDIR}/{t}-{name}-{i}"
@@ -196,19 +193,19 @@ def main(name: str, lang: Language, init_popns: List[List]):
 
 
 if __name__ == '__main__':
-    lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
-    lsys_seeds = {
-        "random": [lsys.to_str(lsys.sample()) for _ in range(len(zoo))],  # lsys starts out as uniform
-        "zoo": [x.to_str() for x in zoo],
-        "simple": [
-            "F;F~F",
-            "F;F~[+F][-F]F,F~F-F",
-            "F;F~FF",
-            "F+F;F~F[-F],F~F[+F]",
-        ],
-    }
+    # lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    # lsys_seeds = {
+    #     "random": [lsys.sample() for _ in range(len(zoo))],  # lsys starts out as uniform
+    #     "zoo": [lsys.parse(x.to_str()) for x in zoo],
+    #     "simple": [
+    #         "F;F~F",
+    #         "F;F~[+F][-F]F,F~F-F",
+    #         "F;F~FF",
+    #         "F+F;F~F[-F],F~F[+F]",
+    #     ],
+    # }
     # main('intrasimpl', lang=lsys, init_popns=list(lsys_seeds.values()))
 
     reg = Regex()
-    reg_seeds = [reg.to_str(reg.sample()) for _ in range(10)]
+    reg_seeds = [reg.sample() for _ in range(3)]
     main('regex', lang=reg, init_popns=[reg_seeds])
