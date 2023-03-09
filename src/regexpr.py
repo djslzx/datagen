@@ -198,4 +198,4 @@ if __name__ == "__main__":
     print("Sampling...")
     for _ in range(10):
         p = r.sample()
-        print(p, r.to_str(p))
+        print(r.to_str(p), p)

@@ -12,8 +12,8 @@ import util
 classifier = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
 
 
-def plot_outputs(filename: str, batch_size=36, len_cap=10_000, save=True):
-    lsys = LSys(theta=45, step_length=3, render_depth=2, n_rows=128, n_cols=128)
+def plot_outputs(filename: str, batch_size=36, len_cap=1000, save=True):
+    lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
     with open(filename, "r") as f:
         imgs = []
         labels = []
