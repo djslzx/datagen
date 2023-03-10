@@ -14,9 +14,9 @@ import time
 import util
 from lang import Language, Tree, ParseError
 from lindenmayer import LSys
-from grammar import Grammar, LearnedGrammar, ConvFeatureExtractor
-from zoo import zoo
-from featurizers import ResnetFeaturizer, Featurizer
+from grammar import LearnedGrammar, ConvFeatureExtractor
+from zoo import zoo_strs
+from featurizers import ResnetFeaturizer
 
 
 class LangDataset(Tdata.Dataset):
@@ -35,34 +35,36 @@ class LangDataset(Tdata.Dataset):
                     if ":" in line:  # split out scores
                         line = line.split(" : ")[0]
                     try:
-                        t = lang.parse(line)
-                        data.append(t)
+                        lang.parse(line)  # test that line is parseable
+                        data.append(line)
                     except (lark.UnexpectedCharacters,
                             lark.UnexpectedToken,
                             ParseError):
                         pass
         return LangDataset(data, lang)
 
-    def __init__(self, data: List[Tree], lang: Language):
+    def __init__(self, data: List[str], lang: Language):
         super(LangDataset).__init__()
         self.data = data
         self.lang = lang
 
     def __getitem__(self, item):
         # TODO: allow a program to generate multiple outputs (probabilistic programs)
-        t = self.data[item]
+        s = self.data[item]
+        t = self.lang.parse(s)
         y = self.lang.eval(t, env={})
-        return t, y
+        return s, y
 
     def __len__(self):
         return len(self.data)
 
 
 def lg_kwargs(lang: Language):
-    def parse(t: Tree) -> tuple:
-        return t.to_tuple()
-    fe = ConvFeatureExtractor(n_features=1000,  # FIXME: use n_parameters of featurizer
-                              n_color_channels=1,
+    def parse(s: str) -> tuple:
+        return lang.parse(s).to_tuple()
+
+    fe = ConvFeatureExtractor(n_features=lang.featurizer.n_features,
+                              n_color_channels=3,
                               n_conv_channels=12,
                               bitmap_n_rows=128,
                               bitmap_n_cols=128)
@@ -75,20 +77,18 @@ def lg_kwargs(lang: Language):
     }
 
 
-def train_learner(lang: Language, train_filenames: List[str], epochs: int):
+def train_model(lang: Language, train_filenames: List[str], epochs: int):
     lg = LearnedGrammar(**lg_kwargs(lang))
+
     train_dataset = LangDataset.from_files(train_filenames, lang)
     train_loader = Tdata.DataLoader(train_dataset, shuffle=True)
-    val_dataset = LangDataset([sys.to_str() for sys in zoo], lang)
+
+    val_dataset = LangDataset(zoo_strs, lang)
     val_loader = Tdata.DataLoader(val_dataset)
+
     trainer = pl.Trainer(max_epochs=epochs, auto_lr_find=False)
     trainer.tune(model=lg, train_dataloaders=train_loader)
     trainer.fit(model=lg, train_dataloaders=train_loader, val_dataloaders=val_loader)
-
-    print("Untrained grammar")
-    print(lg.original_grammar)
-    print("Trained grammar")
-    print(lg.grammar)
 
 
 def load_learned_grammar(lang: Language, checkpt_path: str) -> LearnedGrammar:
@@ -183,13 +183,13 @@ def run_models(named_models: Dict[str, LearnedGrammar], lang: Language, dataset:
         plt.savefig(f"{save_dir}/plot-{i}.png", bbox_inches='tight', dpi=300)
 
 
-if __name__ == "__main__":
+def run_models_on_datasets():
     prefix = "/home/djl328/prob-repl"
     paths = {
-        "ns":         f"{prefix}/models/291573_ns/epoch=43-step=3005904.ckpt",
-        "ns_egg":     f"{prefix}/models/291507_ns_egg/epoch=43-step=2999568.ckpt",
+        "ns": f"{prefix}/models/291573_ns/epoch=43-step=3005904.ckpt",
+        "ns_egg": f"{prefix}/models/291507_ns_egg/epoch=43-step=2999568.ckpt",
         "ns_egg_nov": f"{prefix}/models/294291_ns_egg_nov/epoch=49-step=2871100.ckpt",
-        "random":     f"{prefix}/models/294289_rand/epoch=41-step=4200000.ckpt",
+        "random": f"{prefix}/models/294289_rand/epoch=41-step=4200000.ckpt",
         "random_egg": f"{prefix}/models/294290_rand_egg/epoch=47-step=4239744.ckpt",
     }
     models = {}
@@ -213,5 +213,9 @@ if __name__ == "__main__":
     save_dir = f"../out/plots/{t}-sample"
     util.try_mkdir(save_dir)
     lang = LSys(45, 3, 3, 128, 128)
-    run_models(models, data, k=5, n_tries=1000, n_renders_per_try=2, save_dir=save_dir)
+    run_models(models, lang, data, k=5, n_tries=1000, n_renders_per_try=2, save_dir=save_dir)
 
+
+if __name__ == "__main__":
+    lsys = LSys(45, 3, 3, 128, 128)
+    train_model(lsys, train_filenames=["../datasets/random/random_100.txt"], epochs=2)

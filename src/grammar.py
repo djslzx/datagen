@@ -382,7 +382,7 @@ class LearnedGrammar(pl.LightningModule):
         given training specs derived from those examples
         """
         # extract features, then project onto grammar
-        (x,), y = batch
+        (x,), y = batch  # x: List[str], y: List[output]
         features = self.feature_extractor.extract(x, y).float()
         projected_features = self.f_theta(features)
         self.grammar.from_tensor_(projected_features)
@@ -478,8 +478,6 @@ class ConvFeatureExtractor(FeatureExtractor):
         return self._n_features
 
     def extract(self, x: List, y: List[Any]) -> T.Tensor:
-        outputs = T.stack([T.from_numpy(util.stack_repeat(img if isinstance(img, np.ndarray) else img.numpy(),
-                                                          self.n_color_channels)).float()
-                           for img in y])
+        outputs = T.stack([img.float() for img in y])
         outputs = self.conv(outputs)
         return outputs.squeeze().detach()

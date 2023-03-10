@@ -7,10 +7,7 @@ from sentence_transformers import SentenceTransformer
 from sys import stderr
 from scipy.spatial import distance as dist
 from einops import rearrange
-from sklearn.random_projection import johnson_lindenstrauss_min_dim, SparseRandomProjection
 import Levenshtein
-
-import util
 
 
 class Featurizer:
@@ -28,8 +25,9 @@ class TextClassifier(Featurizer):
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def apply(self, batch: List[str]) -> np.ndarray:
-        embeddings = self.model.encode(batch)  # [batch, seq, feat]
-        return embeddings
+        v = self.model.encode(batch)  # [batch, seq, feat]
+        assert v.shape[-1] == self.n_features
+        return v
 
     @property
     def n_features(self) -> int:
@@ -167,10 +165,10 @@ if __name__ == "__main__":
         "2023/03/08",
         "1970/01/01",
     ]
-    x = C.apply(corpus)
+    embeddings = C.apply(corpus)
     with open("../out/embedding_dist.txt", "w") as f_embed, open("../out/leven_dist.txt", "w") as f_leven:
-        for a, u in zip(corpus, x):
-            embed_sort = sorted([(dist.minkowski(u, v), b) for b, v in zip(corpus, x)])
+        for a, u in zip(corpus, embeddings):
+            embed_sort = sorted([(dist.minkowski(u, v), b) for b, v in zip(corpus, embeddings)])
             leven_sort = sorted([(Levenshtein.distance(a, b), b) for b in corpus])
 
             f_embed.write(f"{a}:\n")
