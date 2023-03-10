@@ -6,6 +6,7 @@ import lightning as pl
 import torch.utils.data as Tdata
 from typing import *
 import numpy as np
+from scipy.spatial import distance as dist
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
@@ -108,10 +109,10 @@ def run_model(name: str, lang: Language, v_in: np.ndarray, featurizer: ResnetFea
         for _ in range(n_renders_per_try):
             img = lang.eval(t, env={})
             v = featurizer.apply(img)
-            dist = np.linalg.norm(v_in - v, ord=2)
-            if dist < min_dist:
+            d = dist.minkowski(v_in, v)
+            if d < min_dist:
                 min_img = img
-                min_dist = dist
+                min_dist = d
         return min_dist, min_img
 
     # track `k` best outcomes of `n_tries` attempts
