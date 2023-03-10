@@ -10,6 +10,7 @@ from sys import stderr
 from eggy import simplify_lsystem
 from lang import Language, Tree, Grammar, ParseError
 from featurizers import ResnetFeaturizer
+import util
 
 
 class LSystem:
@@ -84,7 +85,7 @@ class LSystem:
                 stack.append((r, c, heading))
             elif char == ']':
                 r, c, heading = stack.pop()
-        return canvas
+        return util.stack_repeat(canvas, 3)
 
 
 class D0LSystem(LSystem):

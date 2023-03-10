@@ -130,6 +130,7 @@ def plot(imgs: List[np.array], shape: Tuple[int, int], labels: Optional[List[str
 
 
 def stack_repeat(array: np.ndarray, k) -> np.ndarray:
+    """Stacks `k` copies of `array`"""
     return np.repeat(array[None, ...], k, axis=0)
 
 

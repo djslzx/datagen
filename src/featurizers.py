@@ -73,9 +73,9 @@ class ResnetFeaturizer(Featurizer):
     def n_features(self) -> int:
         return 2048 if self.disable_last_layer else 1000
 
-    def apply(self, batch: np.ndarray) -> np.ndarray:
-        # TODO: make this batched
-        assert len(batch.shape) in [2, 3], f"Got imgs with shape {batch.shape}"
+    def apply(self, batch: List[np.ndarray]) -> np.ndarray:
+        batch: np.ndarray = rearrange(batch, "b c w h -> b c w h")  # make tensor
+        assert len(batch.shape) == 4, f"Expected shape [b, c, w, h] but got {batch.shape}"
         assert isinstance(batch, np.ndarray), f"Expected ndarray, but got {type(batch)}"
 
         # resnet only plays nice with uint8 matrices
@@ -83,34 +83,8 @@ class ResnetFeaturizer(Featurizer):
             print(f"WARNING: casting image of type {batch.dtype} to uint8", file=stderr)
             batch = batch.astype(np.uint8)
 
-        # handle alpha channels, grayscale images -> rgb
-        if len(batch.shape) == 2:  # images with no color channel
-            batch = util.stack_repeat(batch, 3)
-        elif batch.shape[0] != 3:  # remove alpha channel -> grayscale w/ 3 channels (rgb)
-            batch = util.stack_repeat(batch[0], 3)
-
         # run resnet
-        batch = self.preprocess(T.from_numpy(batch)).unsqueeze(0)
-        features = self.model(batch).squeeze()
-        if self.softmax_outputs:
-            features = features.softmax(0)
-        return features.detach().numpy()
-
-    def apply_batched(self, imgs: np.ndarray) -> np.ndarray:
-        assert isinstance(imgs, np.ndarray), f"Expected ndarray, but got {type(imgs)}"
-        assert len(imgs.shape) in [3, 4], f"Got imgs with shape {imgs.shape}"
-
-        if imgs.dtype != np.uint8:
-            print(f"WARNING: casting image of type {imgs.dtype} to uint8", file=stderr)
-            imgs = imgs.astype(np.uint8)
-
-        if len(imgs.shape) == 3:  # images with no color channel
-            imgs = np.repeat(imgs[:, None, ...], repeats=3, axis=1)
-        elif imgs.shape[0] != 3:  # remove alpha channel
-            imgs = imgs[:, 0, ...]  # select first channel in each image
-            imgs = np.repeat(imgs[:, None, ...], repeats=3, axis=1)  # repeat first channel 3x
-
-        batch = self.preprocess(T.from_numpy(imgs))
+        batch = self.preprocess(T.from_numpy(batch))
         features = self.model(batch).squeeze()
         if self.softmax_outputs:
             features = features.softmax(0)
