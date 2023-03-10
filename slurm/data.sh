@@ -1,5 +1,6 @@
 #!/bin/bash
 eval "$(conda shell.bash hook)"
 conda activate tenv
-cd /home/djl328/prob-repl/src/
-make evo
+prefix="/home/djl328/prob-repl"
+cd $prefix/src
+python3 -u evo.py
