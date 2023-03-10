@@ -228,3 +228,5 @@ _zoo: List[Tuple[S0LSystem, int]] = [
 zoo = [S0LSystem.from_sentence(["F" if char in ["X"] else char
                                 for char in sys.to_sentence()])
        for sys, _ in _zoo]
+
+zoo_strs = [sys.to_str() for sys in zoo]
