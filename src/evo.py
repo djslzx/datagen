@@ -20,21 +20,24 @@ from util import Timing, ParamTester, try_mkdir
 OUTDIR = "../out/evo"
 
 
-def next_gen(lang: Language, n: int, p_arkv: float, simplify: bool) -> Tuple[np.ndarray, np.ndarray]:
+def next_gen(lang: Language, n: int, p_arkv: float, len_cap: int, simplify: bool) -> Tuple[np.ndarray, np.ndarray]:
     popn = np.empty(n, dtype=object)
     arkv = set()
     n_simplified = 0
     for i in range(n):  # parallel
-        t = lang.sample()
-        if simplify:
-            while True:  # retry until we get non-nil
-                try:
-                    n_old = len(t)
-                    t = lang.simplify(t)
-                    n_simplified += n_old - len(t)
+        while True:
+            t = lang.sample()
+            if len(t) <= len_cap:
+                if not simplify:
                     break
-                except ParseError:  # retry
-                    t = lang.sample()
+                else:
+                    try:
+                        n_old = len(t)
+                        t = lang.simplify(t)
+                        n_simplified += n_old - len(t)
+                        break
+                    except ParseError:  # retry
+                        pass
         popn[i] = t
         if np.random.random() < p_arkv:
             arkv.add(t)
@@ -110,6 +113,7 @@ def novelty_search(lang: Language,
                    arkv_growth_rate: float,
                    n_neighbors: int,
                    next_gen_ratio: int,
+                   len_cap: int,         # limit programs from getting longer than this cap
                    simplify: bool,       # use egg to simplify expressions between generations
                    ingen_novelty: bool,  # measure novelty wrt current gen, not archive/past gens
                    out_dir: str) -> np.ndarray:  # store outputs here
@@ -129,7 +133,9 @@ def novelty_search(lang: Language,
             lang.fit(popn, alpha=1)
 
         with Timing("Generating next gen"):
-            new_gen, new_arkv = next_gen(lang=lang, n=n_next_gen, p_arkv=p_arkv, simplify=simplify)
+            new_gen, new_arkv = next_gen(lang=lang, n=n_next_gen, p_arkv=p_arkv, len_cap=len_cap, simplify=simplify)
+            print("Next generation:")
+            pp([lang.to_str(x) for x in new_gen])
             if arkv is not None:
                 arkv = np.concatenate((arkv, new_arkv), axis=0)
             else:
@@ -180,13 +186,14 @@ def main(name: str, lang: Language, init_popns: List[List]):
         'lang': lang,
         'init_popn': init_popns,
         'simplify': [False],
-        'max_popn_size': [25],
+        'max_popn_size': [10],
         'n_neighbors': [5],
-        'arkv_growth_rate': [1],
-        'iters': 10,
+        'arkv_growth_rate': [2],
+        'iters': 3,
         'next_gen_ratio': 5,
         'ingen_novelty': False,
-        'n_samples': 4,
+        'n_samples': 5,
+        'len_cap': 100,
     })
     for i, params in enumerate(p):
         out_dir = f"{OUTDIR}/{t}-{name}-{i}"
@@ -205,14 +212,14 @@ if __name__ == '__main__':
     # lsys_seeds = {
     #     "random": [lsys.sample() for _ in range(len(zoo))],  # lsys starts out as uniform
     #     "zoo": [lsys.parse(x.to_str()) for x in zoo],
-    #     "simple": [
+    #     "simple": [lsys.parse(x) for x in [
     #         "F;F~F",
     #         "F;F~[+F][-F]F,F~F-F",
     #         "F;F~FF",
     #         "F+F;F~F[-F],F~F[+F]",
-    #     ],
+    #     ]],
     # }
-    # main('intrasimpl', lang=lsys, init_popns=list(lsys_seeds.values()))
+    # main('lsys', lang=lsys, init_popns=list(lsys_seeds.values()))
 
     reg = Regex()
     reg_seeds = [reg.sample() for _ in range(10)]
