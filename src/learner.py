@@ -17,7 +17,6 @@ from lang import Language, Tree, ParseError
 from lindenmayer import LSys
 from grammar import LearnedGrammar, ConvFeatureExtractor
 from zoo import zoo_strs
-from featurizers import ResnetFeaturizer
 
 
 class LangDataset(Tdata.Dataset):
@@ -100,20 +99,19 @@ def load_learned_grammar(lang: Language, checkpt_path: str) -> LearnedGrammar:
     return lg
 
 
-def run_model(name: str, lang: Language, v_in: np.ndarray, featurizer: ResnetFeaturizer,
-              k: int, n_tries: int, n_renders_per_try: int):
+def run_model(name: str, lang: Language, v_in: np.ndarray, k: int, n_tries: int, n_renders_per_try: int):
     def best_render(t: Tree) -> Tuple[float, np.ndarray]:
         """find best render in `n_renders_pre_try` tries"""
         min_dist = np.inf
-        min_img = None
+        min_output = None
         for _ in range(n_renders_per_try):
-            img = lang.eval(t, env={})
-            v = featurizer.apply(img)
+            output = lang.eval(t, env={})
+            v = lang.featurizer.apply(output)
             d = dist.minkowski(v_in, v)
             if d < min_dist:
-                min_img = img
+                min_output = output
                 min_dist = d
-        return min_dist, min_img
+        return min_dist, min_output
 
     # track `k` best outcomes of `n_tries` attempts
     dists = np.repeat(np.inf, k)
@@ -136,11 +134,10 @@ def run_model(name: str, lang: Language, v_in: np.ndarray, featurizer: ResnetFea
     return list(zip(dists, imgs))
 
 
-def run_models(named_models: Dict[str, LearnedGrammar], lang: Language, dataset: List[str], k: int,
+def run_models(named_models: Dict[str, LearnedGrammar], lsys: LSys, dataset: List[str], k: int,
                n_tries: int, n_renders_per_try: int, save_dir: str):
     sns.set_theme(style="white")
     n = len(named_models)
-    featurizer = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
 
     for i, datum in enumerate(dataset):
         print(f"Sampling from models {list(named_models.keys())} for L-system {i}:{datum}...")
@@ -149,15 +146,14 @@ def run_models(named_models: Dict[str, LearnedGrammar], lang: Language, dataset:
         plt.suptitle(f"Target: {datum}")
 
         # plot image once
-        lsys_in = lang.parse(datum)
-        img_in = lang.eval(lsys_in, env={})
-        v_in = featurizer.apply(img_in)
+        lsys_in = lsys.parse(datum)
+        img_in = lsys.eval(lsys_in, env={})
+        v_in = lsys.featurizer.apply(img_in)
 
         for col, (name, model) in enumerate(named_models.items()):
             guesses = run_model(
                 name=name,
-                lang=lang,
-                featurizer=featurizer,
+                lang=lsys,
                 v_in=v_in,
                 k=k,
                 n_tries=n_tries,
@@ -172,10 +168,10 @@ def run_models(named_models: Dict[str, LearnedGrammar], lang: Language, dataset:
             ax.get_yaxis().set_visible(False)
 
             # plot guesses
-            for row, (dist, img) in enumerate(guesses, 1):
+            for row, (d, img) in enumerate(guesses, 1):
                 ax = axes[row, col]
                 ax.imshow(img)
-                ax.set_title(f"{dist:.6e}", pad=2, fontsize=5)
+                ax.set_title(f"{d:.6e}", pad=2, fontsize=5)
                 ax.get_xaxis().set_visible(False)
                 ax.get_yaxis().set_visible(False)
 
@@ -194,9 +190,10 @@ def run_models_on_datasets():
         "random_egg": f"{prefix}/models/294290_rand_egg/epoch=47-step=4239744.ckpt",
     }
     models = {}
+    lsys = LSys(45, 3, 3, 128, 128)
     for name, path in paths.items():
         print(f"Loading model {name} from {path}...")
-        models[name] = load_learned_grammar(path)
+        models[name] = load_learned_grammar(lang=lsys, checkpt_path=path)
 
     print("Loaded models: " + ", ".join(models.keys()))
     data = [
