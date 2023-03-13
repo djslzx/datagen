@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import time
 import sys
 from os import mkdir
+from einops import reduce
 
 
 class ParamTester:
@@ -32,6 +33,35 @@ class ParamTester:
                 k: v
                 for k, v in zip(reversed(self.params.keys()), combo)
             }
+
+
+def batch(iterable: Iterable, batch_size: int, pad_with=None) -> Iterable[List]:
+    assert batch_size > 0
+    b = []
+    for x in iterable:
+        if len(b) == batch_size:
+            yield b
+            b = [x]
+        else:
+            b.append(x)
+    if b:  # leftover elts
+        b += [pad_with] * (batch_size - len(b))
+        yield b
+
+
+def test_batch():
+    cases = [
+        ([0, 1, 2, 3, 4, 5], 1, 0), [[0], [1], [2], [3], [4], [5]],
+        ([0, 1, 2, 3, 4, 5], 2, 0), [[0, 1], [2, 3], [4, 5]],
+        ([0, 1, 2, 3, 4, 5], 3, 0), [[0, 1, 2], [3, 4, 5]],
+        ([0, 1, 2, 3, 4, 5], 4, 0), [[0, 1, 2, 3], [4, 5, 0, 0]],
+        ([0, 1, 2, 3, 4, 5], 5, 0), [[0, 1, 2, 3, 4], [5, 0, 0, 0, 0]],
+        ([0, 1, 2, 3, 4, 5], 6, 0), [[0, 1, 2, 3, 4, 5]],
+        ([0, 1, 2, 3, 4, 5], 7, 0), [[0, 1, 2, 3, 4, 5, 0]],
+    ]
+    for args, ans in zip(cases[::2], cases[1::2]):
+        out = list(batch(*args))
+        assert out == ans, f"Expected {ans} but got {out}"
 
 
 def test_param_tester():
@@ -115,7 +145,7 @@ def plot(imgs: List[np.array], shape: Tuple[int, int], labels: Optional[List[str
         axes: List[plt.Axes] = ax.flat
         for i, img in enumerate(imgs):
             axis = axes[i]
-            axis.imshow(img)
+            axis.imshow(img[0])  # remove color dim
             if labels is not None:
                 axis.set_title(labels[i], pad=3, fontsize=6)
 
