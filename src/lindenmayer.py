@@ -7,7 +7,7 @@ import skimage.draw
 import itertools as it
 from sys import stderr
 
-from eggy import simplify_lsystem
+from eggy import simplify
 from lang import Language, Tree, Grammar, ParseError
 from featurizers import ResnetFeaturizer
 import util
