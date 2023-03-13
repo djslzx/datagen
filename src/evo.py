@@ -53,7 +53,7 @@ def pad_array(arr: np.ndarray, batch_size: int) -> np.ndarray:
 
 
 def semantic_score(lang: Language, cur_gen: np.ndarray, new_gen: np.ndarray,
-                   n_samples: int, n_neighbors: int, batch_size: int = 7) -> np.ndarray:
+                   n_samples: int, n_neighbors: int, batch_size: int = 64) -> np.ndarray:
     n_new = len(new_gen)
     n_cur = len(cur_gen)
     # batch cur_/next_gen
@@ -116,6 +116,8 @@ def novelty_search(lang: Language,
                    len_cap: int,         # limit programs from getting longer than this cap
                    simplify: bool,       # use egg to simplify expressions between generations
                    ingen_novelty: bool,  # measure novelty wrt current gen, not archive/past gens
+                   batch_size: int,
+                   verbose: bool,
                    out_dir: str) -> np.ndarray:  # store outputs here
     log_params = locals()  # Pull local variables so that we can log the args that were passed to this function
     p_arkv = arkv_growth_rate / max_popn_size
@@ -134,8 +136,9 @@ def novelty_search(lang: Language,
 
         with Timing("Generating next gen"):
             new_gen, new_arkv = next_gen(lang=lang, n=n_next_gen, p_arkv=p_arkv, len_cap=len_cap, simplify=simplify)
-            print("Next generation:")
-            pp([lang.to_str(x) for x in new_gen])
+            if verbose:
+                print("Next generation:")
+                pp([lang.to_str(x) for x in new_gen])
             if arkv is not None:
                 arkv = np.concatenate((arkv, new_arkv), axis=0)
             else:
@@ -145,10 +148,10 @@ def novelty_search(lang: Language,
         with Timing("Scoring population"):
             if ingen_novelty:
                 scores = semantic_score(lang=lang, cur_gen=new_gen, new_gen=new_gen,
-                                        n_neighbors=n_neighbors, n_samples=n_samples)
+                                        n_neighbors=n_neighbors, n_samples=n_samples, batch_size=batch_size)
             else:
                 scores = semantic_score(lang=lang, cur_gen=np.concatenate((arkv, popn), axis=0), new_gen=new_gen,
-                                        n_neighbors=n_neighbors, n_samples=n_samples)
+                                        n_neighbors=n_neighbors, n_samples=n_samples, batch_size=batch_size)
 
         # cull popn
         with Timing("Culling popn"):
@@ -180,20 +183,22 @@ def novelty_search(lang: Language,
     return arkv
 
 
-def main(name: str, lang: Language, init_popns: List[List]):
+def main(name: str, lang: Language, init_popns: List[List], verbose: bool):
     t = int(time.time())
     p = ParamTester({
         'lang': lang,
         'init_popn': init_popns,
-        'simplify': [False],
-        'max_popn_size': [10],
-        'n_neighbors': [5],
-        'arkv_growth_rate': [2],
+        'simplify': False,
+        'max_popn_size': 1000,
+        'n_neighbors': 10,
+        'arkv_growth_rate': 2,
         'iters': 3,
         'next_gen_ratio': 5,
         'ingen_novelty': False,
         'n_samples': 5,
         'len_cap': 100,
+        'batch_size': 128,
+        'verbose': verbose,
     })
     for i, params in enumerate(p):
         out_dir = f"{OUTDIR}/{t}-{name}-{i}"
@@ -208,19 +213,19 @@ def main(name: str, lang: Language, init_popns: List[List]):
 
 
 if __name__ == '__main__':
-    # lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
-    # lsys_seeds = {
-    #     "random": [lsys.sample() for _ in range(len(zoo))],  # lsys starts out as uniform
-    #     "zoo": [lsys.parse(x.to_str()) for x in zoo],
-    #     "simple": [lsys.parse(x) for x in [
-    #         "F;F~F",
-    #         "F;F~[+F][-F]F,F~F-F",
-    #         "F;F~FF",
-    #         "F+F;F~F[-F],F~F[+F]",
-    #     ]],
-    # }
-    # main('lsys', lang=lsys, init_popns=list(lsys_seeds.values()))
-
-    reg = Regex()
-    reg_seeds = [reg.sample() for _ in range(10)]
-    main('regex', lang=reg, init_popns=[reg_seeds])
+    lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    lsys_seeds = {
+        "random": [lsys.sample() for _ in range(len(zoo))],  # lsys starts out as uniform
+        # "zoo": [lsys.parse(x.to_str()) for x in zoo],
+        # "simple": [lsys.parse(x) for x in [
+        #     "F;F~F",
+        #     "F;F~[+F][-F]F,F~F-F",
+        #     "F;F~FF",
+        #     "F+F;F~F[-F],F~F[+F]",
+        # ]],
+    }
+    main('lsys', lang=lsys, init_popns=list(lsys_seeds.values()), verbose=False)
+    #
+    # reg = Regex()
+    # reg_seeds = [reg.sample() for _ in range(10)]
+    # main('regex', lang=reg, init_popns=[reg_seeds], verbose=False)
