@@ -41,7 +41,7 @@ def plot_lsys_outputs(filename: str, batch_size=36, len_cap=1000, save=True):
             imgs.append(img)
 
             # check resnet classifier output
-            features = classifier.apply(img)
+            features = classifier.apply([img])  # todo: better batching
             top_class = classifier.top_k_classes(features, k=1)[0]
             labels.append(f"{score} ({top_class})")
         else:
