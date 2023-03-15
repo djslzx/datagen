@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import pickle
 from typing import *
 import numpy as np
 
@@ -175,6 +177,16 @@ class Regex(Language):
 
     def simplify(self, t: Tree) -> Tree:
         raise NotImplementedError
+
+
+def examples():
+    """
+    Returns a dictionary D with keys 'name' and 'data':
+    - D['name'] is the name of the concept
+    - D['data'] is a list of strings (ostensibly) drawn from a regular expression
+    """
+    obj = pickle.load(open("../datasets/csv/csv.p", "rb"))
+    return obj
 
 
 if __name__ == "__main__":

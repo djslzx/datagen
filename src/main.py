@@ -1,14 +1,12 @@
-import pdb
-import sys
 import numpy as np
-from typing import *
+from typing import List, Tuple, Dict, Set
 from matplotlib import pyplot as plt
 import seaborn as sns
 import pandas as pd
 import lark
+import pickle
 
 from lang import Language, ParseError
-from lindenmayer import LSys
 
 
 def summary_stats(arr: np.ndarray) -> str:
@@ -135,9 +133,15 @@ def plot():
     pluck_egg_examples(df, k=3)
 
 
+def read_pickle(filename: str):
+    with open(filename, "rb") as f:
+        return pickle.load(f)
+
+
 if __name__ == "__main__":
     # simplify_file("../datasets/ns/ns.txt", "../datasets/ns/ns-simpl3.txt")
     # simplify_file("../datasets/ns/ns.txt", "../datasets/ns/ns-filt3.txt", 0.001)
     # simplify_file("../datasets/random/random_100k.txt", "../datasets/random/random_100k_simpl3.txt")
-    plot()
-
+    # plot()
+    x = read_pickle("../datasets/csv/csv.p")
+    print(x)
