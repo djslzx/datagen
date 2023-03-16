@@ -241,8 +241,7 @@ class LSys(Language):
         rules: rule "," rules      -> rules
              | rule                -> rule
         rule: NT "~" symbols       -> arrow
-        NT: "F"
-          | "f"
+        NT: /[FfLRXYAB]/
         T: "+"
          | "-"
 
@@ -281,10 +280,17 @@ class LSys(Language):
 
     def eval(self, t: Tree, env: Dict[str, Any]) -> np.ndarray:
         s = self.to_str(t)
+
+        # fetch env variables if present, otherwise use object fields
+        theta = env["theta"] if "theta" in env else self.theta
+        render_depth = env["render_depth"] if "render_depth" in env else self.render_depth
+        step_length = env["step_length"] if "step_length" in env else self.step_length
+        n_rows = env["n_rows"] if "n_rows" in env else self.n_rows
+        n_cols = env["n_cols"] if "n_cols" in env else self.n_cols
+
         lsys = S0LSystem.from_str(s)
-        sample = lsys.nth_expansion(self.render_depth)
-        return LSystem.draw(sample, d=self.step_length, theta=self.theta,
-                            n_rows=self.n_rows, n_cols=self.n_cols)
+        sample = lsys.nth_expansion(render_depth)
+        return LSystem.draw(sample, d=step_length, theta=theta, n_rows=n_rows, n_cols=n_cols)
 
     @property
     def str_semantics(self) -> Dict:
