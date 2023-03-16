@@ -17,7 +17,7 @@ from lang import Language, Tree, ParseError
 from lindenmayer import LSys
 from regexpr import Regex
 from grammar import LearnedGrammar, ConvFeatureExtractor, SBertFeatureExtractor, FeatureExtractor
-from zoo import zoo_strs
+from examples import lsystem_book_F_examples
 
 
 class LangDataset(Tdata.Dataset):
@@ -31,17 +31,18 @@ class LangDataset(Tdata.Dataset):
         for filename in filenames:
             with open(filename, "r") as f:
                 for line in f.readlines():
+                    line = line.strip()
                     if line.startswith("#"):  # skip comments
                         continue
                     if ":" in line:  # split out scores
                         line = line.split(" : ")[0]
                     try:
-                        lang.parse(line)  # test that line is parseable
+                        lang.parse(line.strip())  # test that line is parseable
                         data.append(line)
                     except (lark.UnexpectedCharacters,
                             lark.UnexpectedToken,
                             ParseError):
-                        pass
+                        print(f"Failed to parse {line}")
         return LangDataset(data, lang)
 
     def __init__(self, data: List[str], lang: Language):
@@ -241,7 +242,7 @@ def train_regex():
     rgx = Regex()
     rgx_fe = SBertFeatureExtractor()
     rgx_lg = LearnedGrammar(**grammar_kwargs(rgx, rgx_fe))
-    train_model(rgx, rgx_lg, train_filenames=["../datasets/regex/ns/ns100x100.txt"], epochs=2)
+    train_model(rgx, rgx_lg, train_filenames=["../datasets/regex/random/random_30k.txt"], epochs=2)
 
 
 if __name__ == "__main__":

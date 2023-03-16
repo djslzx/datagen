@@ -13,7 +13,6 @@ from sys import stderr
 from lang import Language, Tree, ParseError
 from lindenmayer import LSys
 from regexpr import Regex
-from zoo import zoo
 from util import Timing, ParamTester, try_mkdir
 
 # Hyper-parameters
