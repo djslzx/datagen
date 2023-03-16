@@ -7,6 +7,7 @@ import lightning as pl
 import numpy as np
 from typing import *
 import copy
+from sentence_transformers import SentenceTransformer
 
 from max_heap import MaxHeap
 import util
@@ -439,6 +440,18 @@ class DummyFeatureExtractor(FeatureExtractor):
 
     def extract(self, x: List, y: List[Any]) -> T.Tensor:
         return T.ones(len(x))
+
+
+class SBertFeatureExtractor(FeatureExtractor):
+    def __init__(self):
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+
+    @property
+    def n_features(self) -> int:
+        return 384
+
+    def extract(self, x: List, y: List[Any]) -> T.Tensor:
+        return self.model.encode(y, convert_to_tensor=True)[0]
 
 
 class ConvFeatureExtractor(FeatureExtractor):
