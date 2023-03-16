@@ -37,7 +37,8 @@ class Regex(Language):
          | "(" e ")"     -> bracket
          | e "|" e       -> or
          | e e           -> seq
-         | "\."           -> dot
+         | c             -> class
+        c: "\."          -> dot
          | "\w"          -> alpha
          | "\d"          -> digit
          | "\p"          -> upper
@@ -53,15 +54,16 @@ class Regex(Language):
         "bracket": ["Regex", "Regex"],
         "or": ["Regex", "Regex", "Regex"],
         "seq": ["Regex", "Regex", "Regex"],
+        "class": ["Class", "Regex"],
 
         # character classes
-        "dot": ["Regex"],
-        "alpha": ["Regex"],
-        "digit": ["Regex"],
-        "upper": ["Regex"],
-        "lower": ["Regex"],
-        "whitespace": ["Regex"],
-        "literal": ["Char", "Regex"],
+        "dot": ["Class"],
+        "alpha": ["Class"],
+        "digit": ["Class"],
+        "upper": ["Class"],
+        "lower": ["Class"],
+        "whitespace": ["Class"],
+        "literal": ["Char", "Class"],
     }
 
     upper = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -107,6 +109,8 @@ class Regex(Language):
             "star": uniform(2),
             # plus: E+ is implemented as EE*
             "or": uniform(2),
+            "class": uniform(len(["dot", "alpha", "digit",
+                                  "upper", "lower", "whitespace" "literal"])),
 
             # character classes (leaves)
             "dot": uniform(len(Regex.dot)),
@@ -153,9 +157,11 @@ class Regex(Language):
                 return self.eval(a, env) + self.eval(b, env)
             elif t.value == "literal":
                 return t.children[0].value
+            elif t.value == "class":
+                return self.eval(t.children[0], env)
             else:
                 raise ValueError(f"Regex internal nodes must be operators, "
-                                 f"but found char class {t.value} in tree {t}")
+                                 f"but found char class '{t.value}' in tree {t}")
 
     @property
     def str_semantics(self) -> Dict:
@@ -166,6 +172,7 @@ class Regex(Language):
             "bracket": lambda r: f"({r})",
             "or": lambda r, s: f"{r}|{s}",
             "seq": lambda r, s: f"{r}{s}",
+            "class": lambda c: c,
             "dot": lambda: r"\.",
             "alpha": lambda: r"\w",
             "digit": lambda: r"\d",
@@ -199,15 +206,19 @@ if __name__ == "__main__":
     r = Regex()
     for ex in examples:
         p = r.parse(ex)
+        print(p)
         print(ex, r.to_str(p))
         for _ in range(10):
             print(r.eval(p, env={}))
 
     print("Fitting...")
     corpus = [r.parse(ex) for ex in examples]
-    r.fit(corpus, alpha=1)
+    r.fit(corpus, alpha=0.01)
+
+    print(r.model)
 
     print("Sampling...")
     for _ in range(10):
         p = r.sample()
         print(r.to_str(p), p)
+        print([r.eval(p, {}) for _ in range(10)])
