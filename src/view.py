@@ -2,7 +2,6 @@ from math import sqrt, ceil
 from glob import glob
 import sys
 import numpy as np
-from tqdm import tqdm
 from typing import *
 
 from lang import Language
@@ -15,9 +14,10 @@ import util
 def read_outfile(filename: str) -> Generator[Tuple[str, str], None, None]:
     with open(filename, "r") as f:
         for line in f.readlines():
-            if line.startswith('#'):
-                # skip comments
-                continue
+            if "#" in line:  # handle comments
+                line = line.split("#")[0]
+                if not line:
+                    continue
             if ':' in line:
                 s, score = line.split(' : ')
                 score = score.strip()
@@ -28,8 +28,33 @@ def read_outfile(filename: str) -> Generator[Tuple[str, str], None, None]:
             yield s, score
 
 
-def plot_lsys_outputs(filename: str, batch_size=36, len_cap=1000, save=True):
-    lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+def plot_lsys_at_depths(filename: str, n_imgs_per_plot: int, depths=(3, 3), len_cap=1000):
+    lsys = LSys(theta=45, step_length=3, render_depth=5, n_rows=128, n_cols=128)
+    depth_lo, depth_hi = depths
+    depth_hi += 1
+    imgs = []
+    for s, _ in read_outfile(filename):
+        # skip l-systems that take too long to render
+        if len(s) <= len_cap:
+            t = lsys.parse(s)
+            for d in range(depth_lo, depth_hi):
+                img = lsys.eval(t, env={"render_depth": d})
+                imgs.append(img)
+        else:
+            for d in range(depth_lo, depth_hi):
+                imgs.append(np.zeros((128, 128)))
+
+    n_depths = depth_hi - depth_lo
+    # imgs = rearrange(imgs, "(i r) c w h -> (r i) c w h", r=n_depths)
+    for img_batch in util.batch(imgs, batch_size=n_imgs_per_plot * n_depths):
+        util.plot(title=filename,
+                  imgs=img_batch,
+                  shape=(n_imgs_per_plot, n_depths),
+                  saveto=None)
+
+
+def plot_lsys_outputs(filename: str, batch_size=6, len_cap=1000, save=True):
+    lsys = LSys(theta=45, step_length=3, render_depth=5, n_rows=128, n_cols=128)
     classifier = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
     imgs = []
     labels = []
@@ -83,6 +108,7 @@ if __name__ == '__main__':
     save = "save" in sys.argv[2:]
     regex_kind = "regex" in sys.argv[2:]
     lsys_kind = "lsystem" in sys.argv[2:]
+    lsys_depth_kind = "lsys-depth" in sys.argv[2:]
 
     for fname in sorted(glob(file_glob)):
         print(f"Viewing {fname} with save={save}")
@@ -90,5 +116,7 @@ if __name__ == '__main__':
             show_regex_outputs(fname, n_samples=10)
         elif lsys_kind:
             plot_lsys_outputs(fname, save=save)
+        elif lsys_depth_kind:
+            plot_lsys_at_depths(fname, n_imgs_per_plot=6, depths=(1, 6))
         else:
             usage()
