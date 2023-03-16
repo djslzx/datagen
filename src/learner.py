@@ -15,7 +15,8 @@ import time
 import util
 from lang import Language, Tree, ParseError
 from lindenmayer import LSys
-from grammar import LearnedGrammar, ConvFeatureExtractor
+from regexpr import Regex
+from grammar import LearnedGrammar, ConvFeatureExtractor, SBertFeatureExtractor, FeatureExtractor
 from zoo import zoo_strs
 
 
@@ -59,7 +60,7 @@ class LangDataset(Tdata.Dataset):
         return len(self.data)
 
 
-def lg_kwargs(lang: Language):
+def lsys_grammar_kwargs(lang: Language):
     def parse(s: str) -> tuple:
         return lang.parse(s).to_tuple()
 
@@ -76,25 +77,36 @@ def lg_kwargs(lang: Language):
         "learning_rate": 1e-5,
     }
 
+def grammar_kwargs(l: Language, fe: FeatureExtractor):
+    def parse(s: str) -> tuple:
+        return l.parse(s).to_tuple()
 
-def train_model(lang: Language, train_filenames: List[str], epochs: int):
-    lg = LearnedGrammar(**lg_kwargs(lang))
+    return {
+        "feature_extractor": fe,
+        "grammar": l.model,
+        "parse": parse,
+        "start_symbol": l.start,
+        "learning_rate": 1e-5,
+    }
 
+
+def train_model(lang: Language, learned_grammar: LearnedGrammar,
+                train_filenames: List[str], epochs: int):
     train_dataset = LangDataset.from_files(train_filenames, lang)
     train_loader = Tdata.DataLoader(train_dataset, shuffle=True)
 
-    val_dataset = LangDataset(zoo_strs, lang)
-    val_loader = Tdata.DataLoader(val_dataset)
+    # val_dataset = LangDataset(zoo_strs, lang)
+    # val_loader = Tdata.DataLoader(val_dataset)
 
     trainer = pl.Trainer(max_epochs=epochs, auto_lr_find=False)
-    trainer.tune(model=lg, train_dataloaders=train_loader)
-    trainer.fit(model=lg, train_dataloaders=train_loader, val_dataloaders=val_loader)
+    trainer.tune(model=learned_grammar, train_dataloaders=train_loader)
+    trainer.fit(model=learned_grammar, train_dataloaders=train_loader)
 
 
 def load_learned_grammar(lang: Language, checkpt_path: str) -> LearnedGrammar:
     ckpt = T.load(checkpt_path)
     weights = ckpt["grammar_params"]
-    lg = LearnedGrammar.load_from_checkpoint(checkpoint_path=checkpt_path, **lg_kwargs(lang))
+    lg = LearnedGrammar.load_from_checkpoint(checkpoint_path=checkpt_path, **lsys_grammar_kwargs(lang))
     lg.grammar.from_tensor_(weights)
     return lg
 
@@ -214,6 +226,23 @@ def run_models_on_datasets():
     run_models(models, lang, data, k=5, n_tries=1000, n_renders_per_try=2, save_dir=save_dir)
 
 
-if __name__ == "__main__":
+def train_lsys():
     lsys = LSys(45, 3, 3, 128, 128)
-    train_model(lsys, train_filenames=["../datasets/random/random_100.txt"], epochs=2)
+    lsys_fe = ConvFeatureExtractor(n_features=lsys.featurizer.n_features,
+                                   n_color_channels=3,
+                                   n_conv_channels=12,
+                                   bitmap_n_rows=128,
+                                   bitmap_n_cols=128)
+    lsys_lg = LearnedGrammar(**grammar_kwargs(lsys, lsys_fe))
+    train_model(lsys, lsys_lg, train_filenames=["../datasets/lsystems/ns/ns.txt"], epochs=2)
+
+
+def train_regex():
+    rgx = Regex()
+    rgx_fe = SBertFeatureExtractor()
+    rgx_lg = LearnedGrammar(**grammar_kwargs(rgx, rgx_fe))
+    train_model(rgx, rgx_lg, train_filenames=["../datasets/regex/ns/ns100x100.txt"], epochs=2)
+
+
+if __name__ == "__main__":
+    train_regex()
