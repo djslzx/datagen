@@ -264,6 +264,9 @@ class LSys(Language):
         "+": ["Term"],
         "-": ["Term"],
     }
+    types.update({
+        token: ["Nonterm"] for token in "LRXYAB"
+    })
 
     def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int):
         super().__init__(parser_grammar=LSys.metagrammar,
@@ -294,7 +297,7 @@ class LSys(Language):
 
     @property
     def str_semantics(self) -> Dict:
-        return {
+        semantics = {
             "lsystem": lambda ax, rs: f"{ax};{rs}",
             "axiom": lambda xs: xs,
             "symbols": lambda x, xs: f"{x}{xs}",
@@ -310,6 +313,11 @@ class LSys(Language):
             "+": lambda: "+",
             "-": lambda: "-",
         }
+        semantics.update({
+            token: (lambda: token)
+            for token in "LRXYAB"
+        })
+        return semantics
 
     def simplify(self, t: Tree) -> Tree:
         """Simplify using egg and deduplicate rules"""
