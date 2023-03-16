@@ -37,6 +37,7 @@ lsystem_book_examples = _lsystem_book_examples[::2]  # skip angles
 lsystem_book_F_examples = [s.replace("X", "F").replace("L", "F").replace("R", "F")
                            for s in lsystem_book_examples]
 
+# note: most of these names are wrong and have nothing to do with the given l-system
 _lsystem_chatgpt_examples = [
     # named fractals
     "X;X~F[+X]F[-X]+X,F~F", "Sierpinski Arrowhead Curve",
@@ -74,3 +75,65 @@ _lsystem_chatgpt_examples = [
 ]
 lsystem_chatgpt_examples = _lsystem_chatgpt_examples[::2]
 lsystem_chatgpt_example_names = _lsystem_chatgpt_examples[1::2]
+
+_regex_chatgpt_examples = r"""
+    Matching all email addresses:
+    [a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}
+
+    Matching all phone numbers:
+    (\d{3}[-\.\s]??\d{3}[-\.\s]??\d{4}|\(\d{3}\)\s*\d{3}[-\.\s]??\d{4}|\d{10})
+
+    Matching all URLs:
+    ^(https?|ftp)://(-\.)?([^\s/?\.#-]+\.?)+(/[^\s]*)?$
+
+    Matching all social security numbers:
+    ^\d{3}-\d{2}-\d{4}$
+
+    Matching all IP addresses:
+    \b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b
+
+    Matching all dates in the format MM/DD/YYYY:
+    ^(0[1-9]|1[0-2])/(0[1-9]|[12][0-9]|3[01])/([0-9]{4})$
+
+    Matching all HTML tags:
+    <([a-z]+)([^<]+)*(?:>(.*)<\/\1>|\s+\/>)
+
+    Matching all hexadecimal color codes:
+    ^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$
+
+    Matching all words that start and end with the same letter:
+    \b(\w)\w*\1\b
+
+    Matching all sentences that contain a specific word:
+    ^(?=.*\bword\b).*$
+    
+    Matching all strings that start with "hello" followed by any number of characters:
+    ^hello.*$
+
+    Matching all strings that contain only letters (upper or lowercase):
+    ^[a-zA-Z]+$
+
+    Matching all strings that contain at least one uppercase letter and one digit:
+    ^(?=.*[A-Z])(?=.*\d).*$
+
+    Matching all strings that contain at least one word starting with "a" and ending with "z":
+    \b\w*a\w*z\w*\b
+
+    Matching all strings that are palindromes (reads the same backwards as forwards):
+    ^(.)(.?)(.?)(.?)(.?)(.?).?\6\5\4\3\2\1$
+
+    Matching all strings that are valid variable names (start with a letter or underscore, followed by any number of letters, digits, or underscores):
+    ^[a-zA-Z_][a-zA-Z0-9_]*$
+
+    Matching all strings that contain a repeated sequence of three or more characters:
+    (\w)\1{2,}
+
+    Matching all strings that are exactly 10 characters long and contain only letters and digits:
+    ^[a-zA-Z0-9]{10}$
+
+    Matching all strings that contain a sequence of four or more consecutive digits:
+    \d{4,}
+
+    Matching all strings that start and end with the same two characters:
+    ^(..).*\1$
+"""

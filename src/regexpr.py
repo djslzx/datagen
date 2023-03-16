@@ -9,17 +9,17 @@ from featurizers import TextClassifier
 
 
 class Regex(Language):
-    """
+    r"""
     Models the domain of regular expressions using the grammar from the paper
     "Learning to learn generative programs with Memoised Wake-Sleep" (Hewitt et al.)
 
     Token types:
-    \\.      : any character (need backslash to distinguish from literal .)
-    \\w      : alphanumeric char
-    \\d      : digit
-    \\u      : uppercase char
-    \\l      : lowercase char
-    \\s      : whitespace char
+    \.      : any character (need backslash to distinguish from literal .)
+    \w      : alphanumeric char
+    \d      : digit
+    \p      : uppercase char
+    \l      : lowercase char
+    \s      : whitespace char
     (φ contains specific probabilities for each allowed character)
 
     Operator  types:
