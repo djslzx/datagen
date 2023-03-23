@@ -24,7 +24,6 @@ class Regex(Language):
          | "(" e ")"     -> bracket
          | e "|" e       -> or
          | e e           -> seq
-         | e "{" INT ","? INT? "}" -> repeat
          | "."           -> any
          | "\w"          -> alpha
          | "\d"          -> digit
@@ -35,8 +34,6 @@ class Regex(Language):
          | "\\" ANY       -> escaped
         
         ANY: /./ 
-         
-         %import common.INT
     """
     types = {
         # operators
@@ -46,7 +43,6 @@ class Regex(Language):
         "bracket": ["Regex", "Regex"],
         "or": ["Regex", "Regex", "Regex"],
         "seq": ["Regex", "Regex", "Regex"],
-        "repeat": ["Regex", "Int", "Int", "Regex"],
 
         # character classes
         "any": ["Regex"],
@@ -56,7 +52,7 @@ class Regex(Language):
         "lower": ["Regex"],
         "whitespace": ["Regex"],
         "literal": ["Char", "Regex"],
-        "escaped": ["Char", "Regex"],
+        "escaped": ["EscapeChar", "Regex"],
     }
 
     upper = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -75,11 +71,9 @@ class Regex(Language):
         "whitespace": whitespace,
         "escaped": escaped,
     }
-    # add all allowed characters to Char type for literals
+    # add all allowed characters to Char, EscapeChar types for literals
     types.update({x: ["Char"] for x in any + escaped})
-    # add allowed ints to Int type
-    n_ints = 10  # 1-10
-    types.update({str(i): ["Int"] for i in range(1, 1 + n_ints)})
+    types.update({x: ["EscapeChar"] for x in escaped})
 
     def __init__(self, eval_weights: Dict[str, np.ndarray] = None):
         """
@@ -92,7 +86,7 @@ class Regex(Language):
         super().__init__(parser_grammar=Regex.metagrammar,
                          parser_start="e",
                          root_type="Regex",
-                         model=Grammar.from_components(Regex.types, gram=2),
+                         model=Grammar.from_components(Regex.types, gram=1),
                          featurizer=TextClassifier())
         self.eval_weights = eval_weights if eval_weights is not None else Regex.uniform_weights()
 
@@ -107,7 +101,6 @@ class Regex(Language):
             "star": uniform(2),
             # plus: E+ is implemented as EE*
             "or": uniform(2),
-            "repeat": uniform(Regex.n_ints),  # todo: geometric instead?
 
             # character classes (leaves)
             "any": uniform(len(Regex.any)),
@@ -153,14 +146,6 @@ class Regex(Language):
             elif t.value == "seq":
                 a, b = t.children
                 return self.eval(a, env) + self.eval(b, env)
-            elif t.value == "repeat":
-                x, *c = t.children  # regex, num args
-                y = self.eval(x, env)
-                if len(c) == 1:
-                    return y * int(c[0].value)
-                elif len(c) == 2:
-                    lo, hi = [int(x.value) for x in c]
-                    return y * np.random.randint(lo, hi + 1, dtype=int)
             elif t.value == "literal":
                 return t.children[0].value
             elif t.value == "escaped":
@@ -178,7 +163,6 @@ class Regex(Language):
             "bracket": lambda r: f"({r})",
             "or": lambda r, s: f"{r}|{s}",
             "seq": lambda r, s: f"{r}{s}",
-            "repeat": lambda r, *s: f"{r}{{{','.join(s)}}}",
             "any": lambda: r".",
             "alpha": lambda: r"\w",
             "digit": lambda: r"\d",
