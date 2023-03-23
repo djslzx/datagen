@@ -18,7 +18,7 @@ class Grammar:
     Symbol = Union[str, tuple]
 
     def __init__(self, rules: Dict[Symbol, List[Tuple[float | T.Tensor, tuple | Symbol]]],
-                 components: Dict[Symbol, List[Symbol]]):
+                 components: Dict[Symbol, List[Symbol]], gram: int):
         """
         Probabilistic Context Free Grammar (PCFG) over program expressions
 
@@ -36,6 +36,7 @@ class Grammar:
         """
         self.rules = rules
         self.components = components
+        self.gram = gram
 
     def __str__(self) -> str:
         return self.pretty_print()
@@ -83,6 +84,7 @@ class Grammar:
                            for comp, comp_t in components.items()
                            if comp_t[-1] == sym]
                      for sym in symbols}
+            return Grammar(rules, components, gram)
         elif gram == 2:
             # Add symbols of the form (sym1, 0, sym2) given that sym1's first arg can be sym2.
             # We won't really use the old symbols, but they'll come in handy when we want to grow expressions
@@ -105,10 +107,17 @@ class Grammar:
                             form = tuple([comp] + [(comp, arg_i, arg_t)
                                                    for arg_i, arg_t in enumerate(comp_t[:-1])])
                         rules[sym].append((0., form))
+            return Grammar(rules, components, gram)
         else:
             raise ValueError(f"Expected gram in {{1, 2}} but got {gram}")
 
-        return Grammar(rules, components)
+    def from_unigram_counts_(self, counts: Dict[str, int], alpha=0.):
+        assert self.gram == 1
+        for nt, prods in self.rules.items():
+            for i, (_, form) in enumerate(prods):
+                name = form[0] if isinstance(form, tuple) else form
+                self.rules[nt][i] = np.log(counts.get(name, 0) + alpha), form
+        self.normalize_(0.)
 
     def from_bigram_counts_(self, counts: Dict[Tuple[str, int, str], int], alpha=0.):
         """
@@ -120,9 +129,10 @@ class Grammar:
         - i is the index of the child node in the parent's argument list
         - y is the child node
         """
+        assert self.gram == 2
         for nt, prods in self.rules.items():
             if isinstance(nt, tuple):
-                for i, (w, form) in enumerate(prods):
+                for i, (_, form) in enumerate(prods):
                     parent, j, *_ = nt
                     child = form[0] if isinstance(form, tuple) else form
                     k = counts.get((parent, j, child), 0)
@@ -206,7 +216,7 @@ class Grammar:
             for j, (_, form) in enumerate(prods):
                 rules[sym][j] = (tensor[i], form)
                 i += 1
-        g = Grammar(rules, self.components)
+        g = Grammar(rules, self.components, self.gram)
         assert g.n_parameters == i
         return g
 
@@ -232,6 +242,7 @@ class Grammar:
         probabilities = np.exp(np.array(log_probabilities))
         i = np.argmax(np.random.multinomial(1, probabilities))
         _, rule = productions[i]
+
         if isinstance(rule, tuple):
             # this rule is a function that takes arguments
             constructor, *arguments = rule
