@@ -1,33 +1,20 @@
 from __future__ import annotations
 
 import pickle
-from typing import *
+from typing import Dict
 import numpy as np
+from sys import stderr
 
 from lang import Language, Tree, Grammar
 from featurizers import TextClassifier
+from examples import regex_handcoded_examples
 
 
 class Regex(Language):
     r"""
     Models the domain of regular expressions using the grammar from the paper
-    "Learning to learn generative programs with Memoised Wake-Sleep" (Hewitt et al.)
-
-    Token types:
-    \.      : any character (need backslash to distinguish from literal .)
-    \w      : alphanumeric char
-    \d      : digit
-    \p      : uppercase char
-    \l      : lowercase char
-    \s      : whitespace char
-    (φ contains specific probabilities for each allowed character)
-
-    Operator  types:
-    E?      : E (ϕ_?) | ϵ (1 - ϕ_?)
-    E*      : E+ (ϕ_*) | ϵ (1 - ϕ_*)
-    E+      : EE*
-    E₁ | E₂ : E₁ (ϕ_|) | E₂ (1 - ϕ_|)
-    (φ contains production probabilities)
+    "Learning to learn generative programs with Memoised Wake-Sleep" (Hewitt et al.),
+    with some extras (seq, bracket)
     """
 
     metagrammar = r"""
@@ -37,13 +24,19 @@ class Regex(Language):
          | "(" e ")"     -> bracket
          | e "|" e       -> or
          | e e           -> seq
-         | "\."           -> dot
+         | e "{" INT ","? INT? "}" -> repeat
+         | "."           -> any
          | "\w"          -> alpha
          | "\d"          -> digit
          | "\p"          -> upper
          | "\l"          -> lower
          | "\s"          -> whitespace
-         | /./           -> literal
+         | ANY           -> literal
+         | "\\" ANY       -> escaped
+        
+        ANY: /./ 
+         
+         %import common.INT
     """
     types = {
         # operators
@@ -53,15 +46,17 @@ class Regex(Language):
         "bracket": ["Regex", "Regex"],
         "or": ["Regex", "Regex", "Regex"],
         "seq": ["Regex", "Regex", "Regex"],
+        "repeat": ["Regex", "Int", "Int", "Regex"],
 
         # character classes
-        "dot": ["Regex"],
+        "any": ["Regex"],
         "alpha": ["Regex"],
         "digit": ["Regex"],
         "upper": ["Regex"],
         "lower": ["Regex"],
         "whitespace": ["Regex"],
         "literal": ["Char", "Regex"],
+        "escaped": ["Char", "Regex"],
     }
 
     upper = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -69,17 +64,22 @@ class Regex(Language):
     digit = list("0123456789")
     alpha = upper + lower + digit
     whitespace = list("\t ")
-    dot = alpha + whitespace + list("~`!@#$%^&-_=[]{}\\;:'\",<.>/")
+    any = alpha + whitespace + list("~`!@#$%^&-_=[]{}\\;:'\",<>/")
+    escaped = list(".()|?*+")
     char_classes = {
-        "dot": dot,
+        "any": any,
         "alpha": alpha,
         "digit": digit,
         "upper": upper,
         "lower": lower,
         "whitespace": whitespace,
+        "escaped": escaped,
     }
     # add all allowed characters to Char type for literals
-    types.update({x: ["Char"] for x in dot})
+    types.update({x: ["Char"] for x in any + escaped})
+    # add allowed ints to Int type
+    n_ints = 10  # 1-10
+    types.update({str(i): ["Int"] for i in range(1, 1 + n_ints)})
 
     def __init__(self, eval_weights: Dict[str, np.ndarray] = None):
         """
@@ -107,15 +107,17 @@ class Regex(Language):
             "star": uniform(2),
             # plus: E+ is implemented as EE*
             "or": uniform(2),
+            "repeat": uniform(Regex.n_ints),  # todo: geometric instead?
 
             # character classes (leaves)
-            "dot": uniform(len(Regex.dot)),
+            "any": uniform(len(Regex.any)),
             "alpha": uniform(len(Regex.alpha)),
             "digit": uniform(len(Regex.digit)),
             "upper": uniform(len(Regex.upper)),
             "lower": uniform(len(Regex.lower)),
             "whitespace": uniform(len(Regex.whitespace)),
             "literal": uniform(1),
+            "escaped": uniform(1),
         }
 
     def eval(self, t: Tree, env: Dict[str, str]) -> str:
@@ -151,7 +153,17 @@ class Regex(Language):
             elif t.value == "seq":
                 a, b = t.children
                 return self.eval(a, env) + self.eval(b, env)
+            elif t.value == "repeat":
+                x, *c = t.children  # regex, num args
+                y = self.eval(x, env)
+                if len(c) == 1:
+                    return y * int(c[0].value)
+                elif len(c) == 2:
+                    lo, hi = [int(x.value) for x in c]
+                    return y * np.random.randint(lo, hi + 1, dtype=int)
             elif t.value == "literal":
+                return t.children[0].value
+            elif t.value == "escaped":
                 return t.children[0].value
             else:
                 raise ValueError(f"Regex internal nodes must be operators, "
@@ -166,17 +178,20 @@ class Regex(Language):
             "bracket": lambda r: f"({r})",
             "or": lambda r, s: f"{r}|{s}",
             "seq": lambda r, s: f"{r}{s}",
-            "dot": lambda: r"\.",
+            "repeat": lambda r, *s: f"{r}{{{','.join(s)}}}",
+            "any": lambda: r".",
             "alpha": lambda: r"\w",
             "digit": lambda: r"\d",
             "upper": lambda: r"\p",
             "lower": lambda: r"\l",
             "whitespace": lambda: r"\s",
             "literal": lambda x: x,
+            "escaped": lambda x: f"\\{x}",
         }
 
     def simplify(self, t: Tree) -> Tree:
-        raise NotImplementedError
+        print("WARNING: simplification for regular expressions not implemented", file=stderr)
+        return t
 
 
 def examples():
@@ -191,23 +206,37 @@ def examples():
 
 if __name__ == "__main__":
     examples = [
-        r"\.",
-        r"-\p-(\p-)+",
-        r"-\p-\p-\.*",
-        r"sch\d\d\d@sfusd.\l\l\l",
-    ]
+        r"0",
+        r"0",
+        r"0",
+        r"0",
+        r"0",
+        # r"\(909\) \d\d\d-\d\d\d\d",
+        # r"\.",
+        # r"-\p-(\p-)+",
+        # r"-\p-\p-\.*",
+        # r"sch\d\d\d@sfusd.\l\l\l",
+        # r".{10}",
+        # r"\.{2,3}",
+        # r"(\w){2,10}",
+        # r"(\w)\1{2,}",
+    ]  # + regex_handcoded_examples
     r = Regex()
     for ex in examples:
         p = r.parse(ex)
-        print(ex, r.to_str(p))
+        s = r.to_str(p)
+        print(ex, s, p)
         for _ in range(10):
             print(r.eval(p, env={}))
 
     print("Fitting...")
     corpus = [r.parse(ex) for ex in examples]
-    r.fit(corpus, alpha=1)
+    r.fit(corpus, alpha=1e-10)
+    print(r.model)
 
     print("Sampling...")
     for _ in range(10):
         p = r.sample()
         print(r.to_str(p), p)
+        for _ in range(3):
+            print("  " + r.eval(p, env={}))

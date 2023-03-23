@@ -86,7 +86,8 @@ class Tree:
 
     def to_sexp(self) -> str:
         if not self.is_leaf():
-            args = " ".join(c.to_sexp() for c in self.children)
+            s_args = [c.to_sexp() for c in self.children]
+            args = " ".join(s_args)
             return f"({self.value} {args})"
         else:
             return self.value
@@ -111,10 +112,11 @@ class Tree:
 
     def __str__(self):
         if not self.is_leaf():
-            args = " ".join(c.to_sexp() for c in self.children)
+            s_args = [c.to_sexp() for c in self.children]
+            args = " ".join(s_args)
             return f"({self.value} {args})"
         else:
-            return f"<{self.value}>"
+            return f"`{self.value}`"
 
     def __len__(self):
         # number of leaves in tree
