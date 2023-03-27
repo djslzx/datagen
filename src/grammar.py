@@ -119,7 +119,7 @@ class Grammar:
                 self.rules[nt][i] = np.log(counts.get(name, 0) + alpha), form
         self.normalize_(0.)
 
-    def from_bigram_counts_(self, counts: Dict[Tuple[str, int, str], int], alpha=0.):
+    def from_bigram_counts_(self, counts: Dict[Tuple[str, int, str] | str, int], alpha=0.):
         """
         Reweight the grammar using counts of how many times each rule was observed.
         `alpha` is the additive smoothing parameter.
@@ -128,15 +128,25 @@ class Grammar:
         - x is the parent node
         - i is the index of the child node in the parent's argument list
         - y is the child node
+
+        NOTE: because of the way sampling is performed from a single nonterminal
+        (usually a unigram symbol), bigram grammars also need to have unigram counts
         """
         assert self.gram == 2
         for nt, prods in self.rules.items():
             if isinstance(nt, tuple):
+                # use bigram counts
                 for i, (_, form) in enumerate(prods):
                     parent, j, *_ = nt
                     child = form[0] if isinstance(form, tuple) else form
                     k = counts.get((parent, j, child), 0)
                     self.rules[nt][i] = np.log(k + alpha), form  # k can be 0 -> issues
+            else:
+                # use unigram counts
+                for i, (_, form) in enumerate(prods):
+                    name = form[0] if isinstance(form, tuple) else form
+                    self.rules[nt][i] = np.log(counts.get(name, 0) + alpha), form
+
         self.normalize_(0.)
 
     def normalize_(self, alpha=0.) -> 'Grammar':

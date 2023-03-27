@@ -75,7 +75,7 @@ class Regex(Language):
     types.update({x: ["Char"] for x in any + escaped})
     types.update({x: ["EscapeChar"] for x in escaped})
 
-    def __init__(self, eval_weights: Dict[str, np.ndarray] = None):
+    def __init__(self, eval_weights: Dict[str, np.ndarray] = None, gram=2):
         """
         The grammar contains weights over the space of regular expressions,
         whereas the `eval_weights`, analogous to φ from the paper, determine
@@ -86,7 +86,7 @@ class Regex(Language):
         super().__init__(parser_grammar=Regex.metagrammar,
                          parser_start="e",
                          root_type="Regex",
-                         model=Grammar.from_components(Regex.types, gram=1),
+                         model=Grammar.from_components(Regex.types, gram=gram),
                          featurizer=TextClassifier())
         self.eval_weights = eval_weights if eval_weights is not None else Regex.uniform_weights()
 
