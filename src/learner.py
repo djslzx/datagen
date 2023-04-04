@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 import time
+from sys import stderr
 
 import util
 from lang import Language, Tree, ParseError
@@ -28,9 +29,11 @@ class LangDataset(Tdata.Dataset):
     @staticmethod
     def from_files(filenames: List[str], lang: Language) -> "LangDataset":
         data = []
+        n_failed = 0
         for filename in filenames:
             with open(filename, "r") as f:
                 for line in f.readlines():
+                    line = line.strip()
                     if line.startswith("#"):  # skip comments
                         continue
                     if ":" in line:  # split out scores
@@ -41,7 +44,9 @@ class LangDataset(Tdata.Dataset):
                     except (lark.UnexpectedCharacters,
                             lark.UnexpectedToken,
                             ParseError):
-                        pass
+                        print(f"Failed to parse line: {line}", file=stderr)
+                        n_failed += 1
+        assert len(data) > 0, f"Received empty filenames {filenames}, n_failed={n_failed}"
         return LangDataset(data, lang)
 
     def __init__(self, data: List[str], lang: Language):
@@ -241,7 +246,8 @@ def train_regex():
     rgx = Regex()
     rgx_fe = SBertFeatureExtractor()
     rgx_lg = LearnedGrammar(**grammar_kwargs(rgx, rgx_fe))
-    train_model(rgx, rgx_lg, train_filenames=["../datasets/regex/ns/ns100x100.txt"], epochs=2)
+    # train_model(rgx, rgx_lg, train_filenames=["/home/djl328/prob-repl/datasets/regex/ns/ns100x100.txt"], epochs=100)  #524074
+    train_model(rgx, rgx_lg, train_filenames=["/home/djl328/prob-repl/datasets/regex/random/random_30k.txt"], epochs=100)  #524077
 
 
 if __name__ == "__main__":
