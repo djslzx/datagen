@@ -1,3 +1,5 @@
+from typing import List, Dict, Set
+
 _lsystem_book_examples = [
     'F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F', 90,
     '-F;F~F+F-F-F+F', 90,
@@ -100,3 +102,84 @@ _regex_handcoded_examples = list(_regex_handcoded_examples)
 
 regex_handcoded_examples = [line.split(':')[1]
                             for line in _regex_handcoded_examples]
+
+_regex_text_enums = list(filter(lambda x: x, r"""
+(Club premises certificate)|(Premises license)|(Temporary event notice)
+(YES)|(NO)
+(Approved)|(Revoked)|(Refused)|(Withdrawn)|(Surrendered)|(Issued)|(Expired)
+(Nonsignificant)|(Significant)
+(Positive)|(Negative)
+(Chromosome)|(Plasmid)|(Chromosome and Plasmid)|(Not applicable)
+(SOCKEYE)|(CHINOOK)
+(BERM)|(EURO)|(AMER)
+(Yes)|(No)
+N|P|A|Z
+(small)|(large)
+(yes)|(no)|(YES)|(NO)
+(Disagree)|(Strongly Disagree)|(Agree)|(Strongly Agree)|(Undecided)
+(North)|(East)|(South)|(West)
+""".split('\n')))
+_regex_text = list(filter(lambda x: x, r"""
+\p\p
+\p+
+\w+@\w+.\w\w\w
+\p\l+ \p\. \p\l+
+Africa/\p\l+
+""".split('\n')))
+_regex_text_and_nums = list(filter(lambda x: x, r"""
+\d\d_PREM_\d\d\d\d\d
+05_PREM_00\d\d\d
+\d.\d\d(E-\d\d)|(\d\d\d\d\d)
+\d|(NA)
+\p\d\d \d\p\p
+\p\p\p\p\.\d\d\d\d
+HoggPass\d\d
+HoggPass\d+
+(\d+)|(NA)
+Metro\d
+\d\d\d \p+ STREET (EAST)|(WEST)
+\d\d\d \p+ ROAD
+\d\p\p\p\p\d\d\.\d\d\d\d
+\d\d\d\d?LDT\d\d
+Bin \d
+TIER \d+
+PAL\d\d\d\d\d\d
+\d-th
+$\d\d,\d\d\d
+$\d\d?\d?,\d\d\d,\d\d\d
+$\d,\d\d\d\.\d\d
+\d.\d\d\dE-0\d
+""".split('\n')))
+_regex_nums = list(filter(lambda x: x, r"""
+\d\d\d\d\d?
+\d\d\d.\d\d\d.\d\d\d.\d\d
+\d\d/\d\d/\d\d\d\d
+(1|2)\d/0\d/20\d\d
+0|1
+201\d
+20(1|2)\d
+2012-06-(0|1|2|3)\d
+201\d-(0\d)|1(0|1|2)-((0|1|2)\d)|(3(0|1))
+\d\d:\d\d:\d\d
+\d
+\d\d\d\d
+\d\d\d \d\d\d-\d\d\d\d
+\d/\d/\d\d\d\d
+\d\d.\d\d
+\d\d\d\d-\d\d-\d\d
+\d+
+\d\d\d\d\d\d
+-\d
+-\d\d.\d\d\d\d
+19\d\d
+\d\d\.\d
+(0|1|2)\d/(0|1)\d/200\d
+(1|2|3|4|5)
+""".split('\n')))
+
+regex_split = {
+    "text enums": _regex_text_enums,
+    "text": _regex_text,
+    "text and nums": _regex_text_and_nums,
+    "nums": _regex_nums
+}
