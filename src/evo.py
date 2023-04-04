@@ -189,15 +189,15 @@ def main(name: str, lang: Language, init_popns: List[List], verbose: bool):
         'lang': lang,
         'init_popn': init_popns,
         'simplify': False,
-        'max_popn_size': 1000,
+        'max_popn_size': 100,
         'n_neighbors': 10,
         'arkv_growth_rate': 2,
-        'iters': 3,
-        'next_gen_ratio': 5,
+        'iters': 100,
+        'next_gen_ratio': 3,
         'ingen_novelty': False,
         'n_samples': 5,
         'len_cap': 100,
-        'batch_size': 128,
+        'batch_size': 64,
         'verbose': verbose,
     })
     for i, params in enumerate(p):
@@ -212,20 +212,25 @@ def main(name: str, lang: Language, init_popns: List[List], verbose: bool):
         novelty_search(**params)
 
 
+def random_seed(lang: Language, n: int, len_cap: int) -> List[Tree]:
+    pop = []
+    while len(pop) < n:
+        t = lang.sample()
+        if len(t) <= len_cap:
+            pop.append(t)
+    return pop
+
+
 if __name__ == '__main__':
+    print("Starting on lsystems...")
     lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
     lsys_seeds = {
-        "random": [lsys.sample() for _ in range(len(zoo))],  # lsys starts out as uniform
-        # "zoo": [lsys.parse(x.to_str()) for x in zoo],
-        # "simple": [lsys.parse(x) for x in [
-        #     "F;F~F",
-        #     "F;F~[+F][-F]F,F~F-F",
-        #     "F;F~FF",
-        #     "F+F;F~F[-F],F~F[+F]",
-        # ]],
+        "random": random_seed(lsys, n=30, len_cap=100),  # lsys starts out as uniform
+        "zoo": [lsys.parse(x.to_str()) for x in zoo],
     }
     main('lsys', lang=lsys, init_popns=list(lsys_seeds.values()), verbose=False)
-    #
+    
+    # print("Starting on regexes...")
     # reg = Regex()
     # reg_seeds = [reg.sample() for _ in range(10)]
     # main('regex', lang=reg, init_popns=[reg_seeds], verbose=False)
