@@ -86,7 +86,8 @@ class Tree:
 
     def to_sexp(self) -> str:
         if not self.is_leaf():
-            args = " ".join(c.to_sexp() for c in self.children)
+            s_args = [c.to_sexp() for c in self.children]
+            args = " ".join(s_args)
             return f"({self.value} {args})"
         else:
             return self.value
@@ -111,10 +112,11 @@ class Tree:
 
     def __str__(self):
         if not self.is_leaf():
-            args = " ".join(c.to_sexp() for c in self.children)
+            s_args = [c.to_sexp() for c in self.children]
+            args = " ".join(s_args)
             return f"({self.value} {args})"
         else:
-            return f"<{self.value}>"
+            return f"`{self.value}`"
 
     def __len__(self):
         # number of leaves in tree
@@ -155,8 +157,16 @@ class Language:
         return t
 
     def fit(self, corpus: List[Tree], alpha=0.):
-        counts = bigram_scans(corpus, weights=np.ones(len(corpus)))
-        self.model.from_bigram_counts_(counts, alpha=alpha)
+        weights = np.ones(len(corpus))
+        if self.model.gram == 1:
+            counts = sum_scans(corpus, weights, scanner=unigram_scan)
+            self.model.from_unigram_counts_(counts, alpha=alpha)
+        elif self.model.gram == 2:
+            counts = sum_scans(corpus, weights=np.ones(len(corpus)), scanner=bigram_scan)
+            counts |= sum_scans(corpus, weights=np.ones(len(corpus)), scanner=unigram_scan)
+            self.model.from_bigram_counts_(counts, alpha=alpha)
+        else:
+            raise AttributeError(f"Cannot fit on grammar with gram={self.model.gram}")
 
     def eval(self, t: Tree, env: Dict[str, Any]) -> Any:
         """Executes a tree in the language"""
@@ -201,19 +211,15 @@ def bigram_scan(t: Tree, w=1.) -> Dict[Tuple[str, int, str], int]:
     return counts
 
 
-def bigram_scans(trees: List[Tree], weights: List[float] | np.ndarray) -> Dict[Tuple[str, int, str], int]:
+def sum_scans(trees: List[Tree], weights: List[float] | np.ndarray,
+              scanner: Callable[[Tree, float], Dict[Any, int]]) -> Dict[Any, int]:
     assert len(trees) == len(weights)
     counts = {}
     for tree, weight in zip(trees, weights):
-        b = bigram_scan(tree, weight)
-        for k, v in b.items():
+        d = scanner(tree, weight)
+        for k, v in d.items():
             counts[k] = counts.get(k, 0) + v
     return counts
-
-
-def sum_counts(a: Dict[Any, float], b: Dict[Any, float]) -> Dict[Any, float]:
-    return {k: a.get(k, 0) + b.get(k, 0)
-            for k in a.keys() | b.keys()}
 
 
 class ParseError(Exception):

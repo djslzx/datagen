@@ -9,14 +9,14 @@ import multiprocessing as mp
 from lang import Language
 from lindenmayer import LSys, NilError
 from regexpr import Regex
-from zoo import zoo_strs
+from examples import lsystem_book_F_examples
 
 LEN_CAP = 100
 
 # init lsystem metagrammar
 lsys = LSys(45, 3, 3, 128, 128)
 lsys_fitted = LSys(45, 3, 3, 128, 128)
-lsys_fitted.fit([lsys_fitted.parse(s) for s in zoo_strs], alpha=0.01)
+lsys_fitted.fit([lsys_fitted.parse(s) for s in lsystem_book_F_examples], alpha=0.01)
 
 # init regex metagrammar
 rgx = Regex()
@@ -60,5 +60,6 @@ def sample_to_file(sampler: Callable, n_samples: int, out_file: str):
 
 if __name__ == '__main__':
     N_SAMPLES = 100_000
-    FILE = "../datasets/regex/random/random_100k.txt"
-    sample_to_file(sample_regex, N_SAMPLES, FILE)
+    FILE = "../datasets/lsystems/random/100cap_fitted_100k.txt"
+    # FILE = "../datasets/regex/random/random_100k.txt"
+    sample_to_file(sample_lsys, N_SAMPLES, FILE)

@@ -241,8 +241,7 @@ class LSys(Language):
         rules: rule "," rules      -> rules
              | rule                -> rule
         rule: NT "~" symbols       -> arrow
-        NT: "F"
-          | "f"
+        NT: /[FfLRXYAB]/
         T: "+"
          | "-"
 
@@ -265,6 +264,9 @@ class LSys(Language):
         "+": ["Term"],
         "-": ["Term"],
     }
+    types.update({
+        token: ["Nonterm"] for token in "LRXYAB"
+    })
 
     def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int):
         super().__init__(parser_grammar=LSys.metagrammar,
@@ -281,14 +283,21 @@ class LSys(Language):
 
     def eval(self, t: Tree, env: Dict[str, Any]) -> np.ndarray:
         s = self.to_str(t)
+
+        # fetch env variables if present, otherwise use object fields
+        theta = env["theta"] if "theta" in env else self.theta
+        render_depth = env["render_depth"] if "render_depth" in env else self.render_depth
+        step_length = env["step_length"] if "step_length" in env else self.step_length
+        n_rows = env["n_rows"] if "n_rows" in env else self.n_rows
+        n_cols = env["n_cols"] if "n_cols" in env else self.n_cols
+
         lsys = S0LSystem.from_str(s)
-        sample = lsys.nth_expansion(self.render_depth)
-        return LSystem.draw(sample, d=self.step_length, theta=self.theta,
-                            n_rows=self.n_rows, n_cols=self.n_cols)
+        sample = lsys.nth_expansion(render_depth)
+        return LSystem.draw(sample, d=step_length, theta=theta, n_rows=n_rows, n_cols=n_cols)
 
     @property
     def str_semantics(self) -> Dict:
-        return {
+        semantics = {
             "lsystem": lambda ax, rs: f"{ax};{rs}",
             "axiom": lambda xs: xs,
             "symbols": lambda x, xs: f"{x}{xs}",
@@ -304,6 +313,11 @@ class LSys(Language):
             "+": lambda: "+",
             "-": lambda: "-",
         }
+        semantics.update({
+            token: (lambda: token)
+            for token in "LRXYAB"
+        })
+        return semantics
 
     def simplify(self, t: Tree) -> Tree:
         """Simplify using egg and deduplicate rules"""
