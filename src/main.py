@@ -138,17 +138,10 @@ def plot():
     pluck_egg_examples(df, k=3)
 
 
-def grow():
+def grow(train_keys: List[str]):
     # grow a train/test split
-    train_keys = ["text enums", "text", "text and nums"]
-    test_keys = ["nums"]
-
-    pp(examples.regex_split)
-
     lang = regexpr.Regex()
     train_data = []
-    test_data = []
-
     for train_key in train_keys:
         for s in examples.regex_split[train_key]:
             try:
@@ -157,34 +150,30 @@ def grow():
                 print(f"Failed to parse {s}")
                 raise e
 
-    for test_key in test_keys:
-        for s in examples.regex_split[test_key]:
-            try:
-                test_data += [lang.parse(s)]
-            except lark.exceptions.UnexpectedToken as e:
-                print(f"Failed to parse {s}")
-                raise e
-
     # use evo to grow train set
     t = time.time()
-    out_dir = f"../datasets/regex/train_{','.join(train_keys)}_{t}"
+    out_dir = f"../datasets/regex/ns_train_{t}"
     util.try_mkdir(out_dir)
-    evo.novelty_search(
-        lang=lang,
-        init_popn=train_data,
-        max_popn_size=len(train_data) * 3,
-        iters=100,
-        n_samples=10,
-        arkv_growth_rate=2,
-        n_neighbors=5,
-        next_gen_ratio=3,
-        len_cap=100,
-        simplify=False,
-        ingen_novelty=False,
-        batch_size=64,
-        verbose=False,
-        out_dir=out_dir
-    )
+    args = {
+        "lang": lang,
+        "init_popn": train_data,
+        "max_popn_size": len(train_data) * 3,
+        "iters": 100,
+        "n_samples": 10,
+        "arkv_growth_rate": 2,
+        "n_neighbors": 5,
+        "next_gen_ratio": 3,
+        "len_cap": 100,
+        "simplify": False,
+        "ingen_novelty": False,
+        "batch_size": 64,
+        "verbose": False,
+        "out_dir": out_dir,
+    }
+    with open(f"{out_dir}/metadata.txt", "w") as f:
+        f.write(f"Train keys: {train_keys}")
+        f.write(f"Evo args: {args}")
+    evo.novelty_search(**args)
 
 
 if __name__ == "__main__":
@@ -192,4 +181,10 @@ if __name__ == "__main__":
     # simplify_file("../datasets/ns/ns.txt", "../datasets/ns/ns-filt3.txt", 0.001)
     # simplify_file("../datasets/random/random_100k.txt", "../datasets/random/random_100k_simpl3.txt")
     # plot()
-    grow()
+    splits = [
+        # ["text enums", "text", "text and nums"], ["nums"],
+        ["text enums", "text"], ["nums", "text and nums"],
+        ["text enums"], ["text", "nums", "text and nums"],
+    ]
+    for train_keys in splits[::2]:
+        grow(train_keys)
