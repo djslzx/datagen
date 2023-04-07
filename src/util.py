@@ -35,7 +35,14 @@ class ParamTester:
             }
 
 
-def batch(iterable: Iterable, batch_size: int, pad_with=None) -> Iterable[List]:
+def pad_array(arr: np.ndarray, batch_size: int) -> np.ndarray:
+    if (r := len(arr) % batch_size) != 0:
+        return np.concatenate((arr, np.empty(batch_size - r, dtype=object)))
+    else:
+        return arr
+
+
+def batched(iterable: Iterable, batch_size: int, pad_with=None) -> Iterable[List]:
     assert batch_size > 0
     b = []
     for x in iterable:
@@ -60,7 +67,7 @@ def test_batch():
         ([0, 1, 2, 3, 4, 5], 7, 0), [[0, 1, 2, 3, 4, 5, 0]],
     ]
     for args, ans in zip(cases[::2], cases[1::2]):
-        out = list(batch(*args))
+        out = list(batched(*args))
         assert out == ans, f"Expected {ans} but got {out}"
 
 

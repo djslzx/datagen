@@ -13,7 +13,7 @@ from sys import stderr
 from lang import Language, Tree, ParseError
 from lindenmayer import LSys
 from regexpr import Regex
-from util import Timing, ParamTester, try_mkdir
+from util import Timing, ParamTester, try_mkdir, pad_array
 
 # Hyper-parameters
 OUTDIR = "../out/evo"
@@ -42,13 +42,6 @@ def next_gen(lang: Language, n: int, p_arkv: float, len_cap: int, simplify: bool
             arkv.add(t)
     print(f"Simplified {n_simplified / n:.3e} tokens on avg")
     return popn, np.array(list(arkv), dtype=object)
-
-
-def pad_array(arr: np.ndarray, batch_size: int) -> np.ndarray:
-    if (r := len(arr) % batch_size) != 0:
-        return np.concatenate((arr, np.empty(batch_size - r, dtype=object)))
-    else:
-        return arr
 
 
 def semantic_score(lang: Language, cur_gen: np.ndarray, new_gen: np.ndarray,

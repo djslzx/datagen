@@ -46,7 +46,7 @@ def plot_lsys_at_depths(filename: str, n_imgs_per_plot: int, depths=(3, 3), len_
 
     n_depths = depth_hi - depth_lo
     # imgs = rearrange(imgs, "(i r) c w h -> (r i) c w h", r=n_depths)
-    for img_batch in util.batch(imgs, batch_size=n_imgs_per_plot * n_depths):
+    for img_batch in util.batched(imgs, batch_size=n_imgs_per_plot * n_depths):
         util.plot(title=filename,
                   imgs=img_batch,
                   shape=(n_imgs_per_plot, n_depths),
