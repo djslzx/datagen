@@ -1,6 +1,8 @@
 from math import sqrt, ceil
 from glob import glob
 import sys
+
+import lark.exceptions
 import numpy as np
 from typing import *
 
@@ -13,13 +15,20 @@ import util
 
 def read_outfile(filename: str) -> Generator[Tuple[str, str], None, None]:
     with open(filename, "r") as f:
-        for line in f.readlines():
-            if "#" in line:  # handle comments
-                line = line.split("#")[0]
-                if not line:
-                    continue
+        for i, line in enumerate(f.readlines()):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("#"):  # handle comments
+                continue
             if ':' in line:
-                s, score = line.split(' : ')
+                if line.startswith(':'):  # empty line
+                    continue
+                try:
+                    s, score = line.split(' : ')
+                except ValueError:
+                    print(f"WARNING: Failed to split {filename}:{i}: {line}", file=sys.stderr)
+
                 score = score.strip()
                 if not score.endswith('*'): continue  # skip unselected children
             else:
@@ -90,9 +99,12 @@ def show_regex_outputs(filename: str, n_samples: int):
     r = Regex()
     for s, score in read_outfile(filename):
         print(s)
-        t = r.parse(s)
-        print(f"Samples from {s} w/ score {score}:")
-        print([r.eval(t, env={}) for _ in range(n_samples)])
+        try:
+            t = r.parse(s)
+            print(f"Samples from {s} w/ score {score}:")
+            print([r.eval(t, env={}) for _ in range(n_samples)])
+        except lark.exceptions.UnexpectedToken as e:
+            print(f"Failed to parse string `{s}`")
 
 
 if __name__ == '__main__':
