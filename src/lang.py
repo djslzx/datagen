@@ -133,6 +133,8 @@ class Language:
     Symbol = Union[tuple, str]
     Type = str
 
+    # TODO: separate model from language
+
     def __init__(self, parser_grammar: str, parser_start: str, root_type: str,
                  model: Grammar, featurizer: Featurizer):
         self.parser = lark.Lark(parser_grammar, start=parser_start, parser='lalr')
@@ -140,6 +142,9 @@ class Language:
         self.model = model
         self.model.normalize_()
         self.featurizer = featurizer
+
+    def none(self) -> Any:
+        raise NotImplementedError
 
     def parse(self, s: str) -> Tree:
         """Parses a string into an AST in the language"""
@@ -179,11 +184,11 @@ class Language:
     def str_semantics(self) -> Dict:
         raise NotImplementedError
 
-    def features(self, batch: List[Tree], env: Dict[str, Any]) -> np.ndarray:
-        out = []
-        for tree in batch:
-            out.append(self.eval(tree, env))
-        return self.featurizer.apply(out)
+    # def features(self, batch: List[Tree], env: Dict[str, Any]) -> np.ndarray:
+    #     out = []
+    #     for tree in batch:
+    #         out.append(self.eval(tree, env))
+    #     return self.featurizer.apply(out)
 
 
 def unigram_scan(t: Tree, w=1.) -> Dict[str, int]:

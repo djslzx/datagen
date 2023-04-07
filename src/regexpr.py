@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pickle
-from typing import Dict
+from typing import Dict, Any
 import numpy as np
 from sys import stderr
 
@@ -89,6 +89,9 @@ class Regex(Language):
                          model=Grammar.from_components(Regex.types, gram=gram),
                          featurizer=TextClassifier())
         self.eval_weights = eval_weights if eval_weights is not None else Regex.uniform_weights()
+
+    def none(self) -> Any:
+        return ""
 
     @staticmethod
     def uniform_weights() -> Dict[str, np.ndarray]:

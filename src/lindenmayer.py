@@ -281,6 +281,9 @@ class LSys(Language):
         self.n_rows = n_rows
         self.n_cols = n_cols
 
+    def none(self) -> Any:
+        return np.zeros((self.n_rows, self.n_cols))
+
     def eval(self, t: Tree, env: Dict[str, Any]) -> np.ndarray:
         s = self.to_str(t)
 
