@@ -1,18 +1,8 @@
-# ns without the evo
 """
-def ns(d: distance function,
-       m: sample count,
-       L: DSL):
-    S = empty_set
-    G = uniform_grammar(L)
-    for t in 1..T
-        samples = get_samples(G, m)
-        x = best(samples, d)
-        S = S + x
-        G = fit(G, x)  # can be done incrementally with EM/counts
-    return S
+ns without the evo
 """
-from typing import Set, Tuple, Dict, List, Callable, Collection
+
+from typing import *
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from einops import rearrange, reduce
@@ -22,22 +12,18 @@ from lang import Language, Tree
 import regexpr
 import util
 
-def evaluate(L: Language, x: Tree, n: int) -> Set[str]:
-    if x is not None:
-        return {L.eval(x, env={}) for _ in range(n)}
-    else:
-        return set()
-
-def features(L: Language, s: Collection[Tree], n: int) -> np.ndarray:
+def features(L: Language, s: Collection[Tree], n_samples: int) -> np.ndarray:
     # output shape: (|s|, n)
     xs = []
     for x in s:
-        outputs = evaluate(L, x, n)
-        xs.append(L.featurizer.apply(outputs))
-    return np.concatenate(xs)
+        if x is not None:
+            outputs = [L.eval(x, env={}) for _ in range(n_samples)]
+            xs.append(L.featurizer.apply(outputs))
+    out = np.array(xs)
+    assert out.shape[:2] == (len(s), n_samples), f"Expected shape {(len(s), n_samples)}, but got {out.shape}"
+    return out
 
-def best(L: Language, xs: Collection[Tree], knn: NearestNeighbors, n: int) -> Tuple[Tree, float]:
-    fs = features(L, xs, n)  # (|xs|, n)
+def best(L: Language, xs: Collection[Tree], fs: np.ndarray, knn: NearestNeighbors) -> Tuple[Tree, float]:
     best_score = 0
     best_tree = None
     for x, f in zip(xs, fs):
@@ -48,20 +34,63 @@ def best(L: Language, xs: Collection[Tree], knn: NearestNeighbors, n: int) -> Tu
             best_tree = x
     return best_tree, best_score
 
-def ns(L: Language, s0: Set[Tree], m: int, t: int):
-    s = list(s0)
-    for i in range(t):
-        f_s = features(L, s)
-        knn = NearestNeighbors().fit(f_s)
-        L.fit(s, alpha=1e-10)
-        samples = [L.sample() for j in range(m)]
-        x, score = best(L, samples, knn)
-        print(f"Added {x} w/ score {score}")
-        s.append(x)
-    return s
+def chamfer_dist(k: int) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
+    """
+    Returns chamfer distance on two 1D vectors, where the vectors are interpreted as the concatenation
+    of k n-dimensional vectors.
+    """
+    def d(v1: np.ndarray, v2: np.ndarray) -> np.ndarray:
+        X = rearrange(v1, "(k n) -> k n", k=k)
+        Y = rearrange(v2, "(k n) -> k n", k=k)
+        return (sum(min(np.dot(x - y, x - y) for y in Y) for x in X) +
+                sum(min(np.dot(x - y, x - y) for x in X) for y in Y))
+    return d
+
+def search(L: Language, init_popn: List[Tree],
+           samples_per_program: int,
+           samples_per_iter: int,
+           keep_per_iter: int,
+           alpha: float,
+           iters: int):
+    archive = init_popn
+    knn = NearestNeighbors(metric=chamfer_dist(samples_per_program))
+    for i in range(iters):
+        with util.Timing(f"iter {i}", suppress_start=True):
+            # sample from fitted grammar
+            L.fit(archive, alpha=alpha)
+            samples = np.array([L.sample() for _ in range(samples_per_iter)], dtype=object)
+
+            # extract features
+            e_archive = features(L, archive, samples_per_program)
+            e_archive = rearrange(e_archive, "n samples features -> n (samples features)")
+            knn.fit(e_archive)
+            e_samples = features(L, samples, samples_per_program)
+            e_samples = rearrange(e_samples, "n samples features -> n (samples features)")
+
+            # choose which samples to add to archive: score all samples, then choose best few
+            dists, _ = knn.kneighbors(e_samples)
+            dists = np.sum(dists, axis=1)
+            idx = np.argsort(-dists)  # sort descending
+            keep = samples[idx][:keep_per_iter]
+            archive.extend(keep)
+
+            # diagnostics
+            print(f"Adding {keep} w/ scores {dists[:keep_per_iter]}")
+
+    return archive
+
 
 if __name__ == "__main__":
-    l = regexpr.Regex()
-    s0 = {l.parse(".")}
-    p = ns(l, s0=s0, m=64, t=100)
+    lang = regexpr.Regex()
+    s0 = [lang.parse(".")] * 10
+    # s0 = [lang.sample() for _ in range(10)]
+    p = search(
+        lang,
+        init_popn=s0,
+        samples_per_program=100,
+        samples_per_iter=10,
+        keep_per_iter=1,
+        iters=100,
+        alpha=1e-4,
+    )
     pp(p)
