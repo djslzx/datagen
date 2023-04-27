@@ -6,8 +6,10 @@ from typing import *
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import minkowski, directed_hausdorff
+from scipy.special import softmax
 from einops import rearrange, reduce
 from pprint import pp
+from time import time
 
 from lang import Language, Tree
 import lindenmayer
@@ -49,12 +51,16 @@ def hausdorff(X: np.ndarray, Y: np.ndarray) -> float:
 def search(L: Language,
            init_popn: List[Tree],
            d: Distance,
+           select: str,
            samples_per_program: int,
            samples_per_iter: int,
            keep_per_iter: int,
            alpha: float,
            iters: int,
-           save_to: str):
+           save_to: str,
+           debug: bool):
+    assert select in {"absolute", "weighted"}
+
     archive = init_popn
     knn = NearestNeighbors(metric=make_dist(d=d, k=samples_per_program))
     for i in range(iters):
@@ -73,12 +79,20 @@ def search(L: Language,
             knn.fit(e_archive)
             dists, _ = knn.kneighbors(e_samples)
             dists = np.sum(dists, axis=1)
-            idx = np.argsort(-dists)  # sort descending
-            keep = samples[idx][:keep_per_iter]
+            if select == "absolute":
+                idx = np.argsort(-dists)[:keep_per_iter]  # sort descending
+            elif select == "weighted":
+                idx = np.random.choice(samples_per_iter, keep_per_iter,
+                                       replace=False, p=softmax(dists))
+                # random.multinomial(n=keep_per_iter, pvals=softmax(dists))
+            keep = samples[idx]
             archive.extend(keep)
 
             # diagnostics
-            print(f"Adding {[L.to_str(x) for x in keep]} w/ scores {dists[:keep_per_iter]}")
+            if debug:
+                print(f"Generation {i}:")
+                for j, x in enumerate(keep):
+                    print(f"  {L.to_str(x)}: {dists[idx][j]}")
 
             # save
             with open(save_to, "w") as f:
@@ -111,10 +125,13 @@ if __name__ == "__main__":
         lang,
         init_popn=s0,
         d=chamfer,
-        samples_per_program=50,
-        samples_per_iter=100,
-        keep_per_iter=10,
+        select="weighted",
+        samples_per_program=5,
+        samples_per_iter=10,
+        keep_per_iter=1,
         iters=100,
         alpha=1e-4,
+        save_to=f"../out/simple_ns/{int(time())}.out",
+        debug=True,
     )
     pp(p)
