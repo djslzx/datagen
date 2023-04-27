@@ -178,6 +178,7 @@ class Language:
         raise NotImplementedError
 
     def to_str(self, t: Tree) -> str:
+        assert isinstance(t, Tree)
         return t.to_str(self.str_semantics)
 
     @property

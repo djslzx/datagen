@@ -72,9 +72,9 @@ class ResnetFeaturizer(Featurizer):
         return 2048 if self.disable_last_layer else 1000
 
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
-        batch: np.ndarray = rearrange(batch, "b c w h -> b c w h")  # make tensor
-        assert len(batch.shape) == 4, f"Expected shape [b, c, w, h] but got {batch.shape}"
+        batch = np.stack(batch)
         assert isinstance(batch, np.ndarray), f"Expected ndarray, but got {type(batch)}"
+        assert len(batch.shape) == 4, f"Expected shape [b, c, w, h] but got {batch.shape}"
 
         # resnet only plays nice with uint8 matrices
         if batch.dtype != np.uint8:
@@ -83,9 +83,9 @@ class ResnetFeaturizer(Featurizer):
 
         # run resnet
         batch = self.preprocess(T.from_numpy(batch))
-        features = self.model(batch).squeeze()
+        features = rearrange(self.model(batch), "b f 1 1 -> b f")
         if self.softmax_outputs:
-            features = features.softmax(0)
+            features = features.softmax(-1)
         return features.detach().numpy()
 
     def top_k_classes(self, features: np.ndarray, k: int) -> List[str]:

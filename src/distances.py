@@ -11,7 +11,6 @@ import itertools as it
 from sklearn.manifold import MDS
 from Levenshtein import distance as levenshtein
 from scipy.spatial.distance import minkowski, directed_hausdorff
-from scipy.stats import wasserstein_distance as wasserstein
 from einops import rearrange
 
 from featurizers import TextClassifier

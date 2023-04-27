@@ -98,12 +98,14 @@ class Timing(object):
     Use Timing blocks to time blocks of code.
     Adapted from DreamCoder.
     """
-    def __init__(self, msg: str, file=sys.stdout):
+    def __init__(self, msg: str, file=sys.stdout, suppress_start=False):
         self.msg = msg
         self.file = file
+        self.suppress_start = suppress_start
 
     def __enter__(self):
-        print(f"{self.msg}...", file=self.file)
+        if not self.suppress_start:
+            print(f"{self.msg}...", file=self.file)
         self.start = time.time()
         return self
 
