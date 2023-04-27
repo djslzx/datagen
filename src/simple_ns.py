@@ -14,6 +14,7 @@ from time import time
 from lang import Language, Tree
 import lindenmayer
 import regexpr
+import examples
 import util
 
 Distance = Callable[[np.ndarray, np.ndarray], float]
@@ -60,6 +61,8 @@ def search(L: Language,
            save_to: str,
            debug: bool):
     assert select in {"absolute", "weighted"}
+    with open(save_to, "w") as f:
+        f.write(f"Params: {locals()}\n")
 
     archive = init_popn
     knn = NearestNeighbors(metric=make_dist(d=d, k=samples_per_program))
@@ -97,41 +100,40 @@ def search(L: Language,
             # save
             with open(save_to, "w") as f:
                 for x in keep:
-                    f.write(L.to_str(x))
+                    f.write(f"{L.to_str(x)}\n")
 
     return archive
 
 
 if __name__ == "__main__":
+    TRAIN = ["text enums", "text", "text and nums"]
+    id = int(time())
+
     lang = regexpr.Regex()
+    train_data = []
+    for key in TRAIN:
+        for s in examples.regex_split[key]:
+            train_data += [lang.parse(s)]
+
     # lang = lindenmayer.LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
-    # s0 = [lang.parse(x) for x in [
-    #     # "F;F~F",
-    #     # "F+F;F~FF",
-    #     # "F;F~F",
-    #     # "F+F;F~FF",
-    #     # "F[+F][-F];F~F[+F],F~FFF",
-    #     ".",
-    #     "Kevin",
-    #     "Kevin Ellis",
-    #     "kellis@cornell.edu",
-    #     "909-911-9111",
-    #     "1 billion dollars",
-    #     "$1b",
-    #     "$1,000,000,000",
-    # ]]
-    s0 = [lang.sample() for _ in range(10)]
-    p = search(
-        lang,
-        init_popn=s0,
-        d=chamfer,
-        select="weighted",
-        samples_per_program=5,
-        samples_per_iter=10,
-        keep_per_iter=1,
-        iters=100,
-        alpha=1e-4,
-        save_to=f"../out/simple_ns/{int(time())}.out",
-        debug=True,
-    )
-    pp(p)
+    pt = util.ParamTester({
+        "L": lang,
+        "init_popn": [train_data],
+        "d": [chamfer, hausdorff],
+        "select": ["absolute", "weighted"],
+        "samples_per_program": 1,
+        "samples_per_iter": 2,
+        "keep_per_iter": 1,
+        "iters": 10,
+        "alpha": 1e-2,
+        "debug": True,
+    })
+    for i, params in enumerate(pt):
+        dist = params["d"].__name__
+        select = params["select"]
+        save_to = f"../out/simple_ns/{id}-{dist}-{select}.out"
+        params.update({
+            "save_to": save_to
+        })
+        print(f"Searching with id={id}, dist={dist}, select={select}")
+        search(**params)
