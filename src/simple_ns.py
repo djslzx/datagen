@@ -29,7 +29,7 @@ def features(L: Language, s: Collection[Tree], n_samples: int) -> np.ndarray:
     out = np.array(xs)
     assert out.shape[:2] == (len(s), n_samples), \
         f"Expected shape {(len(s), n_samples)}, but got {out.shape}"
-    return out
+    return rearrange(out, "n samples features -> n (samples features)")
 
 def make_dist(d: Distance, k: int) -> Distance:
     """
@@ -43,6 +43,8 @@ def make_dist(d: Distance, k: int) -> Distance:
     return dist
 
 def chamfer(X: np.ndarray, Y: np.ndarray) -> float:
+    # todo: make this much faster
+    #  min_y(d(x, y)) can be performed using knn data structure
     return (sum(min(np.dot(x - y, x - y) for y in Y) for x in X) +
             sum(min(np.dot(x - y, x - y) for x in X) for y in Y))
 
@@ -62,34 +64,36 @@ def search(L: Language,
            debug: bool):
     assert select in {"absolute", "weighted"}
     with open(save_to, "w") as f:
-        f.write(f"Params: {locals()}\n")
+        f.write(f"# Params: {locals()}\n")
 
     archive = init_popn
+    e_archive = features(L, archive, samples_per_program)
     knn = NearestNeighbors(metric=make_dist(d=d, k=samples_per_program))
     for i in range(iters):
         with util.Timing(f"iter {i}", suppress_start=True):
             # sample from fitted grammar
-            L.fit(archive, alpha=alpha)
-            samples = np.array([L.sample() for _ in range(samples_per_iter)], dtype=object)
+            with util.Timing("fit and sample"):
+                L.fit(archive, alpha=alpha)
+                samples = np.array([L.sample() for _ in range(samples_per_iter)], dtype=object)
 
             # extract features
-            e_archive = features(L, archive, samples_per_program)
-            e_archive = rearrange(e_archive, "n samples features -> n (samples features)")
-            e_samples = features(L, samples, samples_per_program)
-            e_samples = rearrange(e_samples, "n samples features -> n (samples features)")
+            with util.Timing("features"):
+                e_samples = features(L, samples, samples_per_program)
 
             # choose which samples to add to archive: score all samples, then choose best few
-            knn.fit(e_archive)
-            dists, _ = knn.kneighbors(e_samples)
-            dists = np.sum(dists, axis=1)
-            if select == "absolute":
-                idx = np.argsort(-dists)[:keep_per_iter]  # sort descending
-            elif select == "weighted":
-                idx = np.random.choice(samples_per_iter, keep_per_iter,
-                                       replace=False, p=softmax(dists))
-                # random.multinomial(n=keep_per_iter, pvals=softmax(dists))
-            keep = samples[idx]
-            archive.extend(keep)
+            with util.Timing("score"):
+                knn.fit(e_archive)
+                dists, _ = knn.kneighbors(e_samples)
+                dists = np.sum(dists, axis=1)
+                if select == "absolute":
+                    idx = np.argsort(-dists)[:keep_per_iter]  # sort descending
+                elif select == "weighted":
+                    idx = np.random.choice(samples_per_iter, keep_per_iter,
+                                           replace=False, p=softmax(dists))
+                    # random.multinomial(n=keep_per_iter, pvals=softmax(dists))
+                keep = samples[idx]
+                archive.extend(keep)
+                e_archive = np.concatenate((e_archive, e_samples[idx]), axis=0)
 
             # diagnostics
             if debug:
@@ -98,7 +102,7 @@ def search(L: Language,
                     print(f"  {L.to_str(x)}: {dists[idx][j]}")
 
             # save
-            with open(save_to, "w") as f:
+            with open(save_to, "a") as f:
                 for x in keep:
                     f.write(f"{L.to_str(x)}\n")
 
@@ -119,11 +123,11 @@ if __name__ == "__main__":
     pt = util.ParamTester({
         "L": lang,
         "init_popn": [train_data],
-        "d": [chamfer, hausdorff],
+        "d": [hausdorff],
         "select": ["absolute", "weighted"],
-        "samples_per_program": 1,
-        "samples_per_iter": 2,
-        "keep_per_iter": 1,
+        "samples_per_program": 100,
+        "samples_per_iter": 50,
+        "keep_per_iter": 5,
         "iters": 10,
         "alpha": 1e-2,
         "debug": True,
