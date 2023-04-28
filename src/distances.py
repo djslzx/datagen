@@ -15,7 +15,7 @@ from einops import rearrange
 
 from featurizers import TextClassifier
 from lang import Language, Tree
-from regexpr import Language
+from regexpr import Regex
 
 def embed(xs: List[str]) -> np.ndarray:
     C = TextClassifier()
@@ -150,7 +150,7 @@ if __name__ == "__main__":
         "money",
         "billionaire",
     ]
-    R = Language()
+    R = Regex()
     regex_examples = [R.parse(s) for s in [
         r".",
         r"\w+@gmail\.com",
