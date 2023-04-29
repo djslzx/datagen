@@ -9,6 +9,7 @@ import time
 import Levenshtein
 from einops import rearrange, reduce
 from sys import stderr
+import wandb
 
 from lang import Language, Tree, ParseError
 from lindenmayer import LSys
@@ -105,66 +106,69 @@ def novelty_search(lang: Language,
                    arkv_growth_rate: float,
                    n_neighbors: int,
                    next_gen_ratio: int,
-                   len_cap: int,         # limit programs from getting longer than this cap
-                   simplify: bool,       # use egg to simplify expressions between generations
+                   len_cap: int,  # limit programs from getting longer than this cap
+                   simplify: bool,  # use egg to simplify expressions between generations
                    ingen_novelty: bool,  # measure novelty wrt current gen, not archive/past gens
                    batch_size: int,
                    verbose: bool,
                    out_dir: str) -> np.ndarray:  # store outputs here
     log_params = locals()  # Pull local variables so that we can log the args that were passed to this function
     p_arkv = arkv_growth_rate / max_popn_size
-
     arkv = None
     popn = np.array(init_popn, dtype=object)
     n_next_gen = max_popn_size * next_gen_ratio
 
+    specimen_table = wandb.Table(columns=["1", "2", "3"])
+
     for iter in range(iters):
-        print(f"[Novelty search: iter {iter}]")
-        t_start = time.time()
+        with Timing(f"NS iteration {iter}"):
+            with Timing("Fitting metagrammar"):
+                lang.fit(popn, alpha=1)
+            with Timing("Generating next gen"):
+                new_gen, new_arkv = next_gen(
+                    lang=lang,
+                    n=n_next_gen,
+                    p_arkv=p_arkv,
+                    len_cap=len_cap,
+                    simplify=simplify
+                )
+                if arkv is not None:
+                    arkv = np.concatenate((arkv, new_arkv), axis=0)
+                else:
+                    arkv = new_arkv
+            with Timing("Scoring population"):
+                scores = semantic_score(
+                    lang=lang,
+                    cur_gen=new_gen if ingen_novelty else np.concatenate((arkv, popn), axis=0),
+                    new_gen=new_gen,
+                    n_neighbors=n_neighbors,
+                    n_samples=n_samples,
+                    batch_size=batch_size
+                )
+            with Timing("Culling popn"):
+                indices = np.argsort(-scores)[:max_popn_size]  # sort descending: higher mean distances first
+                popn = new_gen[indices]
+            with Timing("Logging"):
+                scores = scores[indices]
+                labels = [f"{score:.2e}" for score in scores]
 
-        # generate next gen
-        with Timing("Fitting metagrammar"):
-            lang.fit(popn, alpha=1)
-
-        with Timing("Generating next gen"):
-            new_gen, new_arkv = next_gen(lang=lang, n=n_next_gen, p_arkv=p_arkv, len_cap=len_cap, simplify=simplify)
-            if verbose:
-                print("Next generation:")
-                pp([lang.to_str(x) for x in new_gen])
-            if arkv is not None:
-                arkv = np.concatenate((arkv, new_arkv), axis=0)
-            else:
-                arkv = new_arkv
-
-        # compute popn features, build knn data structure, and score new_gen
-        with Timing("Scoring population"):
-            if ingen_novelty:
-                scores = semantic_score(lang=lang, cur_gen=new_gen, new_gen=new_gen,
-                                        n_neighbors=n_neighbors, n_samples=n_samples, batch_size=batch_size)
-            else:
-                scores = semantic_score(lang=lang, cur_gen=np.concatenate((arkv, popn), axis=0), new_gen=new_gen,
-                                        n_neighbors=n_neighbors, n_samples=n_samples, batch_size=batch_size)
-
-        # cull popn
-        with Timing("Culling popn"):
-            indices = np.argsort(-scores)  # sort descending: higher mean distances first
-            new_gen = new_gen[indices]
-            popn = new_gen[:max_popn_size]  # take indices of top `max_popn_size` agents
-
-        # make labels
-        with Timing("Logging"):
-            scores = scores[indices]
-            min_score = scores[max_popn_size - 1]
-            labels = [f"{score:.2e}" + ("*" if score >= min_score else "")
-                      for score in scores]
-
-        # printing/saving
-        print(f"[Completed iteration {iter} in {time.time() - t_start:.2f}s.]")
+        # wandb logging
+        top_specimens = popn[:3]
+        top_outputs = reduce(np.array([lang.eval(x, {}) for x in top_specimens]).astype(float),
+                             "n c y x -> n y x", "mean")
+        specimen_table.add_data(*[lang.to_str(x) for x in top_specimens])
+        wandb.log({
+            "best1-render": wandb.Image(top_outputs[0]),
+            "best2-render": wandb.Image(top_outputs[1]),
+            "best3-render": wandb.Image(top_outputs[2]),
+            "best-txt": specimen_table,
+            "scores": wandb.Histogram(scores),
+        })
 
         # save gen
         with open(f"{out_dir}/gen-{iter}.txt", "w") as f:
             f.write(f"# {log_params}\n")
-            for t, label in zip(new_gen, labels):
+            for t, label in zip(popn, labels):
                 f.write("".join(lang.to_str(t)) + f" : {label}\n")
 
         # save arkv
@@ -181,18 +185,23 @@ def main(name: str, lang: Language, init_popns: List[List], verbose: bool):
         'lang': lang,
         'init_popn': init_popns,
         'simplify': False,
-        'max_popn_size': 100,
-        'n_neighbors': 10,
-        'arkv_growth_rate': 2,
-        'iters': 100,
-        'next_gen_ratio': 3,
+        'max_popn_size': 10,
+        'n_neighbors': 3,
+        'arkv_growth_rate': 1,
+        'iters': 2,
+        'next_gen_ratio': 2,
         'ingen_novelty': False,
-        'n_samples': 5,
+        'n_samples': 3,
         'len_cap': 100,
-        'batch_size': 64,
+        'batch_size': 128,
         'verbose': verbose,
     })
     for i, params in enumerate(p):
+        wandb.init(
+            project="novelty",
+            config=params,
+        )
+
         out_dir = f"{OUTDIR}/{t}-{name}-{i}"
         try_mkdir(out_dir)
         params.update({
@@ -218,10 +227,10 @@ if __name__ == '__main__':
     lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
     lsys_seeds = {
         "random": random_seed(lsys, n=30, len_cap=100),  # lsys starts out as uniform
-        "zoo": [lsys.parse(x.to_str()) for x in zoo],
+        # "zoo": [lsys.parse(x.to_str()) for x in zoo],
     }
     main('lsys', lang=lsys, init_popns=list(lsys_seeds.values()), verbose=False)
-    
+
     # print("Starting on regexes...")
     # reg = Regex()
     # reg_seeds = [reg.sample() for _ in range(10)]

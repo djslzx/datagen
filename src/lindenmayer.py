@@ -241,7 +241,7 @@ class LSys(Language):
         rules: rule "," rules      -> rules
              | rule                -> rule
         rule: NT "~" symbols       -> arrow
-        NT: /[FfLRXYAB]/
+        NT: /[Ff]/
         T: "+"
          | "-"
 
@@ -264,9 +264,9 @@ class LSys(Language):
         "+": ["Term"],
         "-": ["Term"],
     }
-    types.update({
-        token: ["Nonterm"] for token in "LRXYAB"
-    })
+    # types.update({
+    #     token: ["Nonterm"] for token in "LRXYAB"
+    # })
 
     def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int):
         super().__init__(parser_grammar=LSys.metagrammar,
@@ -384,15 +384,14 @@ def test_lsys_simplify():
 
 if __name__ == "__main__":
     examples = [
-        "F;F~FF",
-        "F;F~F[+F]F",
-        "F;F~F[+F]F,F~FF",
+        "F;F~+--+F",
+        "F;F~+--+F,F~F",
+        "F;F~[+F][-F]F,F~FF",
     ]
-    L = LSys(theta=45, step_length=3, render_depth=5, n_rows=128, n_cols=128)
+    L = LSys(theta=90, step_length=3, render_depth=3, n_rows=128, n_cols=128)
     for ex in examples:
         p = L.parse(ex)
-        imgs = []
-        for d in range(1, 6):
-            render = L.eval(p, env={"render_depth": d})
-            imgs.append(render)
-        util.plot(imgs, shape=(1, 5))
+        print(ex, "=>", L.to_str(L.simplify(p)))
+        # for _ in range(3):
+        #     plt.imshow(lsystem.eval(p, env={}))
+        #     plt.show()
