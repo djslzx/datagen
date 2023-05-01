@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from math import floor, sqrt, ceil
 import numpy as np
 import torch as T
 import itertools as it
@@ -36,13 +38,14 @@ class ParamTester:
 
 
 def pad_array(arr: np.ndarray, batch_size: int) -> np.ndarray:
-    if (r := len(arr) % batch_size) != 0:
+    r = len(arr) % batch_size
+    if r != 0:
         return np.concatenate((arr, np.empty(batch_size - r, dtype=object)))
     else:
         return arr
 
 
-def batched(iterable: Iterable, batch_size: int, pad_with=None) -> Iterable[List]:
+def batched(iterable: Iterable, batch_size: int) -> Iterable[List]:
     assert batch_size > 0
     b = []
     for x in iterable:
@@ -52,19 +55,18 @@ def batched(iterable: Iterable, batch_size: int, pad_with=None) -> Iterable[List
         else:
             b.append(x)
     if b:  # leftover elts
-        b += [pad_with] * (batch_size - len(b))
         yield b
 
 
 def test_batch():
     cases = [
-        ([0, 1, 2, 3, 4, 5], 1, 0), [[0], [1], [2], [3], [4], [5]],
-        ([0, 1, 2, 3, 4, 5], 2, 0), [[0, 1], [2, 3], [4, 5]],
-        ([0, 1, 2, 3, 4, 5], 3, 0), [[0, 1, 2], [3, 4, 5]],
-        ([0, 1, 2, 3, 4, 5], 4, 0), [[0, 1, 2, 3], [4, 5, 0, 0]],
-        ([0, 1, 2, 3, 4, 5], 5, 0), [[0, 1, 2, 3, 4], [5, 0, 0, 0, 0]],
-        ([0, 1, 2, 3, 4, 5], 6, 0), [[0, 1, 2, 3, 4, 5]],
-        ([0, 1, 2, 3, 4, 5], 7, 0), [[0, 1, 2, 3, 4, 5, 0]],
+        ([0, 1, 2, 3, 4, 5], 1), [[0], [1], [2], [3], [4], [5]],
+        ([0, 1, 2, 3, 4, 5], 2), [[0, 1], [2, 3], [4, 5]],
+        ([0, 1, 2, 3, 4, 5], 3), [[0, 1, 2], [3, 4, 5]],
+        ([0, 1, 2, 3, 4, 5], 4), [[0, 1, 2, 3], [4, 5]],
+        ([0, 1, 2, 3, 4, 5], 5), [[0, 1, 2, 3, 4], [5]],
+        ([0, 1, 2, 3, 4, 5], 6), [[0, 1, 2, 3, 4, 5]],
+        ([0, 1, 2, 3, 4, 5], 7), [[0, 1, 2, 3, 4, 5]],
     ]
     for args, ans in zip(cases[::2], cases[1::2]):
         out = list(batched(*args))
@@ -134,10 +136,24 @@ def find_closing_bracket(s: str, brackets="[]") -> int:
     raise ValueError(f"Mismatched brackets in {s}")
 
 
-def plot(imgs: List[np.array], shape: Tuple[int, int], labels: Optional[List[str]] = None,
-         title="", saveto=None):  # pragma: no cover
+def plot(imgs: List[np.array],
+         shape: Optional[Tuple[int, int]] = None,
+         labels: Optional[List[str]] = None,
+         title="",
+         saveto=None):  # pragma: no cover
+    # infer reasonable shape if none given
+    if shape is None:
+        n = len(imgs)
+        height = floor(sqrt(n))
+        width = ceil(n / height)
+        shape = (height, width)
+
     assert len(imgs) <= shape[0] * shape[1], f"Received {len(imgs)} with shape {shape}"
     assert labels is None or len(imgs) == len(labels), f"Received {len(imgs)} images and {len(labels)} labels"
+
+    # convert image to floats if needed
+    if imgs[0].dtype != float:
+        imgs = [img.astype(float) for img in imgs]
 
     fig, ax = plt.subplots(*shape)
     if shape == (1, 1):
