@@ -19,7 +19,7 @@ import pickle
 import sys
 
 from lang import Language, Tree
-from lindenmayer import LSys, NilError
+from lindenmayer import StochasticLSystem, NilError
 from regexpr import Regex
 import examples
 import util
@@ -28,8 +28,8 @@ from view import read_outfile
 LEN_CAP = 100
 
 # init lsystem metagrammar
-lsys = LSys(45, 3, 3, 128, 128)
-lsys_fitted = LSys(45, 3, 3, 128, 128)
+lsys = StochasticLSystem(45, 3, 3, 128, 128)
+lsys_fitted = StochasticLSystem(45, 3, 3, 128, 128)
 lsys_fitted.fit([lsys_fitted.parse(s) for s in examples.lsystem_book_F_examples], alpha=0.01)
 
 

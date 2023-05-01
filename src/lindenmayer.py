@@ -225,7 +225,7 @@ class S0LSystem(LSystem):
         return S0LSystem(axiom, rules, "uniform")
 
 
-class LSys(Language):
+class StochasticLSystem(Language):
     """
     Defines the L-System domain used for novelty search.
     """
@@ -268,11 +268,14 @@ class LSys(Language):
     #     token: ["Nonterm"] for token in "LRXYAB"
     # })
 
-    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int):
-        super().__init__(parser_grammar=LSys.metagrammar,
+    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int,
+                 overload_metagrammar=None, overload_types=None):
+        parser_grammar = StochasticLSystem.metagrammar if overload_metagrammar is None else overload_metagrammar
+        parser_types = StochasticLSystem.types if overload_types is None else overload_types
+        super().__init__(parser_grammar=parser_grammar,
                          parser_start="lsystem",
                          root_type="LSystem",
-                         model=Grammar.from_components(LSys.types, gram=2),
+                         model=Grammar.from_components(parser_types, gram=2),
                          featurizer=ResnetFeaturizer(disable_last_layer=True,
                                                      softmax_outputs=True))
         self.theta = theta
@@ -284,8 +287,9 @@ class LSys(Language):
     def none(self) -> Any:
         return np.zeros((self.n_rows, self.n_cols))
 
-    def eval(self, t: Tree, env: Dict[str, Any]) -> np.ndarray:
+    def eval(self, t: Tree, env: Dict[str, Any] = None) -> np.ndarray:
         s = self.to_str(t)
+        if env is None: env = {}
 
         # fetch env variables if present, otherwise use object fields
         theta = env["theta"] if "theta" in env else self.theta
@@ -331,7 +335,7 @@ class LSys(Language):
                 print(f"WARNING: found nil in unsimplified expression: {sexp_simpl}", file=stderr)
             raise NilError(f"Unexpected 'nil' token in simplified expr: {sexp_simpl}")
         s_simpl = self.to_str(Tree.from_sexp(sexp_simpl))
-        s_dedup = LSys.dedup_rules(s_simpl)
+        s_dedup = StochasticLSystem.dedup_rules(s_simpl)
         return self.parse(s_dedup)
 
     @staticmethod
@@ -340,6 +344,46 @@ class LSys(Language):
         rules = set(s_rules.split(","))
         s_rules = ",".join(sorted(rules, key=lambda x: (len(x), x)))
         return f"{s_axiom};{s_rules}"
+
+
+class DeterministicLSystem(StochasticLSystem):
+    """
+    Deterministic L-System, implemented as a subset of StochasticLSystem
+    """
+
+    metagrammar = r"""
+        lsystem: axiom ";" rule   -> lsystem
+        axiom: symbols            -> axiom
+        symbols: symbol symbols   -> symbols
+               | symbol           -> symbol
+        symbol: "[" symbols "]"   -> bracket
+              | NT                -> nonterm
+              | T                 -> term
+        rule: NT "~" symbols      -> arrow
+        NT: "F"
+        T: "+" | "-"
+
+        %import common.WS
+        %ignore WS
+    """
+    types = {
+        "lsystem": ["Axiom", "Rule", "LSystem"],
+        "axiom": ["Symbols", "Axiom"],
+        "symbols": ["Symbol", "Symbols", "Symbols"],
+        "symbol": ["Symbol", "Symbols"],
+        "bracket": ["Symbols", "Symbol"],
+        "nonterm": ["Nonterm", "Symbol"],
+        "term": ["Term", "Symbol"],
+        "arrow": ["Nonterm", "Symbols", "Rule"],
+        "F": ["Nonterm"],
+        "+": ["Term"],
+        "-": ["Term"],
+    }
+
+    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int):
+        super().__init__(theta, step_length, render_depth, n_rows, n_cols,
+                         overload_metagrammar=DeterministicLSystem.metagrammar,
+                         overload_types=DeterministicLSystem.types)
 
 
 class NilError(ParseError):
@@ -372,7 +416,7 @@ def test_lsys_simplify():
         "F;F~+,F~+": "nil",
         "F;F~F,F~+,F~+": "F;F~F",
     }
-    L = LSys(theta=90, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    L = StochasticLSystem(theta=90, step_length=3, render_depth=3, n_rows=128, n_cols=128)
     for x, y in cases.items():
         t_x = L.parse(x)
         try:
@@ -384,14 +428,29 @@ def test_lsys_simplify():
 
 if __name__ == "__main__":
     examples = [
-        "F;F~+--+F",
-        "F;F~+--+F,F~F",
-        "F;F~[+F][-F]F,F~FF",
+        "F;F~FF",
+        "F;F~F[+F][-F]F",
+        "F;F~F[+F][-F]FF",
+        "F;F~F[+F][-F]FF[++F]",
+        "F;F~F[+F][-F]FF[++F][--F]",
+        # "F;F~+--+F",
+        # "F;F~+--+F,F~F",
+        # "F;F~[+F][-F]F,F~FF",
     ]
-    L = LSys(theta=90, step_length=3, render_depth=3, n_rows=128, n_cols=128)
-    for ex in examples:
-        p = L.parse(ex)
-        print(ex, "=>", L.to_str(L.simplify(p)))
+    params = {
+        "theta": 30,
+        "step_length": 3,
+        "render_depth": 3,
+        "n_rows": 128,
+        "n_cols": 128,
+    }
+    sl = StochasticLSystem(**params)
+    dl = DeterministicLSystem(**params)
+    import view
+    for L in [sl, dl]:
+        view.plot_lsys_at_depths(L, examples, "", 5, depths=(1, 5))
+
+        # print(ex, "=>", L.to_str(L.simplify(p)))
         # for _ in range(3):
         #     plt.imshow(lsystem.eval(p, env={}))
         #     plt.show()

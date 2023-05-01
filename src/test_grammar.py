@@ -1,6 +1,6 @@
 from grammar import *
 import lang
-from lindenmayer import LSys
+from lindenmayer import StochasticLSystem
 
 nat_components = {
     "add": ["Int", "Int", "Int"],
@@ -106,7 +106,7 @@ def test_fit_lsys():
     corpus = [
         "F;F~F",
     ]
-    lsys = LSys(90, 3, 3, 128, 128)
+    lsys = StochasticLSystem(90, 3, 3, 128, 128)
     parsed_corpus = [lsys.parse(x) for x in corpus]
     lsys.fit(parsed_corpus)
     print(lsys.model)

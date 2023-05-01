@@ -116,7 +116,9 @@ class Regex(Language):
             "escaped": uniform(1),
         }
 
-    def eval(self, t: Tree, env: Dict[str, str]) -> str:
+    def eval(self, t: Tree, env: Dict[str, str] = None) -> str:
+        if env is None: env = {}
+
         def flip() -> int:
             return np.random.multinomial(n=1, pvals=self.eval_weights[t.value]).argmax()
 

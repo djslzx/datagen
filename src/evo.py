@@ -12,7 +12,7 @@ from sys import stderr
 import wandb
 
 from lang import Language, Tree, ParseError
-from lindenmayer import LSys
+from lindenmayer import StochasticLSystem
 from regexpr import Regex
 from util import Timing, ParamTester, try_mkdir, pad_array
 
@@ -224,7 +224,7 @@ def random_seed(lang: Language, n: int, len_cap: int) -> List[Tree]:
 
 if __name__ == '__main__':
     print("Starting on lsystems...")
-    lsys = LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    lsys = StochasticLSystem(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
     lsys_seeds = {
         "random": random_seed(lsys, n=30, len_cap=100),  # lsys starts out as uniform
         # "zoo": [lsys.parse(x.to_str()) for x in zoo],

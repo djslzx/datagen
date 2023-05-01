@@ -173,7 +173,7 @@ class Language:
         else:
             raise AttributeError(f"Cannot fit on grammar with gram={self.model.gram}")
 
-    def eval(self, t: Tree, env: Dict[str, Any]) -> Any:
+    def eval(self, t: Tree, env: Dict[str, Any] = None) -> Any:
         """Executes a tree in the language"""
         raise NotImplementedError
 
