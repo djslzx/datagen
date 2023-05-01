@@ -132,10 +132,6 @@ def novelty_search(lang: Language,
                     len_cap=len_cap,
                     simplify=simplify
                 )
-                if arkv is not None:
-                    arkv = np.concatenate((arkv, new_arkv), axis=0)
-                else:
-                    arkv = new_arkv
             with Timing("Scoring population"):
                 scores = semantic_score(
                     lang=lang,
@@ -148,6 +144,11 @@ def novelty_search(lang: Language,
             with Timing("Culling popn"):
                 indices = np.argsort(-scores)[:max_popn_size]  # sort descending: higher mean distances first
                 popn = new_gen[indices]
+            with Timing("Updating archive"):
+                if arkv is not None:
+                    arkv = np.concatenate((arkv, new_arkv), axis=0)
+                else:
+                    arkv = new_arkv
             with Timing("Logging"):
                 scores = scores[indices]
                 labels = [f"{score:.2e}" for score in scores]
