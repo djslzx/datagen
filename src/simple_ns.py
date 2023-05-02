@@ -1,16 +1,17 @@
 """
 ns without the evo
 """
-
+from math import ceil
+from sys import stderr
 from typing import List, Tuple, Callable, Collection
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-from scipy.spatial.distance import minkowski, directed_hausdorff
+from scipy.spatial.distance import directed_hausdorff
 from scipy.special import softmax
 from einops import rearrange, reduce
-from pprint import pp
 from time import time
 import wandb
+from tqdm import tqdm
 
 from lang import Language, Tree
 import lindenmayer
@@ -20,8 +21,8 @@ import util
 
 Distance = Callable[[np.ndarray, np.ndarray], float]
 
-def features(L: Language, s: Collection[Tree], n_samples: int) -> np.ndarray:
-    return batched_features(L, s, batch_size=64, n_samples=n_samples)
+def features(L: Language, s: Collection[Tree], n_samples: int, batch_size=4) -> np.ndarray:
+    return batched_features(L, s, batch_size=batch_size, n_samples=n_samples)
     # # output shape: (|s|, n)
     # xs = []
     # for x in s:
@@ -41,13 +42,17 @@ def batched_features(L: Language, S: Collection[Tree],
         for x in S:
             for _ in range(n_samples):
                 yield L.eval(x, env={})
-
     ys = []
-    for batch in util.batched(samples(), batch_size=batch_size):
+    n_batches = ceil(len(S) * n_samples / batch_size)
+    for batch in tqdm(util.batched(samples(), batch_size=batch_size), total=n_batches):
+        print(f"[/{n_batches}]\r", file=stderr)
         y = L.featurizer.apply(batch)
-        ys.extend(y)
-    # output shape: (|S|, n_samples, features)
+        if batch_size > 1 and len(batch) > 1:
+            ys.extend(y)
+        else:
+            ys.append(y)
     out = np.array(ys)
+    # output shape: (|S|, n_samples, features)
     assert out.shape[0] == (len(S) * n_samples), \
         f"Expected to get {len(S)} * {n_samples} = {len(S) * n_samples} feature vectors, but got out:{out.shape}"
     out = rearrange(out, "(s samples) features -> s (samples features)", s=len(S), samples=n_samples)
@@ -112,7 +117,7 @@ def simple_search(L: Language,
             # sample from fitted grammar
             with util.Timing("fit and sample"):
                 L.fit(archive, alpha=alpha)
-                samples = take_samples(L, samples_per_iter, len_cap=1000)
+                samples = take_samples(L, samples_per_iter, len_cap=100)
 
             # extract features
             with util.Timing("features"):
@@ -159,7 +164,7 @@ def evo_search(L: Language,
     assert len(init_popn) >= 5, \
         f"Initial population ({len(init_popn)}) must be geq number of nearest neighbors (5)"
 
-    def embed(S): return features(L, S, samples_per_program)
+    def embed(S): return features(L, S, n_samples=samples_per_program, batch_size=8)
 
     full_archive = []
     archive = []
@@ -172,7 +177,7 @@ def evo_search(L: Language,
         with util.Timing(f"Iteration {t}"):
             # fit and sample
             L.fit(popn, alpha=alpha)
-            samples = take_samples(L, samples_per_iter, len_cap=1000)
+            samples = take_samples(L, samples_per_iter, len_cap=100)
             with util.Timing("embedding samples"):
                 e_samples = embed(samples)
 
@@ -197,9 +202,9 @@ def evo_search(L: Language,
         log = {
             f"top-{k}": wandb.Image(
                 rearrange(lang.eval(x), "color row col -> row col color"),
-                caption=lang.to_str(x),
+                caption=f"{lang.to_str(x)} ({s})",
             )
-            for k, x in enumerate(popn[:5])
+            for k, (x, s) in enumerate(zip(popn[:5], dists[i_popn][:5]))
         }
         log.update({
             "scores": wandb.Histogram(dists[i_popn])
@@ -233,13 +238,16 @@ if __name__ == "__main__":
     # for key in TRAIN:
     #     for s in examples.regex_split[key]:
     #         train_data += [lang.parse(s)]
-    lang = lindenmayer.DeterministicLSystem(
+    lang = lindenmayer.LSys(
+        kind="deterministic",
         theta=30,
         step_length=4,
-        render_depth=5,
+        render_depth=4,
         n_rows=128,
         n_cols=128,
         quantize=False,
+        disable_last_layer=False,
+        softmax_outputs=True,
     )
     train_data = [
         lang.parse("F;F~F"),
@@ -257,7 +265,7 @@ if __name__ == "__main__":
         "samples_per_iter": 20,
         "max_popn_size": 10,
         "keep_per_iter": 2,
-        "iters": 1,
+        "iters": 10,
         "alpha": 1,
         "debug": True,
     })

@@ -7,7 +7,7 @@ import numpy as np
 from typing import *
 
 from lang import Language
-from lindenmayer import StochasticLSystem
+from lindenmayer import LSys
 from regexpr import Regex
 from featurizers import ResnetFeaturizer
 import util
@@ -38,7 +38,7 @@ def read_outfile(filename: str) -> Generator[Tuple[str, str], None, None]:
 
 
 def plot_lsys_from_file(filename: str, n_imgs_per_plot: int, depths=(3, 3), len_cap=1000):
-    lsys = StochasticLSystem(theta=45, step_length=3, render_depth=5, n_rows=128, n_cols=128)
+    lsys = LSys(theta=45, step_length=3, render_depth=5, n_rows=128, n_cols=128)
     plot_lsys_at_depths(
         lsys,
         [s for s, _ in read_outfile(filename)],
@@ -49,7 +49,7 @@ def plot_lsys_from_file(filename: str, n_imgs_per_plot: int, depths=(3, 3), len_
     )
 
 
-def plot_lsys_at_depths(lsys: StochasticLSystem, lsys_strs: List[str], title: str, n_imgs_per_plot: int, depths=(3, 3), len_cap=1000):
+def plot_lsys_at_depths(lsys: LSys, lsys_strs: List[str], title: str, n_imgs_per_plot: int, depths=(3, 3), len_cap=1000):
     depth_lo, depth_hi = depths
     depth_hi += 1
     imgs = []
@@ -74,7 +74,7 @@ def plot_lsys_at_depths(lsys: StochasticLSystem, lsys_strs: List[str], title: st
 
 
 def plot_lsys_outputs(filename: str, batch_size=6, len_cap=1000, save=True):
-    lsys = StochasticLSystem(theta=45, step_length=3, render_depth=5, n_rows=128, n_cols=128)
+    lsys = LSys(theta=45, step_length=3, render_depth=5, n_rows=128, n_cols=128)
     classifier = ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True)
     imgs = []
     labels = []

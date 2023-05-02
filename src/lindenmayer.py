@@ -225,12 +225,11 @@ class S0LSystem(LSystem):
         return S0LSystem(axiom, rules, "uniform")
 
 
-class StochasticLSystem(Language):
+class LSys(Language):
     """
     Defines the L-System domain used for novelty search.
     """
-
-    metagrammar = r"""
+    sol_metagrammar = r"""
         lsystem: axiom ";" rules   -> lsystem
         axiom: symbols             -> axiom
         symbols: symbol symbols    -> symbols
@@ -248,7 +247,7 @@ class StochasticLSystem(Language):
         %import common.WS
         %ignore WS
     """
-    types = {
+    sol_types = {
         "lsystem": ["Axiom", "Rules", "LSystem"],
         "axiom": ["Symbols", "Axiom"],
         "symbols": ["Symbol", "Symbols", "Symbols"],
@@ -264,21 +263,56 @@ class StochasticLSystem(Language):
         "+": ["Term"],
         "-": ["Term"],
     }
-    # types.update({
+    # sol_types.update({
     #     token: ["Nonterm"] for token in "LRXYAB"
     # })
 
+    dol_metagrammar = r"""
+        lsystem: axiom ";" rule   -> lsystem
+        axiom: symbols            -> axiom
+        symbols: symbol symbols   -> symbols
+               | symbol           -> symbol
+        symbol: "[" symbols "]"   -> bracket
+              | NT                -> nonterm
+              | T                 -> term
+        rule: NT "~" symbols      -> arrow
+        NT: "F"
+        T: "+" | "-"
+
+        %import common.WS
+        %ignore WS
+    """
+    dol_types = {
+        "lsystem": ["Axiom", "Rule", "LSystem"],
+        "axiom": ["Symbols", "Axiom"],
+        "symbols": ["Symbol", "Symbols", "Symbols"],
+        "symbol": ["Symbol", "Symbols"],
+        "bracket": ["Symbols", "Symbol"],
+        "nonterm": ["Nonterm", "Symbol"],
+        "term": ["Term", "Symbol"],
+        "arrow": ["Nonterm", "Symbols", "Rule"],
+        "F": ["Nonterm"],
+        "+": ["Term"],
+        "-": ["Term"],
+    }
+
     def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int,
-                 overload_metagrammar=None, overload_types=None, quantize=False):
-        parser_grammar = StochasticLSystem.metagrammar if overload_metagrammar is None else overload_metagrammar
-        parser_types = StochasticLSystem.types if overload_types is None else overload_types
+                 kind="stochastic", quantize=False, disable_last_layer=False, softmax_outputs=True):
+        self.kind = kind
+        assert kind in {"stochastic", "deterministic"}, f"LSys must be 'stochastic' or 'deterministic', but got {kind}"
+        if kind == "stochastic":
+            parser_grammar = LSys.sol_metagrammar
+            parser_types = LSys.sol_types
+        else:
+            parser_grammar = LSys.dol_metagrammar
+            parser_types = LSys.dol_types
         super().__init__(parser_grammar=parser_grammar,
                          parser_start="lsystem",
                          root_type="LSystem",
                          model=Grammar.from_components(parser_types, gram=2),
                          featurizer=ResnetFeaturizer(quantize=quantize,
-                                                     disable_last_layer=True,
-                                                     softmax_outputs=True))
+                                                     disable_last_layer=disable_last_layer,
+                                                     softmax_outputs=softmax_outputs))
         self.theta = theta
         self.step_length = step_length
         self.render_depth = render_depth
@@ -336,7 +370,7 @@ class StochasticLSystem(Language):
                 print(f"WARNING: found nil in unsimplified expression: {sexp_simpl}", file=stderr)
             raise NilError(f"Unexpected 'nil' token in simplified expr: {sexp_simpl}")
         s_simpl = self.to_str(Tree.from_sexp(sexp_simpl))
-        s_dedup = StochasticLSystem.dedup_rules(s_simpl)
+        s_dedup = LSys.dedup_rules(s_simpl)
         return self.parse(s_dedup)
 
     @staticmethod
@@ -348,57 +382,6 @@ class StochasticLSystem(Language):
 
     def __str__(self) -> str:
         return "\n".join([f"<StochLSys:",
-                          f"  theta={self.theta}",
-                          f"  step_length={self.step_length}",
-                          f"  render_depth={self.render_depth}",
-                          f"  n_rows={self.n_rows}",
-                          f"  n_cols={self.n_cols}",
-                          f"  featurizer={self.featurizer}"])
-
-
-class DeterministicLSystem(StochasticLSystem):
-    """
-    Deterministic L-System, implemented as a subset of StochasticLSystem
-    """
-
-    metagrammar = r"""
-        lsystem: axiom ";" rule   -> lsystem
-        axiom: symbols            -> axiom
-        symbols: symbol symbols   -> symbols
-               | symbol           -> symbol
-        symbol: "[" symbols "]"   -> bracket
-              | NT                -> nonterm
-              | T                 -> term
-        rule: NT "~" symbols      -> arrow
-        NT: "F"
-        T: "+" | "-"
-
-        %import common.WS
-        %ignore WS
-    """
-    types = {
-        "lsystem": ["Axiom", "Rule", "LSystem"],
-        "axiom": ["Symbols", "Axiom"],
-        "symbols": ["Symbol", "Symbols", "Symbols"],
-        "symbol": ["Symbol", "Symbols"],
-        "bracket": ["Symbols", "Symbol"],
-        "nonterm": ["Nonterm", "Symbol"],
-        "term": ["Term", "Symbol"],
-        "arrow": ["Nonterm", "Symbols", "Rule"],
-        "F": ["Nonterm"],
-        "+": ["Term"],
-        "-": ["Term"],
-    }
-
-    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int,
-                 quantize=False):
-        super().__init__(theta, step_length, render_depth, n_rows, n_cols,
-                         quantize=quantize,
-                         overload_metagrammar=DeterministicLSystem.metagrammar,
-                         overload_types=DeterministicLSystem.types)
-
-    def __str__(self) -> str:
-        return "\n".join([f"<DetLSys:",
                           f"  theta={self.theta}",
                           f"  step_length={self.step_length}",
                           f"  render_depth={self.render_depth}",
@@ -437,7 +420,7 @@ def test_lsys_simplify():
         "F;F~+,F~+": "nil",
         "F;F~F,F~+,F~+": "F;F~F",
     }
-    L = StochasticLSystem(theta=90, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    L = LSys(theta=90, step_length=3, render_depth=3, n_rows=128, n_cols=128)
     for x, y in cases.items():
         t_x = L.parse(x)
         try:
@@ -465,7 +448,7 @@ if __name__ == "__main__":
         "n_rows": 128,
         "n_cols": 128,
     }
-    sl = StochasticLSystem(**params)
+    sl = LSys(**params)
     dl = DeterministicLSystem(**params)
     import view
     for L in [sl, dl]:

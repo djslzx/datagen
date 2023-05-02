@@ -15,7 +15,7 @@ from sys import stderr
 
 import util
 from lang import Language, Tree, ParseError
-from lindenmayer import StochasticLSystem
+from lindenmayer import LSys
 from regexpr import Regex
 from grammar import LearnedGrammar, ConvFeatureExtractor, SBertFeatureExtractor, FeatureExtractor
 from examples import lsystem_book_F_examples
@@ -151,7 +151,7 @@ def run_model(name: str, lang: Language, v_in: np.ndarray, k: int, n_tries: int,
     return list(zip(dists, imgs))
 
 
-def run_models(named_models: Dict[str, LearnedGrammar], lsys: StochasticLSystem, dataset: List[str], k: int,
+def run_models(named_models: Dict[str, LearnedGrammar], lsys: LSys, dataset: List[str], k: int,
                n_tries: int, n_renders_per_try: int, save_dir: str):
     sns.set_theme(style="white")
     n = len(named_models)
@@ -207,7 +207,7 @@ def run_models_on_datasets():
         "random_egg": f"{prefix}/models/294290_rand_egg/epoch=47-step=4239744.ckpt",
     }
     models = {}
-    lsys = StochasticLSystem(45, 3, 3, 128, 128)
+    lsys = LSys(45, 3, 3, 128, 128)
     for name, path in paths.items():
         print(f"Loading model {name} from {path}...")
         models[name] = load_learned_grammar(lang=lsys, checkpt_path=path)
@@ -227,12 +227,12 @@ def run_models_on_datasets():
     t = int(time.time())
     save_dir = f"../out/plots/{t}-sample"
     util.try_mkdir(save_dir)
-    lang = StochasticLSystem(45, 3, 3, 128, 128)
+    lang = LSys(45, 3, 3, 128, 128)
     run_models(models, lang, data, k=5, n_tries=1000, n_renders_per_try=2, save_dir=save_dir)
 
 
 def train_lsys():
-    lsys = StochasticLSystem(45, 3, 3, 128, 128)
+    lsys = LSys(45, 3, 3, 128, 128)
     lsys_fe = ConvFeatureExtractor(n_features=lsys.featurizer.n_features,
                                    n_color_channels=3,
                                    n_conv_channels=12,
