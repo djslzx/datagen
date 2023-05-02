@@ -346,6 +346,15 @@ class StochasticLSystem(Language):
         s_rules = ",".join(sorted(rules, key=lambda x: (len(x), x)))
         return f"{s_axiom};{s_rules}"
 
+    def __str__(self) -> str:
+        return "\n".join([f"<StochLSys:",
+                          f"  theta={self.theta}",
+                          f"  step_length={self.step_length}",
+                          f"  render_depth={self.render_depth}",
+                          f"  n_rows={self.n_rows}",
+                          f"  n_cols={self.n_cols}",
+                          f"  featurizer={self.featurizer}"])
+
 
 class DeterministicLSystem(StochasticLSystem):
     """
@@ -389,14 +398,13 @@ class DeterministicLSystem(StochasticLSystem):
                          overload_types=DeterministicLSystem.types)
 
     def __str__(self) -> str:
-        return (f"<DetLSys: "
-                "theta={self.theta}, "
-                "step_length={self.step_length}, "
-                "render_depth={render_depth}, "
-                "n_rows={n_rows}, "
-                "n_cols={n_cols}, "
-                "model={self.model}, "
-                "featurizer={self.featurizer}")
+        return "\n".join([f"<DetLSys:",
+                          f"  theta={self.theta}",
+                          f"  step_length={self.step_length}",
+                          f"  render_depth={self.render_depth}",
+                          f"  n_rows={self.n_rows}",
+                          f"  n_cols={self.n_cols}",
+                          f"  featurizer={self.featurizer}"])
 
 
 class NilError(ParseError):

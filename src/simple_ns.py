@@ -254,7 +254,7 @@ if __name__ == "__main__":
         "d": [hausdorff],
         "select": ["strict"],
         "samples_per_program": 1,
-        "samples_per_iter": ,
+        "samples_per_iter": 20,
         "max_popn_size": 10,
         "keep_per_iter": 2,
         "iters": 1,
@@ -267,7 +267,6 @@ if __name__ == "__main__":
         save_to = f"../out/simple_ns/{id}-{dist}-{select}.out"
         params.update({
             "save_to": save_to,
-            "featurizer": "<Resnet50: disable_last_layer=True, softmax_outputs=True>"
         })
 
         print(f"Searching with id={id}, dist={dist}, select={select}")
@@ -275,5 +274,5 @@ if __name__ == "__main__":
             project="novelty",
             config=params,
         )
-         evo_search(**params)
+        evo_search(**params)
 
