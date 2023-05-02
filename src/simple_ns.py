@@ -218,6 +218,7 @@ def evo_search(L: Language,
 
         # save
         with open(save_to, "a") as f:
+            f.write(f"# Generation {t}:\n")
             for x in popn:
                 f.write(f"{L.to_str(x)}\n")
 
@@ -234,7 +235,7 @@ if __name__ == "__main__":
     #         train_data += [lang.parse(s)]
     lang = lindenmayer.DeterministicLSystem(
         theta=30,
-        step_length=3,
+        step_length=4,
         render_depth=5,
         n_rows=128,
         n_cols=128,
@@ -247,15 +248,13 @@ if __name__ == "__main__":
         lang.parse("F+F-F;F~F+FF"),
         lang.parse("F;F~F[+F][-F]F"),
     ]
-
-    # lang = lindenmayer.LSys(theta=45, step_length=3, render_depth=3, n_rows=128, n_cols=128)
     pt = util.ParamTester({
         "L": lang,
         "init_popn": [train_data],
         "d": [hausdorff],
         "select": ["strict"],
         "samples_per_program": 1,
-        "samples_per_iter": 20,
+        "samples_per_iter": ,
         "max_popn_size": 10,
         "keep_per_iter": 2,
         "iters": 1,
@@ -267,7 +266,8 @@ if __name__ == "__main__":
         select = params["select"]
         save_to = f"../out/simple_ns/{id}-{dist}-{select}.out"
         params.update({
-            "save_to": save_to
+            "save_to": save_to,
+            "featurizer": "<Resnet50: disable_last_layer=True, softmax_outputs=True>"
         })
 
         print(f"Searching with id={id}, dist={dist}, select={select}")
@@ -275,9 +275,5 @@ if __name__ == "__main__":
             project="novelty",
             config=params,
         )
-        A, FA = evo_search(**params)
-        # bmps = []
-        # for t in FA:
-        #     bmp = lang.eval(t).astype(float)
-        #     bmps.append(bmp)
-        # util.plot(bmps)
+         evo_search(**params)
+

@@ -388,6 +388,16 @@ class DeterministicLSystem(StochasticLSystem):
                          overload_metagrammar=DeterministicLSystem.metagrammar,
                          overload_types=DeterministicLSystem.types)
 
+    def __str__(self) -> str:
+        return (f"<DetLSys: "
+                "theta={self.theta}, "
+                "step_length={self.step_length}, "
+                "render_depth={render_depth}, "
+                "n_rows={n_rows}, "
+                "n_cols={n_cols}, "
+                "model={self.model}, "
+                "featurizer={self.featurizer}")
+
 
 class NilError(ParseError):
     pass
