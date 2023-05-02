@@ -448,8 +448,8 @@ if __name__ == "__main__":
         "n_rows": 128,
         "n_cols": 128,
     }
-    sl = LSys(**params)
-    dl = DeterministicLSystem(**params)
+    sl = LSys(**params, kind="stochastic")
+    dl = LSys(**params, kind="deterministic")
     import view
     for L in [sl, dl]:
         view.plot_lsys_at_depths(L, examples, "", 5, depths=(1, 5))

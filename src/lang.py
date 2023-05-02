@@ -140,7 +140,7 @@ class Language:
         self.parser = lark.Lark(parser_grammar, start=parser_start, parser='lalr')
         self.start = root_type
         self.model = model
-        self.model.normalize_()
+        if self.model: self.model.normalize_()
         self.featurizer = featurizer
 
     def none(self) -> Any:

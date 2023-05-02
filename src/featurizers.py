@@ -12,10 +12,12 @@ import Levenshtein
 
 class Featurizer:
     def apply(self, batch: Any) -> np.ndarray:
+        """Applies the feature extractor to a batch of inputs"""
         raise NotImplementedError
 
     @property
     def n_features(self) -> int:
+        """Returns the number of features per input"""
         raise NotImplementedError
 
 

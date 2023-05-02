@@ -14,6 +14,7 @@ import wandb
 from tqdm import tqdm
 
 from lang import Language, Tree
+import point
 import lindenmayer
 import regexpr
 import examples
@@ -198,14 +199,21 @@ def evo_search(L: Language,
             e_archive.extend(e_samples[i_archive])
 
         # diagnostics
+        log = {}
         # log top k images
-        log = {
-            f"top-{k}": wandb.Image(
-                rearrange(lang.eval(x), "color row col -> row col color"),
-                caption=f"{lang.to_str(x)} ({s})",
-            )
-            for k, (x, s) in enumerate(zip(popn[:5], dists[i_popn][:5]))
-        }
+        if isinstance(L, lindenmayer.LSys):
+            log.update({
+                f"top-{k}": wandb.Image(rearrange(L.eval(x), "color row col -> row col color"),
+                                        caption=f"{L.to_str(x)} ({s})")
+                for k, (x, s) in enumerate(zip(popn[:5], dists[i_popn][:5]))
+            })
+        # plot points
+        if isinstance(L, point.RealPoint) or isinstance(L, point.NatPoint):
+            data = [L.eval(x).tolist() for x in popn]
+            table = wandb.Table(data=data, columns=["x", "y"])
+            log.update({
+                "points": wandb.plot.scatter(table, "x", "y", title="Point locations")
+            })
         log.update({
             "scores": wandb.Histogram(dists[i_popn])
         })
@@ -215,7 +223,6 @@ def evo_search(L: Language,
             print(f"Generation {t}:")
             for j, x in enumerate(popn):
                 print(f"  {L.to_str(x)}: {dists[i_popn][j]}")
-            #
             # # plot top k
             # for batch in util.batched(popn, batch_size=36):
             #     bmps = [lang.eval(x) for x in batch]
@@ -229,15 +236,56 @@ def evo_search(L: Language,
 
     return archive, full_archive
 
+def DEFAULT_CONFIG():
+    return {
+        "d": hausdorff,
+        "select": "strict",
+        "samples_per_program": 1,
+        "samples_per_iter": 1000,
+        "max_popn_size": 100,
+        "keep_per_iter": 10,
+        "iters": 20,
+        "alpha": 1,
+        "debug": True,
+    }
 
-if __name__ == "__main__":
-    TRAIN = ["text enums", "text", "text and nums"]
-    id = int(time())
-    # lang = regexpr.Regex()
-    # train_data = []
-    # for key in TRAIN:
-    #     for s in examples.regex_split[key]:
-    #         train_data += [lang.parse(s)]
+def run_on_real_points():
+    lang = point.RealPoint()
+    train_data = [
+        lang.parse("(0, 0)"),
+        lang.parse("(1, 0)"),
+        lang.parse("(0, 1)"),
+        lang.parse("(-1, 0)"),
+        lang.parse("(0, -1)"),
+    ]
+    config = DEFAULT_CONFIG()
+    config.update({
+        "L": lang,
+        "init_popn": train_data,
+        "save_to": f"../out/simple_ns/{id}-r2-strict.out",
+    })
+    wandb.init(project="novelty", config=config)
+    evo_search(**config)
+
+def run_on_nat_points(id: str):
+    lang = point.NatPoint()
+    train_data = [
+        lang.parse("(one, one)"),
+        lang.parse("(inc one, one)"),
+        lang.parse("(one, inc one)"),
+        lang.parse("(inc one, inc one)"),
+        lang.parse("(inc inc one, one)"),
+    ]
+    config = DEFAULT_CONFIG()
+    config.update({
+        "L": lang,
+        "init_popn": train_data,
+        "save_to": f"../out/simple_ns/{id}-z2-strict.out",
+    })
+    wandb.init(project="novelty", config=config)
+    evo_search(**config)
+
+def run_on_lsystems():
     lang = lindenmayer.LSys(
         kind="deterministic",
         theta=30,
@@ -256,19 +304,13 @@ if __name__ == "__main__":
         lang.parse("F+F-F;F~F+FF"),
         lang.parse("F;F~F[+F][-F]F"),
     ]
-    pt = util.ParamTester({
+    config = DEFAULT_CONFIG()
+    config.update({
         "L": lang,
         "init_popn": [train_data],
-        "d": [hausdorff],
-        "select": ["strict"],
-        "samples_per_program": 1,
-        "samples_per_iter": 20,
-        "max_popn_size": 10,
-        "keep_per_iter": 2,
-        "iters": 10,
-        "alpha": 1,
-        "debug": True,
+        "d": hausdorff,
     })
+    pt = util.ParamTester(config)
     for i, params in enumerate(pt):
         dist = params["d"].__name__
         select = params["select"]
@@ -276,11 +318,12 @@ if __name__ == "__main__":
         params.update({
             "save_to": save_to,
         })
-
         print(f"Searching with id={id}, dist={dist}, select={select}")
-        wandb.init(
-            project="novelty",
-            config=params,
-        )
+        wandb.init(project="novelty", config=params)
         evo_search(**params)
 
+if __name__ == "__main__":
+    id = str(int(time()))
+    # run_on_real_points(id)
+    run_on_nat_points(id)
+    # run_on_lsystems()
