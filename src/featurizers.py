@@ -89,7 +89,8 @@ class ResnetFeaturizer(Featurizer):
 
         # run resnet
         batch = self.preprocess(T.from_numpy(batch))
-        features = rearrange(self.model(batch), "b f 1 1 -> b f")
+        features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
+
         if self.softmax_outputs:
             features = features.softmax(-1)
         return features.detach().numpy()
