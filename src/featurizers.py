@@ -1,7 +1,7 @@
 from typing import *
 import torch as T
 import numpy as np
-from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import resnet50, ResNet50_Weights, quantization
 from transformers import AutoTokenizer, AutoModelForCausalLM  # language models
 from sentence_transformers import SentenceTransformer
 from sys import stderr
@@ -50,9 +50,15 @@ class TextPredictor(Featurizer):
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, disable_last_layer=False, softmax_outputs=True):
-        weights = ResNet50_Weights.DEFAULT
-        resnet = resnet50(weights=weights)
+    def __init__(self, quantize=False, disable_last_layer=False, softmax_outputs=True):
+        self.quantize = quantize
+        if quantize:
+            weights = quantization.ResNet50_QuantizedWeights.DEFAULT
+            resnet = quantization.resnet50(weights=weights, quantize=True)
+        else:
+            weights = ResNet50_Weights.DEFAULT
+            resnet = resnet50(weights=weights)
+
         self.preprocess = weights.transforms()
         self.disable_last_layer = disable_last_layer
         if disable_last_layer:

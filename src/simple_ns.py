@@ -167,37 +167,52 @@ def evo_search(L: Language,
     e_popn = embed(popn)
     knn = NearestNeighbors(metric=make_dist(d=d, k=samples_per_program))
     for t in range(iters):
-        # fit and sample
-        L.fit(popn, alpha=alpha)
-        samples = take_samples(L, samples_per_iter, len_cap=1000)
-        e_samples = embed(samples)
+        with util.Timing(f"Iteration {t}"):
+            # fit and sample
+            L.fit(popn, alpha=alpha)
+            samples = take_samples(L, samples_per_iter, len_cap=1000)
+            with util.Timing("embedding samples"):
+                e_samples = embed(samples)
 
-        # score samples wrt archive + popn
-        knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
-        dists, _ = knn.kneighbors(e_samples)
-        dists = np.sum(dists, axis=1)
+            # score samples wrt archive + popn
+            knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
+            dists, _ = knn.kneighbors(e_samples)
+            dists = np.sum(dists, axis=1)
 
-        # select samples to carry over to next generation
-        i_popn = select_indices(select, dists, max_popn_size)
-        popn = samples[i_popn]
-        e_popn = embed(popn)
-        full_archive.extend(popn)
+            # select samples to carry over to next generation
+            i_popn = select_indices(select, dists, max_popn_size)
+            popn = samples[i_popn]
+            e_popn = e_samples[i_popn]
+            full_archive.extend(popn)
 
-        # archive random subset
-        i_archive = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
-        archive.extend(samples[i_archive])
-        e_archive.extend(e_samples[i_archive])
+            # archive random subset
+            i_archive = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
+            archive.extend(samples[i_archive])
+            e_archive.extend(e_samples[i_archive])
 
         # diagnostics
+        # log top k images
+        log = {
+            f"top-{k}": wandb.Image(
+                rearrange(lang.eval(x), "color row col -> row col color"),
+                caption=lang.to_str(x),
+            )
+            for k, x in enumerate(popn[:5])
+        }
+        log.update({
+            "scores": wandb.Histogram(dists[i_popn])
+        })
+        wandb.log(log)
+
         if debug:
             print(f"Generation {t}:")
             for j, x in enumerate(popn):
                 print(f"  {L.to_str(x)}: {dists[i_popn][j]}")
-
-            # plot top k
-            for batch in util.batched(popn, batch_size=36):
-                bmps = [lang.eval(x) for x in batch]
-                util.plot(bmps)
+            #
+            # # plot top k
+            # for batch in util.batched(popn, batch_size=36):
+            #     bmps = [lang.eval(x) for x in batch]
+            #     util.plot(bmps)
 
         # save
         with open(save_to, "a") as f:
@@ -215,7 +230,14 @@ if __name__ == "__main__":
     # for key in TRAIN:
     #     for s in examples.regex_split[key]:
     #         train_data += [lang.parse(s)]
-    lang = lindenmayer.DeterministicLSystem(theta=30, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    lang = lindenmayer.DeterministicLSystem(
+        theta=30,
+        step_length=3,
+        render_depth=3,
+        n_rows=128,
+        n_cols=128,
+        quantize=False,
+    )
     train_data = [
         lang.parse("F;F~F"),
         lang.parse("F;F~FF"),
@@ -245,10 +267,15 @@ if __name__ == "__main__":
         params.update({
             "save_to": save_to
         })
+
         print(f"Searching with id={id}, dist={dist}, select={select}")
+        wandb.init(
+            project="novelty",
+            config=params,
+        )
         A, FA = evo_search(**params)
-        bmps = []
-        for t in FA:
-            bmp = lang.eval(t).astype(float)
-            bmps.append(bmp)
-        util.plot(bmps)
+        # bmps = []
+        # for t in FA:
+        #     bmp = lang.eval(t).astype(float)
+        #     bmps.append(bmp)
+        # util.plot(bmps)

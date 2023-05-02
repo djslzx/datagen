@@ -269,14 +269,15 @@ class StochasticLSystem(Language):
     # })
 
     def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int,
-                 overload_metagrammar=None, overload_types=None):
+                 overload_metagrammar=None, overload_types=None, quantize=False):
         parser_grammar = StochasticLSystem.metagrammar if overload_metagrammar is None else overload_metagrammar
         parser_types = StochasticLSystem.types if overload_types is None else overload_types
         super().__init__(parser_grammar=parser_grammar,
                          parser_start="lsystem",
                          root_type="LSystem",
                          model=Grammar.from_components(parser_types, gram=2),
-                         featurizer=ResnetFeaturizer(disable_last_layer=True,
+                         featurizer=ResnetFeaturizer(quantize=quantize,
+                                                     disable_last_layer=True,
                                                      softmax_outputs=True))
         self.theta = theta
         self.step_length = step_length
@@ -380,8 +381,10 @@ class DeterministicLSystem(StochasticLSystem):
         "-": ["Term"],
     }
 
-    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int):
+    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int,
+                 quantize=False):
         super().__init__(theta, step_length, render_depth, n_rows, n_cols,
+                         quantize=quantize,
                          overload_metagrammar=DeterministicLSystem.metagrammar,
                          overload_types=DeterministicLSystem.types)
 
