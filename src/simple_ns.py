@@ -105,7 +105,8 @@ def simple_search(L: Language,
 
     archive = init_popn
     e_archive = features(L, archive, samples_per_program)
-    knn = NearestNeighbors(metric=make_dist(d=d, k=samples_per_program))
+    metric = make_dist(d=d, k=samples_per_program) if samples_per_program > 1 else "minkowski"
+    knn = NearestNeighbors(metric=metric)
     for t in range(iters):
         with util.Timing(f"iter {t}", suppress_start=True):
             # sample from fitted grammar
@@ -165,7 +166,8 @@ def evo_search(L: Language,
     popn = init_popn
     e_archive = []
     e_popn = embed(popn)
-    knn = NearestNeighbors(metric=make_dist(d=d, k=samples_per_program))
+    metric = make_dist(d=d, k=samples_per_program) if samples_per_program > 1 else "minkowski"
+    knn = NearestNeighbors(metric=metric)
     for t in range(iters):
         with util.Timing(f"Iteration {t}"):
             # fit and sample
@@ -233,7 +235,7 @@ if __name__ == "__main__":
     lang = lindenmayer.DeterministicLSystem(
         theta=30,
         step_length=3,
-        render_depth=3,
+        render_depth=5,
         n_rows=128,
         n_cols=128,
         quantize=False,
