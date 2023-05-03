@@ -8,7 +8,7 @@ from scipy.ndimage import gaussian_filter
 import itertools as it
 from sys import stderr, maxsize
 
-from eggy import simplify_lsystem
+from eggy import simplify
 from lang import Language, Tree, Grammar, ParseError
 from featurizers import ResnetFeaturizer
 import util
@@ -375,7 +375,7 @@ class LSys(Language):
     def simplify(self, t: Tree) -> Tree:
         """Simplify using egg and deduplicate rules"""
         sexp = t.to_sexp()
-        sexp_simpl = simplify_lsystem(sexp)
+        sexp_simpl = simplify(sexp)
         if "nil" in sexp_simpl:
             if sexp_simpl != "nil":
                 print(f"WARNING: found nil in unsimplified expression: {sexp_simpl}", file=stderr)
@@ -392,13 +392,11 @@ class LSys(Language):
         return f"{s_axiom};{s_rules}"
 
     def __str__(self) -> str:
-        return "\n".join([f"<StochLSys:",
-                          f"  theta={self.theta}",
-                          f"  step_length={self.step_length}",
-                          f"  render_depth={self.render_depth}",
-                          f"  n_rows={self.n_rows}",
-                          f"  n_cols={self.n_cols}",
-                          f"  featurizer={self.featurizer}"])
+        excluded_keys = {"model", "parser"}
+        return "\n".join([f"<StochLSys:"] +
+                         [f"  {key}={val}"
+                          for key, val in self.__dict__.items()
+                          if key not in excluded_keys])
 
 
 class NilError(ParseError):
@@ -466,6 +464,7 @@ if __name__ == "__main__":
         "n_cols": 128,
     }
     L = LSys(**params, kind="deterministic")
+    print(L)
     # view.plot_lsys_at_depths(L, examples, "", 3, depths=(1, 6))
     M = [L.eval(L.parse(x), {"aa": True}) for x in examples]
     # print("aa:", np.unique(M))
