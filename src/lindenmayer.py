@@ -69,16 +69,19 @@ class LSystem:
             if char == 'F':
                 r1 = r + int(d * sin(radians(heading)))
                 c1 = c + int(d * cos(radians(heading)))
-                if aa:
-                    rs, cs, val = skimage.draw.line_aa(r, c, r1, c1)
-                    mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
-                    rs, cs, val = rs[mask], cs[mask], val[mask]
-                    canvas[rs, cs] = val * 255
-                else:
-                    rs, cs = skimage.draw.line(r, c, r1, c1)
-                    mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
-                    rs, cs = rs[mask], cs[mask]
-                    canvas[rs, cs] = 255
+                # only draw if at least one coordinate is within the canvas
+                if ((0 <= r1 < n_rows and 0 <= c1 < n_cols) or
+                    (0 <= r < n_rows and 0 <= c < n_cols)):
+                    if aa:
+                        rs, cs, val = skimage.draw.line_aa(r, c, r1, c1)
+                        mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
+                        rs, cs, val = rs[mask], cs[mask], val[mask]
+                        canvas[rs, cs] = val * 255
+                    else:
+                        rs, cs = skimage.draw.line(r, c, r1, c1)
+                        mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
+                        rs, cs = rs[mask], cs[mask]
+                        canvas[rs, cs] = 255
                 r, c = r1, c1
             elif char == 'f':
                 r += int(d * sin(radians(heading)))
@@ -445,39 +448,37 @@ if __name__ == "__main__":
     np.set_printoptions(threshold=maxsize)
 
     examples = [
-        "F;F~FF",
-        "F;F~F[+F][-F]F",
-        "F;F~F[+F][-F]FF",
-        "F;F~F[+F][-F]FF[++F]",
-        "F;F~F[+F][-F]FF[++F][--F]",
-        "FFF+FFF[[+FF]];F~F+F++FF+F"
+        # "F-F;F~-" + "F" * n for n in range(1, 10)
+        # "F;F~FF",
+        # "F;F~F[+F][-F]F",
+        "FFF+FFF[[+FF]];F~F+F++FF+F",
+        "-FF[+F+FFFF]+++F-++F-FF[F]F+++F--FFFF[F]-[-[+-+FF+[F]]F+-FFF+F[[+F]]]F;F~F+-F+FFF-FFFFFF+F[F]",
+        "F-F;F~-FFFFFFFF",
         # "F;F~+--+F",
         # "F;F~+--+F,F~F",
         # "F;F~[+F][-F]F,F~FF",
     ]
     params = {
-        "theta": 30,
+        "theta": 45,
         "step_length": 3,
         "render_depth": 3,
         "n_rows": 128,
         "n_cols": 128,
     }
     L = LSys(**params, kind="deterministic")
-    # view.plot_lsys_at_depths(L, examples, "", 1, depths=(1, 5))
+    # view.plot_lsys_at_depths(L, examples, "", 3, depths=(1, 6))
+    M = [L.eval(L.parse(x), {"aa": True}) for x in examples]
+    # print("aa:", np.unique(M))
+    # util.plot(M, title="aa")
 
-    M_aa = [L.eval(L.parse(x), {"aa": True}) for x in examples]
-    M_no_aa = [L.eval(L.parse(x), {"aa": False}) for x in examples]
-    print("no aa:", np.unique(M_no_aa))
-    print("aa:", np.unique(M_aa))
+    # M_no_aa = [L.eval(L.parse(x), {"aa": False}) for x in examples]
+    # print("no aa:", np.unique(M_no_aa))
+    # util.plot(M_no_aa, title="no aa")
 
-    M = M_aa
+    # test effect of gaussian blur
     ft = ResnetFeaturizer()
     preprocessed = ft.preprocess(stack([from_numpy(x) for x in M]))
-
-    util.plot(M_no_aa, title="no aa")
-    util.plot(M_aa, title="aa")
     util.plot(preprocessed, title="resnet preprocessed")
-
-    for i in range(1, 5):
+    for i in range(6):
         filtered = [gaussian_filter(x, sigma=i) for x in M]
         util.plot(filtered, title=f"gaussian filter, sigma={i}")

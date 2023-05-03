@@ -8,6 +8,7 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import directed_hausdorff
 from scipy.special import softmax
+from scipy.ndimage import gaussian_filter
 from einops import rearrange, reduce
 from time import time
 import wandb
@@ -22,8 +23,8 @@ import util
 
 Distance = Callable[[np.ndarray, np.ndarray], float]
 
-def features(L: Language, s: Collection[Tree], n_samples: int, batch_size=4) -> np.ndarray:
-    return batched_features(L, s, batch_size=batch_size, n_samples=n_samples)
+def features(L: Language, s: Collection[Tree], n_samples: int, batch_size=4, gaussian_blur=False) -> np.ndarray:
+    return batched_features(L, s, batch_size=batch_size, n_samples=n_samples, gaussian_blur=gaussian_blur)
     # # output shape: (|s|, n)
     # xs = []
     # for x in s:
@@ -36,13 +37,17 @@ def features(L: Language, s: Collection[Tree], n_samples: int, batch_size=4) -> 
     # return rearrange(out, "n samples features -> n (samples features)")
 
 def batched_features(L: Language, S: Collection[Tree],
-                     batch_size: int, n_samples: int) -> np.ndarray:
+                     batch_size: int, n_samples: int,
+                     gaussian_blur=False) -> np.ndarray:
     # take samples from programs in S, then batch them and feed them through
     # the feature extractor for L
     def samples():
         for x in S:
             for _ in range(n_samples):
-                yield L.eval(x, env={})
+                bmp = L.eval(x, env={})
+                if gaussian_blur:
+                    bmp = gaussian_filter(bmp, sigma=3)
+                yield bmp
     ys = []
     n_batches = ceil(len(S) * n_samples / batch_size)
     for batch in tqdm(util.batched(samples(), batch_size=batch_size), total=n_batches):
@@ -160,13 +165,14 @@ def evo_search(L: Language,
                iters: int,
                save_to: str,
                debug=False,
-               archive_early=False) -> Tuple[List[Tree], List[Tree]]:
+               archive_early=False,
+               gaussian_blur=False) -> Tuple[List[Tree], List[Tree]]:
     assert samples_per_iter >= 2 * max_popn_size, \
         "Number of samples taken should be significantly larger than number of samples kept"
     assert len(init_popn) >= 5, \
         f"Initial population ({len(init_popn)}) must be geq number of nearest neighbors (5)"
 
-    def embed(S): return features(L, S, n_samples=samples_per_program, batch_size=8)
+    def embed(S): return features(L, S, n_samples=samples_per_program, batch_size=8, gaussian_blur=gaussian_blur)
     def update_archive(A, E_A, S, E_S):
         I_A = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
         A.extend(S[I_A])
@@ -204,34 +210,27 @@ def evo_search(L: Language,
             if not archive_early: update_archive(archive, e_archive, samples, e_samples)
 
         # diagnostics
-        log = {}
-        # log top k images
+        log = {"scores": wandb.Histogram(dists[i_popn])}
+        # log best and worst images
         if isinstance(L, lindenmayer.LSys):
+            def summarize(indices):
+                img = rearrange([L.eval(x) for x in samples[indices]], "b color row col -> row (b col) color")
+                caption = "Left to right: " + ", ".join(f"{L.to_str(x)} ({score:.4e})"
+                                                        for x, score in zip(samples[indices], dists[indices]))
+                return wandb.Image(img, caption=caption)
+
+            i_best = np.argsort(-dists)[:5]
+            i_worst = np.argsort(dists)[:5]
             log.update({
-                f"top-{k}": wandb.Image(rearrange(L.eval(x), "color row col -> row col color"),
-                                        caption=f"{L.to_str(x)} ({s})")
-                for k, (x, s) in enumerate(zip(popn[:5], dists[i_popn][:5]))
+                "best": summarize(i_best),
+                "worst": summarize(i_worst),
             })
-        # plot points
-        if isinstance(L, point.RealPoint) or isinstance(L, point.NatPoint):
-            data = [L.eval(x).tolist() for x in popn]
-            table = wandb.Table(data=data, columns=["x", "y"])
-            log.update({
-                "points": wandb.plot.scatter(table, "x", "y", title="Point locations")
-            })
-        log.update({
-            "scores": wandb.Histogram(dists[i_popn])
-        })
         wandb.log(log)
 
         if debug:
             print(f"Generation {t}:")
             for j, x in enumerate(popn):
                 print(f"  {L.to_str(x)}: {dists[i_popn][j]}")
-            # # plot top k
-            # for batch in util.batched(popn, batch_size=36):
-            #     bmps = [lang.eval(x) for x in batch]
-            #     util.plot(bmps)
 
         # save
         with open(save_to, "a") as f:
@@ -252,6 +251,7 @@ def DEFAULT_CONFIG():
         "iters": 20,
         "alpha": 1,
         "debug": True,
+        "gaussian_blur": False,
     }
 
 def run_on_real_points():
@@ -314,6 +314,7 @@ def run_on_lsystems(id):
         "L": lang,
         "init_popn": [train_data],
         "archive_early": True,
+        "gaussian_blur": True,
     })
     pt = util.ParamTester(config)
     for i, params in enumerate(pt):
