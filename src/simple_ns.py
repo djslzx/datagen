@@ -290,7 +290,7 @@ def run_on_nat_points(id: str):
     wandb.init(project="novelty", config=config)
     evo_search(**config)
 
-def run_on_lsystems():
+def run_on_lsystems(id):
     lang = lindenmayer.LSys(
         kind="deterministic",
         theta=30,
@@ -330,5 +330,5 @@ def run_on_lsystems():
 if __name__ == "__main__":
     id = str(int(time()))
     # run_on_real_points(id)
-    run_on_nat_points(id)
-    # run_on_lsystems()
+    # run_on_nat_points(id)
+    run_on_lsystems(id)
