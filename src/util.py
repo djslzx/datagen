@@ -152,7 +152,7 @@ def plot(imgs: List[np.array],
     assert labels is None or len(imgs) == len(labels), f"Received {len(imgs)} images and {len(labels)} labels"
 
     # convert image to floats if needed
-    if imgs[0].dtype != float:
+    if isinstance(imgs[0], np.ndarray) and imgs[0].dtype != float:
         imgs = [img.astype(float) for img in imgs]
 
     fig, ax = plt.subplots(*shape)

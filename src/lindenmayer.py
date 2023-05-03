@@ -4,10 +4,11 @@ from typing import *
 from math import sin, cos, radians
 import numpy as np
 import skimage.draw
+from scipy.ndimage import gaussian_filter
 import itertools as it
-from sys import stderr
+from sys import stderr, maxsize
 
-from eggy import simplify
+from eggy import simplify_lsystem
 from lang import Language, Tree, Grammar, ParseError
 from featurizers import ResnetFeaturizer
 import util
@@ -55,7 +56,7 @@ class LSystem:
         return depth, word
 
     @staticmethod
-    def draw(s: str, d: float, theta: float, n_rows: int = 512, n_cols: int = 512) -> np.ndarray:  # pragma: no cover
+    def draw(s: str, d: float, theta: float, n_rows: int = 512, n_cols: int = 512, aa=True) -> np.ndarray:  # pragma: no cover
         """
         Draw the turtle interpretation of the string `s` onto a `n_rows` x `n_cols` array,
         using scikit-image's drawing library (with anti-aliasing).
@@ -68,11 +69,16 @@ class LSystem:
             if char == 'F':
                 r1 = r + int(d * sin(radians(heading)))
                 c1 = c + int(d * cos(radians(heading)))
-                rs, cs, val = skimage.draw.line_aa(r, c, r1, c1)
-                # mask out out-of-bounds indices
-                mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)
-                rs, cs, val = rs[mask], cs[mask], val[mask]
-                canvas[rs, cs] = val * 255
+                if aa:
+                    rs, cs, val = skimage.draw.line_aa(r, c, r1, c1)
+                    mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
+                    rs, cs, val = rs[mask], cs[mask], val[mask]
+                    canvas[rs, cs] = val * 255
+                else:
+                    rs, cs = skimage.draw.line(r, c, r1, c1)
+                    mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
+                    rs, cs = rs[mask], cs[mask]
+                    canvas[rs, cs] = 255
                 r, c = r1, c1
             elif char == 'f':
                 r += int(d * sin(radians(heading)))
@@ -296,7 +302,7 @@ class LSys(Language):
         "-": ["Term"],
     }
 
-    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int,
+    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int, aa=True,
                  kind="stochastic", quantize=False, disable_last_layer=False, softmax_outputs=True):
         self.kind = kind
         assert kind in {"stochastic", "deterministic"}, f"LSys must be 'stochastic' or 'deterministic', but got {kind}"
@@ -318,6 +324,7 @@ class LSys(Language):
         self.render_depth = render_depth
         self.n_rows = n_rows
         self.n_cols = n_cols
+        self.aa = aa
 
     def none(self) -> Any:
         return np.zeros((self.n_rows, self.n_cols))
@@ -332,10 +339,11 @@ class LSys(Language):
         step_length = env["step_length"] if "step_length" in env else self.step_length
         n_rows = env["n_rows"] if "n_rows" in env else self.n_rows
         n_cols = env["n_cols"] if "n_cols" in env else self.n_cols
+        aa = env["aa"] if "aa" in env else self.aa
 
         lsys = S0LSystem.from_str(s)
         sample = lsys.nth_expansion(render_depth)
-        return LSystem.draw(sample, d=step_length, theta=theta, n_rows=n_rows, n_cols=n_cols)
+        return LSystem.draw(sample, d=step_length, theta=theta, n_rows=n_rows, n_cols=n_cols, aa=aa)
 
     @property
     def str_semantics(self) -> Dict:
@@ -431,12 +439,18 @@ def test_lsys_simplify():
 
 
 if __name__ == "__main__":
+    import view
+    from torch import from_numpy, Tensor, stack
+    from featurizers import ResnetFeaturizer
+    np.set_printoptions(threshold=maxsize)
+
     examples = [
         "F;F~FF",
         "F;F~F[+F][-F]F",
         "F;F~F[+F][-F]FF",
         "F;F~F[+F][-F]FF[++F]",
         "F;F~F[+F][-F]FF[++F][--F]",
+        "FFF+FFF[[+FF]];F~F+F++FF+F"
         # "F;F~+--+F",
         # "F;F~+--+F,F~F",
         # "F;F~[+F][-F]F,F~FF",
@@ -448,13 +462,22 @@ if __name__ == "__main__":
         "n_rows": 128,
         "n_cols": 128,
     }
-    sl = LSys(**params, kind="stochastic")
-    dl = LSys(**params, kind="deterministic")
-    import view
-    for L in [sl, dl]:
-        view.plot_lsys_at_depths(L, examples, "", 5, depths=(1, 5))
+    L = LSys(**params, kind="deterministic")
+    # view.plot_lsys_at_depths(L, examples, "", 1, depths=(1, 5))
 
-        # print(ex, "=>", L.to_str(L.simplify(p)))
-        # for _ in range(3):
-        #     plt.imshow(lsystem.eval(p, env={}))
-        #     plt.show()
+    M_aa = [L.eval(L.parse(x), {"aa": True}) for x in examples]
+    M_no_aa = [L.eval(L.parse(x), {"aa": False}) for x in examples]
+    print("no aa:", np.unique(M_no_aa))
+    print("aa:", np.unique(M_aa))
+
+    M = M_aa
+    ft = ResnetFeaturizer()
+    preprocessed = ft.preprocess(stack([from_numpy(x) for x in M]))
+
+    util.plot(M_no_aa, title="no aa")
+    util.plot(M_aa, title="aa")
+    util.plot(preprocessed, title="resnet preprocessed")
+
+    for i in range(1, 5):
+        filtered = [gaussian_filter(x, sigma=i) for x in M]
+        util.plot(filtered, title=f"gaussian filter, sigma={i}")
