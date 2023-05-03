@@ -159,13 +159,18 @@ def evo_search(L: Language,
                alpha: float,
                iters: int,
                save_to: str,
-               debug: bool) -> Tuple[List[Tree], List[Tree]]:
+               debug=False,
+               archive_early=False) -> Tuple[List[Tree], List[Tree]]:
     assert samples_per_iter >= 2 * max_popn_size, \
         "Number of samples taken should be significantly larger than number of samples kept"
     assert len(init_popn) >= 5, \
         f"Initial population ({len(init_popn)}) must be geq number of nearest neighbors (5)"
 
     def embed(S): return features(L, S, n_samples=samples_per_program, batch_size=8)
+    def update_archive(A, E_A, S, E_S):
+        I_A = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
+        A.extend(S[I_A])
+        E_A.extend(E_S[I_A])
 
     full_archive = []
     archive = []
@@ -182,6 +187,8 @@ def evo_search(L: Language,
             with util.Timing("embedding samples"):
                 e_samples = embed(samples)
 
+            if archive_early: update_archive(archive, e_archive, samples, e_samples)
+
             # score samples wrt archive + popn
             knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
             dists, _ = knn.kneighbors(e_samples)
@@ -194,9 +201,7 @@ def evo_search(L: Language,
             full_archive.extend(popn)
 
             # archive random subset
-            i_archive = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
-            archive.extend(samples[i_archive])
-            e_archive.extend(e_samples[i_archive])
+            if not archive_early: update_archive(archive, e_archive, samples, e_samples)
 
         # diagnostics
         log = {}
@@ -290,7 +295,7 @@ def run_on_lsystems():
         kind="deterministic",
         theta=30,
         step_length=4,
-        render_depth=4,
+        render_depth=3,
         n_rows=128,
         n_cols=128,
         quantize=False,
@@ -308,7 +313,7 @@ def run_on_lsystems():
     config.update({
         "L": lang,
         "init_popn": [train_data],
-        "d": hausdorff,
+        "archive_early": True,
     })
     pt = util.ParamTester(config)
     for i, params in enumerate(pt):
