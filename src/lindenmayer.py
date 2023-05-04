@@ -378,8 +378,8 @@ class LSys(Language):
         sexp_simpl = simplify(sexp)
         if "nil" in sexp_simpl:
             if sexp_simpl != "nil":
-                print(f"WARNING: found nil in unsimplified expression: {sexp_simpl}", file=stderr)
-            raise NilError(f"Unexpected 'nil' token in simplified expr: {sexp_simpl}")
+                print(f"WARNING: found nil in expression: {sexp} => {sexp_simpl}", file=stderr)
+            raise NilError(f"Unexpected 'nil' in simplified expr: {sexp} => {sexp_simpl}")
         s_simpl = self.to_str(Tree.from_sexp(sexp_simpl))
         s_dedup = LSys.dedup_rules(s_simpl)
         return self.parse(s_dedup)
@@ -452,6 +452,8 @@ if __name__ == "__main__":
         "FFF+FFF[[+FF]];F~F+F++FF+F",
         "-FF[+F+FFFF]+++F-++F-FF[F]F+++F--FFFF[F]-[-[+-+FF+[F]]F+-FFF+F[[+F]]]F;F~F+-F+FFF-FFFFFF+F[F]",
         "F-F;F~-FFFFFFFF",
+        "F;F~+FF+F",
+        "F;F~F[--F][F]F[[F[[F[FFF]]-F[-F[-FF]-F]FFFFF-[[FF][[[FF]F-[-FFF]F]F]FF]]FF]F]-",
         # "F;F~+--+F",
         # "F;F~+--+F,F~F",
         # "F;F~[+F][-F]F,F~FF",
@@ -467,17 +469,17 @@ if __name__ == "__main__":
     print(L)
     # view.plot_lsys_at_depths(L, examples, "", 3, depths=(1, 6))
     M = [L.eval(L.parse(x), {"aa": True}) for x in examples]
-    # print("aa:", np.unique(M))
-    # util.plot(M, title="aa")
+    print("aa:", np.unique(M))
+    util.plot(M, title="aa")
 
     # M_no_aa = [L.eval(L.parse(x), {"aa": False}) for x in examples]
     # print("no aa:", np.unique(M_no_aa))
     # util.plot(M_no_aa, title="no aa")
 
     # test effect of gaussian blur
-    ft = ResnetFeaturizer()
-    preprocessed = ft.preprocess(stack([from_numpy(x) for x in M]))
-    util.plot(preprocessed, title="resnet preprocessed")
-    for i in range(6):
-        filtered = [gaussian_filter(x, sigma=i) for x in M]
-        util.plot(filtered, title=f"gaussian filter, sigma={i}")
+    # ft = ResnetFeaturizer()
+    # preprocessed = ft.preprocess(stack([from_numpy(x) for x in M]))
+    # util.plot(preprocessed, title="resnet preprocessed")
+    # for i in range(6):
+    #     filtered = [gaussian_filter(x, sigma=i) for x in M]
+    #     util.plot(filtered, title=f"gaussian filter, sigma={i}")

@@ -15,7 +15,7 @@ from time import time
 import wandb
 from tqdm import tqdm
 
-from lang import Language, Tree
+from lang import Language, Tree, ParseError
 import point
 import lindenmayer
 import regexpr
@@ -65,11 +65,14 @@ def batched_features(L: Language, S: Collection[Tree],
     out = rearrange(out, "(s samples) features -> s (samples features)", s=len(S), samples=n_samples)
     return out
 
-def take_samples(L: Language, n_samples: int, len_cap: int) -> np.ndarray:
+def take_samples(L: Language, n_samples: int, length_cap: int, simplify=False) -> np.ndarray:
     out = []
     while len(out) < n_samples:
         x = L.sample()
-        if len(x) <= len_cap:
+        if simplify:
+            try: x = L.simplify(x)
+            except ParseError: continue  # retry
+        if len(x) <= length_cap:
             out.append(x)
         # log failures?
     return np.array(out, dtype=object)
@@ -124,7 +127,7 @@ def simple_search(L: Language,
             # sample from fitted grammar
             with util.Timing("fit and sample"):
                 L.fit(archive, alpha=alpha)
-                samples = take_samples(L, samples_per_iter, len_cap=100)
+                samples = take_samples(L, samples_per_iter, length_cap=100)
 
             # extract features
             with util.Timing("features"):
@@ -167,7 +170,10 @@ def evo_search(L: Language,
                save_to: str,
                debug=False,
                archive_early=False,
-               gaussian_blur=False) -> Tuple[List[Tree], List[Tree]]:
+               gaussian_blur=False,
+               length_cap=1000,
+               length_penalty=0.1,
+               simplify=False) -> Tuple[List[Tree], List[Tree]]:
     assert samples_per_iter >= 2 * max_popn_size, \
         "Number of samples taken should be significantly larger than number of samples kept"
     assert len(init_popn) >= 5, \
@@ -179,8 +185,9 @@ def evo_search(L: Language,
         A.extend(S[I_A])
         E_A.extend(E_S[I_A])
     def log_mds(t: int,
-                A: List[Tree], e_A: List[np.ndarray],
-                A_: List[Tree], e_A_: List[np.ndarray],
+                A: List, e_A: List[np.ndarray],
+                A_: List, e_A_: List[np.ndarray],
+                S: np.ndarray, e_S: np.ndarray,
                 P: np.ndarray[Tree], e_P: np.ndarray,
                 P_: np.ndarray[Tree], e_P_: np.ndarray) -> wandb.Table:
         """Log the positions of the archive, samples, and population as a table for viz"""
@@ -188,15 +195,15 @@ def evo_search(L: Language,
         mds = MDS(n_components=2, metric=True, random_state=0)  # use fixed random state for reproducibility
         # each embedding matrix has shape [k_i, embedding_size], so concat along axis 0
         if not A:
-            embeddings = np.concatenate((e_A_, e_P, e_P_), axis=0)
+            embeddings = np.concatenate((e_A_, e_S, e_P, e_P_), axis=0)
         else:
-            embeddings = np.concatenate((e_A, e_A_, e_P, e_P_), axis=0)
+            embeddings = np.concatenate((e_A, e_A_, e_S, e_P, e_P_), axis=0)
         mds_embeddings = mds.fit_transform(embeddings)
 
         # split mds_embeddings into pieces matching original inputs
         table = wandb.Table(columns=["t", "x", "y", "kind", "program"])
-        endpoints = util.split_endpoints([len(A), len(A_), len(P), len(P_)])
-        kinds = {"A": A, "A'": A_, "P": P, "P'": P_}
+        kinds = {"A": A, "A'": A_, "S": S, "P": P, "P'": P_}
+        endpoints = util.split_endpoints([len(v) for v in kinds.values()])
         for (kind, xs), (start, end) in zip(kinds.items(), endpoints):
             for i, pt in enumerate(mds_embeddings[start:end]):
                 table.add_data(t, *pt, kind, L.to_str(xs[i]))
@@ -213,7 +220,7 @@ def evo_search(L: Language,
         with util.Timing(f"Iteration {t}"):
             # fit and sample
             L.fit(popn, alpha=alpha)
-            samples = take_samples(L, samples_per_iter, len_cap=100)  # todo: weight by recency/novelty
+            samples = take_samples(L, samples_per_iter, length_cap=length_cap, simplify=simplify)  # todo: weight by recency/novelty
             with util.Timing("embedding samples"):
                 e_samples = embed(samples)
 
@@ -221,14 +228,16 @@ def evo_search(L: Language,
 
             # score samples wrt archive + popn
             knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
-            dists, _ = knn.kneighbors(e_samples)
-            dists = np.sum(dists, axis=1)
+            scores, _ = knn.kneighbors(e_samples)
+            scores = np.sum(scores, axis=1)
+            scores -= length_penalty * np.array([len(x) for x in samples])  # add penalty term for length
 
             # select samples to carry over to next generation
-            i_popn = select_indices(select, dists, max_popn_size)
+            i_popn = select_indices(select, scores, max_popn_size)
             if not archive_early: update_archive(archive, e_archive, samples, e_samples)
             mds_table = log_mds(t=t, A=archive[:-keep_per_iter], e_A=e_archive[:-keep_per_iter],  # most recently archived individuals are at end
                                 A_=archive[-keep_per_iter:], e_A_=e_archive[-keep_per_iter:],
+                                S=samples, e_S=e_samples,
                                 P=popn, e_P=e_popn,
                                 P_=samples[i_popn], e_P_=e_samples[i_popn])
             popn = samples[i_popn]
@@ -236,18 +245,18 @@ def evo_search(L: Language,
             full_archive.extend(popn)
 
         # diagnostics
-        log = {"scores": wandb.Histogram(dists[i_popn]),
+        log = {"scores": wandb.Histogram(scores[i_popn]),
                "mds": mds_table}
         if isinstance(L, lindenmayer.LSys):
             # log best and worst images
             def summarize(indices):
                 img = rearrange([L.eval(x) for x in samples[indices]], "b color row col -> row (b col) color")
                 caption = "Left to right: " + ", ".join(f"{L.to_str(x)} ({score:.4e})"
-                                                        for x, score in zip(samples[indices], dists[indices]))
+                                                        for x, score in zip(samples[indices], scores[indices]))
                 return wandb.Image(img, caption=caption)
 
-            i_best = np.argsort(-dists)[:5]
-            i_worst = np.argsort(dists)[:5]
+            i_best = np.argsort(-scores)[:5]
+            i_worst = np.argsort(scores)[:5]
             log.update({"best": summarize(i_best),
                         "worst": summarize(i_worst)})
         wandb.log(log)
@@ -255,7 +264,7 @@ def evo_search(L: Language,
         if debug:
             print(f"Generation {t}:")
             for j, x in enumerate(popn):
-                print(f"  {L.to_str(x)}: {dists[i_popn][j]}")
+                print(f"  {L.to_str(x)}: {scores[i_popn][j]}")
 
         # save
         with open(save_to, "a") as f:
@@ -318,7 +327,7 @@ def run_on_nat_points(id: str):
 def run_on_lsystems(id):
     lang = lindenmayer.LSys(
         kind="deterministic",
-        theta=30,
+        theta=45,
         step_length=4,
         render_depth=3,
         n_rows=128,
@@ -337,25 +346,20 @@ def run_on_lsystems(id):
     config = DEFAULT_CONFIG()
     config.update({
         "L": lang,
-        "init_popn": [train_data],
+        "init_popn": train_data,
         "samples_per_iter": 20,
         "max_popn_size": 10,
         "keep_per_iter": 2,
         "iters": 10,
         "archive_early": True,
         "gaussian_blur": True,
+        "length_cap": 200,
+        "length_penalty": 0.001,
+        "simplify": True,
+        "save_to": f"../out/simple_ns/{id}.out"
     })
-    pt = util.ParamTester(config)
-    for i, params in enumerate(pt):
-        dist = params["d"].__name__
-        select = params["select"]
-        save_to = f"../out/simple_ns/{id}-{dist}-{select}.out"
-        params.update({
-            "save_to": save_to,
-        })
-        print(f"Searching with id={id}, dist={dist}, select={select}")
-        wandb.init(project="novelty", config=params)
-        evo_search(**params)
+    wandb.init(project="novelty", config=config)
+    evo_search(**config)
 
 if __name__ == "__main__":
     id = str(int(time()))
