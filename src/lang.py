@@ -119,10 +119,10 @@ class Tree:
             return f"`{self.value}`"
 
     def __len__(self):
-        # number of leaves in tree
+        # number of nodes in tree
         if self.is_leaf():
             return 1
-        return sum(len(c) for c in self.children)
+        return 1 + sum(len(c) for c in self.children)
 
 
 class Language:
@@ -266,10 +266,10 @@ def test_bigram_scan():
 
 def test_tree_len():
     cases = [
-        "(+ 2 3)", 2,
-        "(+ (- 1 0) 3)", 3,
-        "(+ (- 1 0) (* 2 2))", 4,
-        "(+ (- 1 0) (* (+ 2 9) (- 2 3)))", 6,
+        "(+ 2 3)", 3,
+        "(+ (- 1 0) 3)", 5,
+        "(+ (- 1 0) (* 2 2))", 7,
+        "(+ (- 1 0) (* (+ 2 9) (- 2 3)))", 11,
     ]
     for sexp, size in zip(cases[::2], cases[1::2]):
         t = Tree.from_sexp(sexp)
