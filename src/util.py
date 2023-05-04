@@ -37,6 +37,24 @@ class ParamTester:
             }
 
 
+def split_endpoints(lengths: List[int]) -> List[Tuple[int, int]]:
+    splits = np.cumsum([0] + lengths)
+    return list(zip(splits[:-1], splits[1:]))
+
+
+def test_split_endpoints():
+    cases = [
+        [0], [(0, 0)],
+        [1], [(0, 1)],
+        [1, 1], [(0, 1), (1, 2)],
+        [1, 2, 1], [(0, 1), (1, 3), (3, 4)],
+        [1, 2, 1, 5, 10], [(0, 1), (1, 3), (3, 4), (4, 9), (9, 19)],
+    ]
+    for x, y in zip(cases[::2], cases[1::2]):
+        out = split_endpoints(x)
+        assert y == out, f"Expected {y} but got {out}"
+
+
 def pad_array(arr: np.ndarray, batch_size: int) -> np.ndarray:
     r = len(arr) % batch_size
     if r != 0:

@@ -5,6 +5,7 @@ from math import ceil
 from sys import stderr
 from typing import List, Tuple, Callable, Collection
 import numpy as np
+from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import directed_hausdorff
 from scipy.special import softmax
@@ -177,6 +178,29 @@ def evo_search(L: Language,
         I_A = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
         A.extend(S[I_A])
         E_A.extend(E_S[I_A])
+    def log_mds(t: int,
+                A: List[Tree], e_A: List[np.ndarray],
+                A_: List[Tree], e_A_: List[np.ndarray],
+                P: np.ndarray[Tree], e_P: np.ndarray,
+                P_: np.ndarray[Tree], e_P_: np.ndarray) -> wandb.Table:
+        """Log the positions of the archive, samples, and population as a table for viz"""
+        assert samples_per_program == 1, f"MDS not implemented for samples_per_program > 1, got {samples_per_program}"
+        mds = MDS(n_components=2, metric=True, random_state=0)  # use fixed random state for reproducibility
+        # each embedding matrix has shape [k_i, embedding_size], so concat along axis 0
+        if not A:
+            embeddings = np.concatenate((e_A_, e_P, e_P_), axis=0)
+        else:
+            embeddings = np.concatenate((e_A, e_A_, e_P, e_P_), axis=0)
+        mds_embeddings = mds.fit_transform(embeddings)
+
+        # split mds_embeddings into pieces matching original inputs
+        table = wandb.Table(columns=["t", "x", "y", "kind", "program"])
+        endpoints = util.split_endpoints([len(A), len(A_), len(P), len(P_)])
+        kinds = {"A": A, "A'": A_, "P": P, "P'": P_}
+        for (kind, xs), (start, end) in zip(kinds.items(), endpoints):
+            for i, pt in enumerate(mds_embeddings[start:end]):
+                table.add_data(t, *pt, kind, L.to_str(xs[i]))
+        return table
 
     full_archive = []
     archive = []
@@ -189,7 +213,7 @@ def evo_search(L: Language,
         with util.Timing(f"Iteration {t}"):
             # fit and sample
             L.fit(popn, alpha=alpha)
-            samples = take_samples(L, samples_per_iter, len_cap=100)
+            samples = take_samples(L, samples_per_iter, len_cap=100)  # todo: weight by recency/novelty
             with util.Timing("embedding samples"):
                 e_samples = embed(samples)
 
@@ -202,17 +226,20 @@ def evo_search(L: Language,
 
             # select samples to carry over to next generation
             i_popn = select_indices(select, dists, max_popn_size)
+            if not archive_early: update_archive(archive, e_archive, samples, e_samples)
+            mds_table = log_mds(t=t, A=archive[:-keep_per_iter], e_A=e_archive[:-keep_per_iter],  # most recently archived individuals are at end
+                                A_=archive[-keep_per_iter:], e_A_=e_archive[-keep_per_iter:],
+                                P=popn, e_P=e_popn,
+                                P_=samples[i_popn], e_P_=e_samples[i_popn])
             popn = samples[i_popn]
             e_popn = e_samples[i_popn]
             full_archive.extend(popn)
 
-            # archive random subset
-            if not archive_early: update_archive(archive, e_archive, samples, e_samples)
-
         # diagnostics
-        log = {"scores": wandb.Histogram(dists[i_popn])}
-        # log best and worst images
+        log = {"scores": wandb.Histogram(dists[i_popn]),
+               "mds": mds_table}
         if isinstance(L, lindenmayer.LSys):
+            # log best and worst images
             def summarize(indices):
                 img = rearrange([L.eval(x) for x in samples[indices]], "b color row col -> row (b col) color")
                 caption = "Left to right: " + ", ".join(f"{L.to_str(x)} ({score:.4e})"
@@ -221,10 +248,8 @@ def evo_search(L: Language,
 
             i_best = np.argsort(-dists)[:5]
             i_worst = np.argsort(dists)[:5]
-            log.update({
-                "best": summarize(i_best),
-                "worst": summarize(i_worst),
-            })
+            log.update({"best": summarize(i_best),
+                        "worst": summarize(i_worst)})
         wandb.log(log)
 
         if debug:
@@ -313,6 +338,10 @@ def run_on_lsystems(id):
     config.update({
         "L": lang,
         "init_popn": [train_data],
+        "samples_per_iter": 20,
+        "max_popn_size": 10,
+        "keep_per_iter": 2,
+        "iters": 10,
         "archive_early": True,
         "gaussian_blur": True,
     })
