@@ -113,7 +113,8 @@ def simple_search(L: Language,
            alpha: float,
            iters: int,
            save_to: str,
-           debug: bool):
+           debug=False,
+           length_cap=1000):
     assert select in {"strict", "weighted"}
     with open(save_to, "w") as f:
         f.write(f"# Params: {locals()}\n")
@@ -127,7 +128,7 @@ def simple_search(L: Language,
             # sample from fitted grammar
             with util.Timing("fit and sample"):
                 L.fit(archive, alpha=alpha)
-                samples = take_samples(L, samples_per_iter, length_cap=100)
+                samples = take_samples(L, samples_per_iter, length_cap=length_cap)
 
             # extract features
             with util.Timing("features"):
