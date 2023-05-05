@@ -217,7 +217,7 @@ def evo_search(L: Language,
     metric = make_dist(d=d, k=samples_per_program) if samples_per_program > 1 else "minkowski"
     knn = NearestNeighbors(metric=metric)
     for t in range(iters):
-        with util.Timing(f"Iteration {t}"):
+        with util.Timing(f"Iteration {t}") as timer:
             # fit and sample
             L.fit(popn, alpha=alpha)
             samples = take_samples(L, samples_per_iter, length_cap=length_cap, simplify=simplify)  # todo: weight by recency/novelty
@@ -230,7 +230,8 @@ def evo_search(L: Language,
             knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
             scores, _ = knn.kneighbors(e_samples)
             scores = np.sum(scores, axis=1)
-            scores -= length_penalty * np.array([len(x) for x in samples])  # add penalty term for length
+            len_samples = np.array([len(x) for x in samples])
+            scores -= length_penalty * len_samples  # add penalty term for length
 
             # select samples to carry over to next generation
             i_popn = select_indices(select, scores, max_popn_size)
@@ -246,7 +247,9 @@ def evo_search(L: Language,
 
         # diagnostics
         log = {"scores": wandb.Histogram(scores[i_popn]),
-               "mds": mds_table}
+               "lengths": wandb.Histogram(len_samples),
+               "mds": mds_table,
+               "runtime": timer.time(),}
         if isinstance(L, lindenmayer.LSys):
             # log best and worst images
             def summarize(indices):
