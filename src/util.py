@@ -133,6 +133,9 @@ class Timing(object):
         dt = time.time() - self.start
         print(f"{self.msg} took {dt:.4e} seconds", file=self.file)
 
+    def time(self) -> float:
+        return time.time() - self.start
+
 
 def cut_ext(filename: str) -> str:
     return filename[:filename.rfind(".")]
