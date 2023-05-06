@@ -3,7 +3,7 @@ ns without the evo
 """
 from math import ceil
 from sys import stderr
-from typing import List, Tuple, Callable, Collection
+from typing import List, Tuple, Callable, Collection, Dict
 import numpy as np
 from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
@@ -103,52 +103,74 @@ def chamfer(X: np.ndarray, Y: np.ndarray) -> float:
 def hausdorff(X: np.ndarray, Y: np.ndarray) -> float:
     return directed_hausdorff(X, Y)[0]
 
+def log_best_and_worst(k: int, L: Language, samples: np.ndarray, scores: np.ndarray) -> Dict:
+    def summarize(indices):
+        img = rearrange([L.eval(x) for x in samples[indices]], "b color row col -> row (b col) color")
+        caption = "Left to right: " + ", ".join(f"{L.to_str(x)} ({score:.4e})"
+                                                for x, score in zip(samples[indices], scores[indices]))
+        return wandb.Image(img, caption=caption)
+
+    i_best = np.argsort(-scores)[:k]
+    i_worst = np.argsort(scores)[:k]
+    return {"best": summarize(i_best),
+            "worst": summarize(i_worst)}
+
 def simple_search(L: Language,
-           init_popn: List[Tree],
-           d: Distance,
-           select: str,
-           samples_per_program: int,
-           samples_per_iter: int,
-           keep_per_iter: int,
-           alpha: float,
-           iters: int,
-           save_to: str,
-           debug=False,
-           length_cap=1000):
+                  init_popn: List[Tree],
+                  d: Distance,
+                  select: str,
+                  samples_per_program: int,
+                  samples_per_iter: int,
+                  keep_per_iter: int,
+                  alpha: float,
+                  iters: int,
+                  save_to: str,
+                  debug=False,
+                  gaussian_blur=False,
+                  length_cap=1000,
+                  length_penalty=0.01):
     assert select in {"strict", "weighted"}
+    def embed(S): return features(L, S, n_samples=samples_per_program, batch_size=8, gaussian_blur=gaussian_blur)
     with open(save_to, "w") as f:
         f.write(f"# Params: {locals()}\n")
 
     archive = init_popn
-    e_archive = features(L, archive, samples_per_program)
+    e_archive = embed(archive)
     metric = make_dist(d=d, k=samples_per_program) if samples_per_program > 1 else "minkowski"
     knn = NearestNeighbors(metric=metric)
     for t in range(iters):
-        with util.Timing(f"iter {t}", suppress_start=True):
+        with util.Timing(f"iter {t}") as timer:
             # sample from fitted grammar
-            with util.Timing("fit and sample"):
-                L.fit(archive, alpha=alpha)
-                samples = take_samples(L, samples_per_iter, length_cap=length_cap)
+            L.fit(archive, alpha=alpha)
+            samples = take_samples(L, samples_per_iter, length_cap=length_cap)
+            e_samples = embed(samples)
 
-            # extract features
-            with util.Timing("features"):
-                e_samples = features(L, samples, samples_per_program)
+            # score samples
+            knn.fit(e_archive)
+            scores, _ = knn.kneighbors(e_samples)
+            scores = np.sum(scores, axis=1)
+            len_samples = np.array([len(x) for x in samples])
+            scores -= length_penalty * len_samples  # add penalty term for length
 
-            # choose which samples to add to archive: score all samples, then choose best few
-            with util.Timing("score"):
-                knn.fit(e_archive)
-                dists, _ = knn.kneighbors(e_samples)
-                dists = np.sum(dists, axis=1)
-                idx = select_indices(kind=select, dists=dists, n=keep_per_iter)
-                keep = samples[idx]
-                archive.extend(keep)
-                e_archive = np.concatenate((e_archive, e_samples[idx]), axis=0)
+            # pick the best samples to keep
+            i_keep = select_indices(kind=select, dists=scores, n=keep_per_iter)
+            keep = samples[i_keep]
+            archive.extend(keep)
+            e_archive = np.concatenate((e_archive, e_samples[i_keep]), axis=0)
 
             # diagnostics
+            log = {"scores": wandb.Histogram(scores[i_keep]),
+                   "lengths": wandb.Histogram(len_samples),
+                   "runtime": timer.time()}
+
+            if isinstance(L, lindenmayer.LSys):
+                log.update(log_best_and_worst(5, L, samples, scores))
+            wandb.log(log)
+
             if debug:
                 print(f"Generation {t}:")
                 for j, x in enumerate(keep):
-                    print(f"  {L.to_str(x)}: {dists[idx][j]}")
+                    print(f"  {L.to_str(x)}: {scores[i_keep][j]}")
 
             # save
             with open(save_to, "a") as f:
@@ -222,8 +244,7 @@ def evo_search(L: Language,
             # fit and sample
             L.fit(popn, alpha=alpha)
             samples = take_samples(L, samples_per_iter, length_cap=length_cap, simplify=simplify)  # todo: weight by recency/novelty
-            with util.Timing("embedding samples"):
-                e_samples = embed(samples)
+            e_samples = embed(samples)
 
             if archive_early: update_archive(archive, e_archive, samples, e_samples)
 
@@ -251,18 +272,9 @@ def evo_search(L: Language,
                "lengths": wandb.Histogram(len_samples),
                "mds": mds_table,
                "runtime": timer.time(),}
-        if isinstance(L, lindenmayer.LSys):
-            # log best and worst images
-            def summarize(indices):
-                img = rearrange([L.eval(x) for x in samples[indices]], "b color row col -> row (b col) color")
-                caption = "Left to right: " + ", ".join(f"{L.to_str(x)} ({score:.4e})"
-                                                        for x, score in zip(samples[indices], scores[indices]))
-                return wandb.Image(img, caption=caption)
 
-            i_best = np.argsort(-scores)[:5]
-            i_worst = np.argsort(scores)[:5]
-            log.update({"best": summarize(i_best),
-                        "worst": summarize(i_worst)})
+        if isinstance(L, lindenmayer.LSys):
+            log.update(log_best_and_worst(5, L, samples, scores))
         wandb.log(log)
 
         if debug:
@@ -278,7 +290,7 @@ def evo_search(L: Language,
 
     return archive, full_archive
 
-def DEFAULT_CONFIG():
+def DEFAULT_EVO_CONFIG():
     return {
         "d": hausdorff,
         "select": "strict",
@@ -301,7 +313,7 @@ def run_on_real_points():
         lang.parse("(-1, 0)"),
         lang.parse("(0, -1)"),
     ]
-    config = DEFAULT_CONFIG()
+    config = DEFAULT_EVO_CONFIG()
     config.update({
         "L": lang,
         "init_popn": train_data,
@@ -319,7 +331,7 @@ def run_on_nat_points(id: str):
         lang.parse("(inc one, inc one)"),
         lang.parse("(inc inc one, one)"),
     ]
-    config = DEFAULT_CONFIG()
+    config = DEFAULT_EVO_CONFIG()
     config.update({
         "L": lang,
         "init_popn": train_data,
@@ -328,7 +340,7 @@ def run_on_nat_points(id: str):
     wandb.init(project="novelty", config=config)
     evo_search(**config)
 
-def run_on_lsystems(id):
+def run_on_lsystems(id, kind: str):
     lang = lindenmayer.LSys(
         kind="deterministic",
         theta=45,
@@ -347,26 +359,47 @@ def run_on_lsystems(id):
         lang.parse("F+F-F;F~F+FF"),
         lang.parse("F;F~F[+F][-F]F"),
     ]
-    config = DEFAULT_CONFIG()
-    config.update({
-        "L": lang,
-        "init_popn": train_data,
-        "samples_per_iter": 20,
-        "max_popn_size": 10,
-        "keep_per_iter": 2,
-        "iters": 10,
-        "archive_early": True,
-        "gaussian_blur": True,
-        "length_cap": 200,
-        "length_penalty": 0.001,
-        "simplify": True,
-        "save_to": f"../out/simple_ns/{id}.out"
-    })
-    wandb.init(project="novelty", config=config)
-    evo_search(**config)
+    if kind == "evo":
+        config = DEFAULT_EVO_CONFIG()
+        config.update({
+            "L": lang,
+            "init_popn": train_data,
+            "samples_per_program": 1,
+            "samples_per_iter": 20,
+            "max_popn_size": 10,
+            "keep_per_iter": 2,
+            "iters": 10,
+            "archive_early": True,
+            "gaussian_blur": True,
+            "length_cap": 200,
+            "length_penalty": 0.001,
+            "simplify": False,
+            "save_to": f"../out/ns/evo/{id}.out"
+        })
+        wandb.init(project="novelty", config=config)
+        evo_search(**config)
+    else:  # simple
+        config = {
+            "L": lang,
+            "init_popn": train_data,
+            "d": hausdorff,
+            "select": "strict",
+            "samples_per_program": 1,
+            "samples_per_iter": 20,
+            "keep_per_iter": 2,
+            "iters": 10,
+            "alpha": 1.,
+            "gaussian_blur": True,
+            "length_cap": 200,
+            "length_penalty": 0.001,
+            "save_to": f"../out/ns/simple/{id}.out"
+        }
+        wandb.init(project="novelty", config=config)
+        simple_search(**config)
+
 
 if __name__ == "__main__":
     id = str(int(time()))
     # run_on_real_points(id)
     # run_on_nat_points(id)
-    run_on_lsystems(id)
+    run_on_lsystems(id, kind="simple")
