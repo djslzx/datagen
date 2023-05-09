@@ -4,14 +4,18 @@ ns without the evo
 from math import ceil
 from sys import stderr
 from typing import List, Tuple, Callable, Collection, Dict
+import csv
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import directed_hausdorff
 from scipy.special import softmax
 from scipy.ndimage import gaussian_filter
 from einops import rearrange, reduce
-from time import time
 import wandb
 from tqdm import tqdm
 
@@ -52,7 +56,6 @@ def batched_features(L: Language, S: Collection[Tree],
     ys = []
     n_batches = ceil(len(S) * n_samples / batch_size)
     for batch in tqdm(util.batched(samples(), batch_size=batch_size), total=n_batches):
-        print(f"[/{n_batches}]\r", file=stderr)
         y = L.featurizer.apply(batch)
         if batch_size > 1 and len(batch) > 1:
             ys.extend(y)
@@ -102,6 +105,31 @@ def chamfer(X: np.ndarray, Y: np.ndarray) -> float:
 
 def hausdorff(X: np.ndarray, Y: np.ndarray) -> float:
     return directed_hausdorff(X, Y)[0]
+
+def log_mds(L: Language, t: int, samples_per_program: int,
+            A: List, e_A: List[np.ndarray],
+            A_: List, e_A_: List[np.ndarray],
+            S: np.ndarray, e_S: np.ndarray,
+            P: np.ndarray[Tree], e_P: np.ndarray,
+            P_: np.ndarray[Tree], e_P_: np.ndarray) -> wandb.Table:
+    """Log the positions of the archive, samples, and population as a table for viz"""
+    assert samples_per_program == 1, f"MDS not implemented for samples_per_program > 1, got {samples_per_program}"
+    mds = MDS(n_components=2, metric=True, random_state=0)  # use fixed random state for reproducibility
+    # each embedding matrix has shape [k_i, embedding_size], so concat along axis 0
+    if not A:
+        embeddings = np.concatenate((e_A_, e_S, e_P, e_P_), axis=0)
+    else:
+        embeddings = np.concatenate((e_A, e_A_, e_S, e_P, e_P_), axis=0)
+    mds_embeddings = mds.fit_transform(embeddings)
+
+    # split mds_embeddings into pieces matching original inputs
+    table = wandb.Table(columns=["t", "x", "y", "kind", "program"])
+    kinds = {"A": A, "A'": A_, "S": S, "P": P, "P'": P_}
+    endpoints = util.split_endpoints([len(v) for v in kinds.values()])
+    for (kind, xs), (start, end) in zip(kinds.items(), endpoints):
+        for i, pt in enumerate(mds_embeddings[start:end]):
+            table.add_data(t, *pt, kind, L.to_str(xs[i]))
+    return table
 
 def log_best_and_worst(k: int, L: Language, samples: np.ndarray, scores: np.ndarray) -> Dict:
     def summarize(indices):
@@ -207,30 +235,20 @@ def evo_search(L: Language,
         I_A = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
         A.extend(S[I_A])
         E_A.extend(E_S[I_A])
-    def log_mds(t: int,
-                A: List, e_A: List[np.ndarray],
-                A_: List, e_A_: List[np.ndarray],
-                S: np.ndarray, e_S: np.ndarray,
-                P: np.ndarray[Tree], e_P: np.ndarray,
-                P_: np.ndarray[Tree], e_P_: np.ndarray) -> wandb.Table:
-        """Log the positions of the archive, samples, and population as a table for viz"""
-        assert samples_per_program == 1, f"MDS not implemented for samples_per_program > 1, got {samples_per_program}"
-        mds = MDS(n_components=2, metric=True, random_state=0)  # use fixed random state for reproducibility
-        # each embedding matrix has shape [k_i, embedding_size], so concat along axis 0
-        if not A:
-            embeddings = np.concatenate((e_A_, e_S, e_P, e_P_), axis=0)
-        else:
-            embeddings = np.concatenate((e_A, e_A_, e_S, e_P, e_P_), axis=0)
-        mds_embeddings = mds.fit_transform(embeddings)
 
-        # split mds_embeddings into pieces matching original inputs
-        table = wandb.Table(columns=["t", "x", "y", "kind", "program"])
-        kinds = {"A": A, "A'": A_, "S": S, "P": P, "P'": P_}
-        endpoints = util.split_endpoints([len(v) for v in kinds.values()])
-        for (kind, xs), (start, end) in zip(kinds.items(), endpoints):
-            for i, pt in enumerate(mds_embeddings[start:end]):
-                table.add_data(t, *pt, kind, L.to_str(xs[i]))
-        return table
+    # write columns
+    with open(f"{save_to}.csv", "w") as f:
+        writer = csv.writer(f)
+        writer.writerow(["step", "program", "kind", "output", "dist", "length", "score", "chosen"])
+
+    def log_data(t: int, dA, S, I, dists, lengths):
+        assert len(S) == len(dists) == len(lengths)
+        with open(f"{save_to}.csv", "a") as f:
+            writer = csv.writer(f)
+            for x in dA:
+                writer.writerow((t, L.to_str(x), "A", L.eval(x), None, len(x), None, None))
+            for i, (x, dist, length) in enumerate(zip(S, dists, lengths)):
+                writer.writerow((t, L.to_str(x), "S", L.eval(x), dist, length, dist - length_penalty * length, i in I))
 
     full_archive = []
     archive = []
@@ -245,24 +263,19 @@ def evo_search(L: Language,
             L.fit(popn, alpha=alpha)
             samples = take_samples(L, samples_per_iter, length_cap=length_cap, simplify=simplify)  # todo: weight by recency/novelty
             e_samples = embed(samples)
-
             if archive_early: update_archive(archive, e_archive, samples, e_samples)
 
             # score samples wrt archive + popn
             knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
-            scores, _ = knn.kneighbors(e_samples)
-            scores = np.sum(scores, axis=1)
+            dists, _ = knn.kneighbors(e_samples)
+            dists = np.sum(dists, axis=1)
             len_samples = np.array([len(x) for x in samples])
-            scores -= length_penalty * len_samples  # add penalty term for length
+            scores = dists - length_penalty * len_samples  # add penalty term for length
 
             # select samples to carry over to next generation
             i_popn = select_indices(select, scores, max_popn_size)
             if not archive_early: update_archive(archive, e_archive, samples, e_samples)
-            mds_table = log_mds(t=t, A=archive[:-keep_per_iter], e_A=e_archive[:-keep_per_iter],  # most recently archived individuals are at end
-                                A_=archive[-keep_per_iter:], e_A_=e_archive[-keep_per_iter:],
-                                S=samples, e_S=e_samples,
-                                P=popn, e_P=e_popn,
-                                P_=samples[i_popn], e_P_=e_samples[i_popn])
+            log_data(t=t, dA=archive[-keep_per_iter:], S=samples, I=i_popn, dists=dists, lengths=len_samples)
             popn = samples[i_popn]
             e_popn = e_samples[i_popn]
             full_archive.extend(popn)
@@ -270,23 +283,11 @@ def evo_search(L: Language,
         # diagnostics
         log = {"scores": wandb.Histogram(scores[i_popn]),
                "lengths": wandb.Histogram(len_samples),
-               "mds": mds_table,
-               "runtime": timer.time(),}
-
+               "dists": wandb.Histogram(dists),
+               "runtime": timer.time()}
         if isinstance(L, lindenmayer.LSys):
             log.update(log_best_and_worst(5, L, samples, scores))
         wandb.log(log)
-
-        if debug:
-            print(f"Generation {t}:")
-            for j, x in enumerate(popn):
-                print(f"  {L.to_str(x)}: {scores[i_popn][j]}")
-
-        # save
-        with open(save_to, "a") as f:
-            f.write(f"# Generation {t}:\n")
-            for x in popn:
-                f.write(f"{L.to_str(x)}\n")
 
     return archive, full_archive
 
@@ -304,7 +305,7 @@ def DEFAULT_EVO_CONFIG():
         "gaussian_blur": False,
     }
 
-def run_on_real_points():
+def run_on_real_points() -> str:
     lang = point.RealPoint()
     train_data = [
         lang.parse("(0, 0)"),
@@ -313,14 +314,23 @@ def run_on_real_points():
         lang.parse("(-1, 0)"),
         lang.parse("(0, -1)"),
     ]
-    config = DEFAULT_EVO_CONFIG()
-    config.update({
+    config = {
         "L": lang,
         "init_popn": train_data,
-        "save_to": f"../out/simple_ns/{id}-r2-strict.out",
-    })
+        "d": hausdorff,
+        "select": "strict",
+        "samples_per_program": 1,
+        "samples_per_iter": 100,
+        "max_popn_size": 10,
+        "keep_per_iter": 1,
+        "iters": 10,
+        "alpha": 1,
+        "debug": True,
+        "gaussian_blur": False,
+    }
     wandb.init(project="novelty", config=config)
-    evo_search(**config)
+    evo_search(**config, save_to=f"../out/simple_ns/{wandb.run.id}")
+    return wandb.run.id
 
 def run_on_nat_points(id: str):
     lang = point.NatPoint()
@@ -340,7 +350,7 @@ def run_on_nat_points(id: str):
     wandb.init(project="novelty", config=config)
     evo_search(**config)
 
-def run_on_lsystems(id, kind: str):
+def run_on_lsystems(kind: str):
     lang = lindenmayer.LSys(
         kind="deterministic",
         theta=45,
@@ -398,8 +408,21 @@ def run_on_lsystems(id, kind: str):
         simple_search(**config)
 
 
+def viz_real_points_results(path: str):
+    data = pd.read_csv(path)
+    print(data)
+    print(data["output"])
+    data["output"] = data["output"].apply(lambda x: np.array([float(n) for n in x[1:-1].split()]))
+    data["x"] = data["output"].apply(lambda x: x[0])
+    data["y"] = data["output"].apply(lambda x: x[1])
+    data.drop(columns=["output"], inplace=True)
+    print(data)
+    sns.scatterplot(data, x="x", y="y", hue="step", markers="kind")
+    plt.show()
+
+
 if __name__ == "__main__":
-    id = str(int(time()))
-    # run_on_real_points(id)
-    # run_on_nat_points(id)
-    run_on_lsystems(id, kind="simple")
+    run_id = run_on_real_points()
+    viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
+    # run_on_nat_points()
+    # run_on_lsystems(kind="simple")
