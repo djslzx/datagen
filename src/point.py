@@ -44,9 +44,9 @@ class RealPoint(Language):
         raise NotImplementedError
 
     def _parse_child(self, t: Tree) -> float:
-        if t.is_leaf():
-            return float(t.value)
-        else:
+        if t.value == "pos":
+            return float(t.children[0].value)
+        elif t.value == "neg":
             return -float(t.children[0].value)
 
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Any:
@@ -140,6 +140,20 @@ class PointFeaturizer(Featurizer):
     @property
     def n_features(self) -> int:
         return self.ndims
+
+
+def test_RealPoint_parse():
+    cases = [
+        "(0.1, 0.2)", [0.1, 0.2],
+        "(0.1, -0.2)", [0.1, -0.2],
+        "(-0.1, 0.2)", [-0.1, 0.2],
+        "(-0.1, -0.2)", [-0.1, -0.2],
+    ]
+    RP = RealPoint()
+    for x, y in zip(cases[::2], cases[1::2]):
+        t = RP.parse(x)
+        out = RP.eval(t)
+        assert np.array_equal(out, y), f"Expected {y} but got {out}"
 
 
 if __name__ == "__main__":
