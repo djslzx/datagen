@@ -111,8 +111,8 @@ def log_mds(L: Language, t: int, samples_per_program: int,
             A: List, e_A: List[np.ndarray],
             A_: List, e_A_: List[np.ndarray],
             S: np.ndarray, e_S: np.ndarray,
-            P: np.ndarray[Tree], e_P: np.ndarray,
-            P_: np.ndarray[Tree], e_P_: np.ndarray) -> wandb.Table:
+            P: np.ndarray, e_P: np.ndarray,
+            P_: np.ndarray, e_P_: np.ndarray) -> wandb.Table:
     """Log the positions of the archive, samples, and population as a table for viz"""
     assert samples_per_program == 1, f"MDS not implemented for samples_per_program > 1, got {samples_per_program}"
     mds = MDS(n_components=2, metric=True, random_state=0)  # use fixed random state for reproducibility
