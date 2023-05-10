@@ -19,7 +19,7 @@ parameters:
       samples_per_program:
         value: 1
       iters:
-        values: [100]
+        value: 100
       select:
         values: [strict, weighted]
       alpha:
@@ -27,17 +27,16 @@ parameters:
         min: 0.1
         max: 10
       max_popn_size:
-        values: [100, 1000]
+        value: 100
       samples_ratio:
         distribution: q_log_uniform_values
         min: 2
         max: 100
       keep_per_iter:
-        distribution: int_uniform
+        distribution: q_log_uniform_values
         min: 2
         max: 50
       length_cap:
-        distribution: constant
         value: 200
       length_penalty:
         distribution: log_uniform_values
