@@ -305,6 +305,13 @@ def evo_search(L: Language,
 
         if isinstance(L, lindenmayer.LSys):
             log.update(log_best_and_worst(5, L, samples, scores))
+
+            # exit early if 'best' samples are actually terrible
+            MIN_LENGTH = 10  # length of F;F~F
+            i_best = np.argsort(-scores)[:5]
+            if np.all(scores[i_best] == - length_penalty * MIN_LENGTH):
+                break
+
         wandb.log(log)
 
     return archive, full_archive
@@ -324,7 +331,7 @@ def run_on_real_points() -> str:
         "d": hausdorff,
         "select": "strict",
         "samples_per_program": 1,
-        "samples_per_iter": 100,
+        "samples_ratio": 10,
         "max_popn_size": 10,
         "keep_per_iter": 1,
         "iters": 10,
@@ -402,13 +409,11 @@ def run_on_lsystems():
 
 def viz_real_points_results(path: str):
     data = pd.read_csv(path)
+    lang = point.RealPoint()
     print(data)
-    print(data["output"])
-    data["output"] = data["output"].apply(lambda x: np.array([float(n) for n in x[1:-1].split()]))
-    data["x"] = data["output"].apply(lambda x: x[0])
-    data["y"] = data["output"].apply(lambda x: x[1])
-    data.drop(columns=["output"], inplace=True)
-    print(data)
+    outputs = np.array([lang.eval(lang.parse(x)) for x in data["program"]])
+    data["x"] = outputs[:, 0]
+    data["y"] = outputs[:, 1]
     sns.scatterplot(data, x="x", y="y", hue="step", markers="kind")
     plt.show()
 
@@ -416,9 +421,10 @@ def viz_real_points_results(path: str):
 if __name__ == '__main__':
     # run_id = run_on_real_points()
     # viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
+    viz_real_points_results(f"../out/simple_ns/7hea21on.csv")
     # run_on_nat_points()
     # sweep_id = wandb.sweep(sweep=, project='novelty')
     # wandb.agent(sweep_id, function=run_on_lsystems)
-    pass
+    # pass
 
-run_on_lsystems()
+# run_on_lsystems()
