@@ -389,7 +389,7 @@ def run_on_lsystems():
     if config.kind == "evo":
         args = {
             "L": lang,
-            "init_popn": train_data,
+            "init_popn": [lang.parse(x) for x in train_data],
             "d": hausdorff,
             "select": config.select,
             "samples_per_program": 1,
@@ -409,7 +409,7 @@ def run_on_lsystems():
     else:  # simple
         args = {
             "L": lang,
-            "init_popn": train_data,
+            "init_popn": [lang.parse(x) for x in train_data],
             "d": hausdorff,
             "select": config.select,
             "samples_per_program": 1,
