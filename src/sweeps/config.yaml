@@ -1,0 +1,65 @@
+program: simple_ns.py
+method: random
+metric:
+  goal: maximize
+  name: avg_dist
+parameters:
+  disable_last_layer:
+    values: [ "true", "false" ]
+  softmax_outputs:
+     values: [ "true", "false" ]
+  train_data:
+    value: ["F;F~F", "F;F~FF", "F[+F][-F]FF;F~FF", "F+F-F;F~F+FF", "F;F~F[+F][-F]F"]
+
+  # novelty search hyperparams
+  search:
+    parameters:
+      kind:
+        values: [evo]
+      samples_per_program:
+        value: 1
+      iters:
+        values: [100]
+      select:
+        values: [strict, weighted]
+      alpha:
+        distribution: log_uniform_values
+        min: 0.1
+        max: 10
+      max_popn_size:
+        values: [100, 1000]
+      samples_ratio:
+        distribution: q_log_uniform_values
+        min: 2
+        max: 100
+      keep_per_iter:
+        distribution: int_uniform
+        min: 2
+        max: 50
+      length_cap:
+        distribution: constant
+        value: 200
+      length_penalty:
+        distribution: log_uniform_values
+        min: 0.0001
+        max: 1
+      ablate_mutator:
+        values: ["true", "false"]
+      archive_early:
+        values: [ "true", "false" ]
+      gaussian_blur:
+        values: [ "true", "false" ]
+
+  # rendering params
+  render:
+    parameters:
+      theta:
+        values: [45] # [15, 30, 45, 90]
+      step_length:
+        value: 4
+      render_depth:
+        value: 3
+      n_rows:
+        value: 128
+      n_cols:
+        value: 128

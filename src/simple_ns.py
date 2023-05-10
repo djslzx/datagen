@@ -18,6 +18,7 @@ from scipy.special import softmax
 from scipy.ndimage import gaussian_filter
 from einops import rearrange, reduce
 import wandb
+import yaml
 from tqdm import tqdm
 
 from lang import Language, Tree, ParseError
@@ -231,7 +232,8 @@ def evo_search(L: Language,
                length_cap=1000,
                length_penalty=0.1,
                ablate_mutator=False,
-               simplify=False) -> Tuple[List[Tree], List[Tree]]:
+               simplify=False,
+               **kvs) -> Tuple[List[Tree], List[Tree]]:
     assert samples_ratio >= 2, \
         "Number of samples taken should be significantly larger than number of samples kept"
     assert len(init_popn) >= 5, \
@@ -361,55 +363,28 @@ def run_on_nat_points(id: str):
     evo_search(**config, save_to=f"../out/simple_ns/{id}-z2-strict.out",)
 
 def run_on_lsystems():
-    lsys_defaults = {
-        "kind": "deterministic",
-        "theta": 45,
-        "step_length": 4,
-        "render_depth": 3,
-        "n_rows": 128,
-        "n_cols": 128,
-    }
-    train_data = [
-        "F;F~F",
-        "F;F~FF",
-        "F[+F][-F]FF;F~FF",
-        "F+F-F;F~F+FF",
-        "F;F~F[+F][-F]F",
-    ]
-    init_config: Dict[str, Any] = copy.copy(lsys_defaults)
-    init_config.update({"train_data": train_data})
-    wandb.init(project="novelty", config=init_config)
+    with open('./sweeps/config.yaml') as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+    wandb.init(project="novelty", config=config)
     config = wandb.config
     lang = lindenmayer.LSys(
-        **lsys_defaults,
+        **config.render,
+        kind="deterministic",
         disable_last_layer=config.disable_last_layer,
         softmax_outputs=config.softmax_outputs,
     )
-
-    if config.kind == "evo":
-        args = {
-            "L": lang,
-            "init_popn": [lang.parse(x) for x in train_data],
-            "d": hausdorff,
-            "select": config.select,
-            "samples_per_program": 1,
-            "samples_ratio": config.samples_ratio,
-            "max_popn_size": config.max_popn_size,
-            "keep_per_iter": config.keep_per_iter,
-            "iters": config.iters,
-            "alpha": config.alpha,
-            "archive_early": config.archive_early,
-            "gaussian_blur": config.gaussian_blur,
-            "length_cap": config.length_cap,
-            "length_penalty": config.length_penalty,
-            "simplify": False,
-            "debug": True,
-        }
-        evo_search(**args, save_to=f"../out/ns/{wandb.run.id}")
+    train_data = [lang.parse(x) for x in config.train_data]
+    if config.search["kind"] == "evo":
+        evo_search(**config.search,
+                   L=lang,
+                   init_popn=train_data,
+                   d=hausdorff,
+                   save_to=f"../out/ns/{wandb.run.id}")
     else:  # simple
+        raise NotImplementedError
         args = {
             "L": lang,
-            "init_popn": [lang.parse(x) for x in train_data],
+            "init_popn": [lang.parse(x) for x in config.train_data],
             "d": hausdorff,
             "select": config.select,
             "samples_per_program": 1,
@@ -438,30 +413,12 @@ def viz_real_points_results(path: str):
     plt.show()
 
 
-# run_id = run_on_real_points()
-# viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
-# run_on_nat_points()
+if __name__ == '__main__':
+    # run_id = run_on_real_points()
+    # viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
+    # run_on_nat_points()
+    # sweep_id = wandb.sweep(sweep=, project='novelty')
+    # wandb.agent(sweep_id, function=run_on_lsystems)
+    pass
 
-sweep_config = {
-    "program": "simple_ns.py",
-    "method": "random",
-    "metric": {"goal": "maximize", "name": "avg_dist"},
-    "parameters": {
-        "kind": {"values": ["evo"]},
-        "iters": {"values": [200]},
-        "select": {"values": ["strict", "weighted"]},
-        "alpha": {"distribution": "log_uniform_values", "min": 0.1, "max": 10},
-        "max_popn_size": {"values": [1000, 100]},
-        "samples_ratio": {"distribution": "q_log_uniform_values", "min": 2, "max": 100},
-        "keep_per_iter": {"distribution": "int_uniform", "min": 2, "max": 50},
-        "length_cap": {"distribution": "constant", "value": 200},
-        "length_penalty": {"distribution": "log_uniform_values", "min": 1e-4, "max": 1},
-        "ablate_mutator": {"values": [True, False]},
-        "archive_early": {"values": [True, False]},
-        "gaussian_blur": {"values": [True, False]},
-        "disable_last_layer": {"values": [True, False]},
-        "softmax_outputs": {"values": [True, False]},
-    }
-}
-sweep_id = wandb.sweep(sweep=sweep_config, project='novelty')
-wandb.agent(sweep_id, function=run_on_lsystems, count=30)
+run_on_lsystems()
