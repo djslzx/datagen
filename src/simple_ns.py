@@ -421,10 +421,10 @@ def viz_real_points_results(path: str):
 if __name__ == '__main__':
     # run_id = run_on_real_points()
     # viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
-    viz_real_points_results(f"../out/simple_ns/7hea21on.csv")
+    # viz_real_points_results(f"../out/simple_ns/7hea21on.csv")
     # run_on_nat_points()
     # sweep_id = wandb.sweep(sweep=, project='novelty')
     # wandb.agent(sweep_id, function=run_on_lsystems)
-    # pass
+    pass
 
-# run_on_lsystems()
+run_on_lsystems()
