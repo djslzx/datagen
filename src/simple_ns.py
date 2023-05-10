@@ -2,7 +2,7 @@
 ns without the evo
 """
 from math import ceil
-from sys import stderr
+from pprint import pp
 from typing import List, Tuple, Callable, Collection, Dict
 import csv
 import numpy as np
@@ -147,8 +147,9 @@ def simple_search(L: Language,
                   init_popn: List[Tree],
                   d: Distance,
                   select: str,
+                  max_popn_size: int,
                   samples_per_program: int,
-                  samples_per_iter: int,
+                  samples_ratio: int,
                   keep_per_iter: int,
                   alpha: float,
                   iters: int,
@@ -162,6 +163,7 @@ def simple_search(L: Language,
     with open(save_to, "w") as f:
         f.write(f"# Params: {locals()}\n")
 
+    samples_per_iter = samples_ratio * max_popn_size
     archive = init_popn
     e_archive = embed(archive)
     metric = make_dist(d=d, k=samples_per_program) if samples_per_program > 1 else "minkowski"
@@ -175,10 +177,10 @@ def simple_search(L: Language,
 
             # score samples
             knn.fit(e_archive)
-            scores, _ = knn.kneighbors(e_samples)
-            scores = np.sum(scores, axis=1)
+            dists, _ = knn.kneighbors(e_samples)
+            dists = np.sum(dists, axis=1)
             len_samples = np.array([len(x) for x in samples])
-            scores -= length_penalty * len_samples  # add penalty term for length
+            scores = dists - length_penalty * len_samples  # add penalty term for length
 
             # pick the best samples to keep
             i_keep = select_indices(kind=select, dists=scores, n=keep_per_iter)
@@ -189,6 +191,9 @@ def simple_search(L: Language,
             # diagnostics
             log = {"scores": wandb.Histogram(scores[i_keep]),
                    "lengths": wandb.Histogram(len_samples),
+                   "dists": wandb.Histogram(dists),
+                   "avg_score": np.mean(scores),
+                   "avg_dist": np.mean(dists),
                    "runtime": timer.time()}
 
             if isinstance(L, lindenmayer.LSys):
@@ -214,7 +219,7 @@ def evo_search(L: Language,
                select: str,
                max_popn_size: int,
                samples_per_program: int,
-               samples_per_iter: int,
+               samples_ratio: int,
                keep_per_iter: int,
                alpha: float,
                iters: int,
@@ -224,8 +229,9 @@ def evo_search(L: Language,
                gaussian_blur=False,
                length_cap=1000,
                length_penalty=0.1,
+               ablate_mutator=False,
                simplify=False) -> Tuple[List[Tree], List[Tree]]:
-    assert samples_per_iter >= 2 * max_popn_size, \
+    assert samples_ratio >= 2, \
         "Number of samples taken should be significantly larger than number of samples kept"
     assert len(init_popn) >= 5, \
         f"Initial population ({len(init_popn)}) must be geq number of nearest neighbors (5)"
@@ -236,20 +242,25 @@ def evo_search(L: Language,
         A.extend(S[I_A])
         E_A.extend(E_S[I_A])
 
+    # write metadata
+    with open(f"{save_to}.metadata", "w") as f:
+        pp(wandb.run.config.as_dict(), stream=f)
+
     # write columns
     with open(f"{save_to}.csv", "w") as f:
         writer = csv.writer(f)
-        writer.writerow(["step", "program", "kind", "output", "dist", "length", "score", "chosen"])
+        writer.writerow(["step", "program", "kind", "dist", "length", "score", "chosen"])
 
     def log_data(t: int, dA, S, I, dists, lengths):
         assert len(S) == len(dists) == len(lengths)
         with open(f"{save_to}.csv", "a") as f:
             writer = csv.writer(f)
             for x in dA:
-                writer.writerow((t, L.to_str(x), "A", L.eval(x), None, len(x), None, None))
+                writer.writerow((t, L.to_str(x), "A", None, len(x), None, None))
             for i, (x, dist, length) in enumerate(zip(S, dists, lengths)):
-                writer.writerow((t, L.to_str(x), "S", L.eval(x), dist, length, dist - length_penalty * length, i in I))
+                writer.writerow((t, L.to_str(x), "S", dist, length, dist - length_penalty * length, i in I))
 
+    samples_per_iter = samples_ratio * max_popn_size
     full_archive = []
     archive = []
     popn = init_popn
@@ -259,8 +270,8 @@ def evo_search(L: Language,
     knn = NearestNeighbors(metric=metric)
     for t in range(iters):
         with util.Timing(f"Iteration {t}") as timer:
-            # fit and sample
-            L.fit(popn, alpha=alpha)
+            if not ablate_mutator:
+                L.fit(popn, alpha=alpha)
             samples = take_samples(L, samples_per_iter, length_cap=length_cap, simplify=simplify)  # todo: weight by recency/novelty
             e_samples = embed(samples)
             if archive_early: update_archive(archive, e_archive, samples, e_samples)
@@ -284,26 +295,16 @@ def evo_search(L: Language,
         log = {"scores": wandb.Histogram(scores[i_popn]),
                "lengths": wandb.Histogram(len_samples),
                "dists": wandb.Histogram(dists),
+               "avg_score": np.mean(scores),
+               "avg_length": np.mean(len_samples),
+               "avg_dist": np.mean(dists),
                "runtime": timer.time()}
+
         if isinstance(L, lindenmayer.LSys):
             log.update(log_best_and_worst(5, L, samples, scores))
         wandb.log(log)
 
     return archive, full_archive
-
-def DEFAULT_EVO_CONFIG():
-    return {
-        "d": hausdorff,
-        "select": "strict",
-        "samples_per_program": 1,
-        "samples_per_iter": 1000,
-        "max_popn_size": 100,
-        "keep_per_iter": 10,
-        "iters": 20,
-        "alpha": 1,
-        "debug": True,
-        "gaussian_blur": False,
-    }
 
 def run_on_real_points() -> str:
     lang = point.RealPoint()
@@ -341,16 +342,26 @@ def run_on_nat_points(id: str):
         lang.parse("(inc one, inc one)"),
         lang.parse("(inc inc one, one)"),
     ]
-    config = DEFAULT_EVO_CONFIG()
-    config.update({
+    config = {
         "L": lang,
         "init_popn": train_data,
-        "save_to": f"../out/simple_ns/{id}-z2-strict.out",
-    })
+        "d": hausdorff,
+        "select": "strict",
+        "samples_per_program": 1,
+        "samples_per_iter": 100,
+        "max_popn_size": 10,
+        "keep_per_iter": 1,
+        "iters": 10,
+        "alpha": 1,
+        "debug": True,
+        "gaussian_blur": False,
+    }
     wandb.init(project="novelty", config=config)
-    evo_search(**config)
+    evo_search(**config, save_to=f"../out/simple_ns/{id}-z2-strict.out",)
 
-def run_on_lsystems(kind: str):
+def run_on_lsystems():
+    wandb.init(project="novelty")
+    config = wandb.config
     lang = lindenmayer.LSys(
         kind="deterministic",
         theta=45,
@@ -358,9 +369,8 @@ def run_on_lsystems(kind: str):
         render_depth=3,
         n_rows=128,
         n_cols=128,
-        quantize=False,
-        disable_last_layer=False,
-        softmax_outputs=True,
+        disable_last_layer=config.disable_last_layer,
+        softmax_outputs=config.softmax_outputs,
     )
     train_data = [
         lang.parse("F;F~F"),
@@ -369,43 +379,43 @@ def run_on_lsystems(kind: str):
         lang.parse("F+F-F;F~F+FF"),
         lang.parse("F;F~F[+F][-F]F"),
     ]
-    if kind == "evo":
-        config = DEFAULT_EVO_CONFIG()
-        config.update({
-            "L": lang,
-            "init_popn": train_data,
-            "samples_per_program": 1,
-            "samples_per_iter": 20,
-            "max_popn_size": 10,
-            "keep_per_iter": 2,
-            "iters": 10,
-            "archive_early": True,
-            "gaussian_blur": True,
-            "length_cap": 200,
-            "length_penalty": 0.001,
-            "simplify": False,
-            "save_to": f"../out/ns/evo/{id}.out"
-        })
-        wandb.init(project="novelty", config=config)
-        evo_search(**config)
-    else:  # simple
-        config = {
+    if config.kind == "evo":
+        args = {
             "L": lang,
             "init_popn": train_data,
             "d": hausdorff,
-            "select": "strict",
+            "select": config.select,
             "samples_per_program": 1,
-            "samples_per_iter": 20,
-            "keep_per_iter": 2,
-            "iters": 10,
-            "alpha": 1.,
-            "gaussian_blur": True,
-            "length_cap": 200,
-            "length_penalty": 0.001,
-            "save_to": f"../out/ns/simple/{id}.out"
+            "samples_ratio": config.samples_ratio,
+            "max_popn_size": config.max_popn_size,
+            "keep_per_iter": config.keep_per_iter,
+            "iters": config.iters,
+            "alpha": config.alpha,
+            "archive_early": config.archive_early,
+            "gaussian_blur": config.gaussian_blur,
+            "length_cap": config.length_cap,
+            "length_penalty": config.length_penalty,
+            "simplify": False,
+            "debug": True,
         }
-        wandb.init(project="novelty", config=config)
-        simple_search(**config)
+        evo_search(**args, save_to=f"../out/ns/{wandb.run.id}")
+    else:  # simple
+        args = {
+            "L": lang,
+            "init_popn": train_data,
+            "d": hausdorff,
+            "select": config.select,
+            "samples_per_program": 1,
+            "samples_ratio": config.samples_ratio,
+            "keep_per_iter": config.keep_per_iter,
+            "iters": config.iters,
+            "alpha": config.alpha,
+            "gaussian_blur": config.gaussian_blur,
+            "length_cap": config.length_cap,
+            "length_penalty": config.length_penalty,
+            "debug": True,
+        }
+        simple_search(**args, save_to=f"../out/ns/{wandb.run.id}")
 
 
 def viz_real_points_results(path: str):
@@ -421,8 +431,32 @@ def viz_real_points_results(path: str):
     plt.show()
 
 
-if __name__ == "__main__":
-    run_id = run_on_real_points()
-    viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
-    # run_on_nat_points()
-    # run_on_lsystems(kind="simple")
+# run_id = run_on_real_points()
+# viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
+# run_on_nat_points()
+
+sweep_config = {
+    "program": "simple_ns.py",
+    "method": "random",
+    "parameters": {
+        "kind": {"values": ["evo"]},
+        "iters": {"values": [200]},
+        "select": {"values": ["strict", "weighted"]},
+        "alpha": {"distribution": "log_uniform_values", "min": 0.1, "max": 10},
+        "max_popn_size": {"values": [1000, 100]},
+        "samples_ratio": {"distribution": "q_log_uniform_values", "min": 2, "max": 100},
+        "keep_per_iter": {"distribution": "int_uniform", "min": 2, "max": 50},
+        "length_cap": {"distribution": "constant", "value": 200},
+        "length_penalty": {"distribution": "log_uniform_values", "min": 1e-4, "max": 1},
+        "ablate_mutator": {"values": [True, False]},
+        "archive_early": {"values": [True, False]},
+        "gaussian_blur": {"values": [True, False]},
+        "disable_last_layer": {"values": [True, False]},
+        "softmax_outputs": {"values": [True, False]},
+    }
+}
+sweep_id = wandb.sweep(
+    sweep=sweep_config,
+    project='novelty',
+)
+wandb.agent(sweep_id, function=run_on_lsystems, count=30)
