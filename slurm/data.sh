@@ -3,4 +3,4 @@ eval "$(conda shell.bash hook)"
 conda activate tenv
 prefix="/home/djl328/prob-repl"
 cd $prefix/src
-python3 -u evo.py
+python3 -u simple_ns.py

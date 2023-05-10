@@ -5,7 +5,7 @@
 #SBATCH --mail-type=ALL                      # Request status by email 
 #SBATCH --mail-user=djl328@cornell.edu       # Email address to send results to
 #SBATCH -N 1                                 # Total number of nodes requested
-#SBATCH -n 1                                # Total number of cores requested
+#SBATCH -n 10                                # Total number of cores requested
 #SBATCH --get-user-env                       # retrieve the users login environment
 #SBATCH --mem=128000                         # server memory requested (per node)
 #SBATCH -t 168:00:00                          # Time limit (hh:mm:ss)
