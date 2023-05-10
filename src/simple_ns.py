@@ -1,9 +1,10 @@
 """
 ns without the evo
 """
+import copy
 from math import ceil
 from pprint import pp
-from typing import List, Tuple, Callable, Collection, Dict
+from typing import List, Tuple, Callable, Collection, Dict, Any
 import csv
 import numpy as np
 import pandas as pd
@@ -360,25 +361,31 @@ def run_on_nat_points(id: str):
     evo_search(**config, save_to=f"../out/simple_ns/{id}-z2-strict.out",)
 
 def run_on_lsystems():
-    wandb.init(project="novelty")
+    lsys_defaults = {
+        "kind": "deterministic",
+        "theta": 45,
+        "step_length": 4,
+        "render_depth": 3,
+        "n_rows": 128,
+        "n_cols": 128,
+    }
+    train_data = [
+        "F;F~F",
+        "F;F~FF",
+        "F[+F][-F]FF;F~FF",
+        "F+F-F;F~F+FF",
+        "F;F~F[+F][-F]F",
+    ]
+    init_config: Dict[str, Any] = copy.copy(lsys_defaults)
+    init_config.update({"train_data": train_data})
+    wandb.init(project="novelty", config=init_config)
     config = wandb.config
     lang = lindenmayer.LSys(
-        kind="deterministic",
-        theta=45,
-        step_length=4,
-        render_depth=3,
-        n_rows=128,
-        n_cols=128,
+        **lsys_defaults,
         disable_last_layer=config.disable_last_layer,
         softmax_outputs=config.softmax_outputs,
     )
-    train_data = [
-        lang.parse("F;F~F"),
-        lang.parse("F;F~FF"),
-        lang.parse("F[+F][-F]FF;F~FF"),
-        lang.parse("F+F-F;F~F+FF"),
-        lang.parse("F;F~F[+F][-F]F"),
-    ]
+
     if config.kind == "evo":
         args = {
             "L": lang,
@@ -438,6 +445,7 @@ def viz_real_points_results(path: str):
 sweep_config = {
     "program": "simple_ns.py",
     "method": "random",
+    "metric": {"goal": "maximize", "name": "avg_dist"},
     "parameters": {
         "kind": {"values": ["evo"]},
         "iters": {"values": [200]},
@@ -455,8 +463,5 @@ sweep_config = {
         "softmax_outputs": {"values": [True, False]},
     }
 }
-sweep_id = wandb.sweep(
-    sweep=sweep_config,
-    project='novelty',
-)
+sweep_id = wandb.sweep(sweep=sweep_config, project='novelty')
 wandb.agent(sweep_id, function=run_on_lsystems, count=30)
