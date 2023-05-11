@@ -1,0 +1,56 @@
+program: simple_ns.py
+method: grid
+metric:
+  goal: maximize
+  name: avg_dist
+parameters:
+  disable_last_layer:
+    values: [ "true", "false" ]
+  softmax_outputs:
+     values: [ "true", "false" ]
+  train_data:
+    value: ["F;F~F", "F;F~FF", "F[+F][-F]FF;F~FF", "F+F-F;F~F+FF", "F;F~F[+F][-F]F"]
+
+  # novelty search hyperparams
+  search:
+    parameters:
+      kind:
+        value: evo
+      samples_per_program:
+        value: 1
+      iters:
+        value: 100
+      select:
+        values: [strict, weighted]
+      alpha:
+        value: 1
+      max_popn_size:
+        value: 100
+      samples_ratio:
+        value: 10
+      keep_per_iter:
+        value: 5
+      length_cap:
+        value: 200
+      length_penalty:
+        value: 1e-3
+      ablate_mutator:
+        values: ["true", "false"]
+      archive_early:
+        values: [ "true", "false" ]
+      gaussian_blur:
+        values: [ "true", "false" ]
+
+  # rendering params
+  render:
+    parameters:
+      theta:
+        value: 45
+      step_length:
+        value: 4
+      render_depth:
+        value: 3
+      n_rows:
+        value: 128
+      n_cols:
+        value: 128
