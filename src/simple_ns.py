@@ -309,13 +309,13 @@ def evo_search(L: Language,
                "avg_dist": np.mean(dists),
                "runtime": timer.time()}
 
-        if isinstance(L, lindenmayer.LSys):
+        if t > 0 and isinstance(L, lindenmayer.LSys):
             log.update(log_best_and_worst(5, L, samples, scores))
 
             # exit early if 'best' samples are actually terrible
             MIN_LENGTH = 10  # length of F;F~F
             i_best = np.argsort(-scores)[:5]
-            if np.all(scores[i_best] == - length_penalty * MIN_LENGTH):
+            if np.all(len_samples[i_best] == MIN_LENGTH):
                 break
 
         wandb.log(log)
