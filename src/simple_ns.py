@@ -230,6 +230,7 @@ def evo_search(L: Language,
                archive_early=False,
                gaussian_blur=False,
                length_cap=1000,
+               length_penalty_type="additive",
                length_penalty=0.1,
                ablate_mutator=False,
                simplify=False,
@@ -238,6 +239,7 @@ def evo_search(L: Language,
         "Number of samples taken should be significantly larger than number of samples kept"
     assert len(init_popn) >= 5, \
         f"Initial population ({len(init_popn)}) must be geq number of nearest neighbors (5)"
+    assert length_penalty_type in {"additive", "inverse"}
 
     def embed(S): return features(L, S, n_samples=samples_per_program, batch_size=8, gaussian_blur=gaussian_blur)
     def update_archive(A, E_A, S, E_S):
@@ -284,7 +286,10 @@ def evo_search(L: Language,
             dists, _ = knn.kneighbors(e_samples)
             dists = np.sum(dists, axis=1)
             len_samples = np.array([len(x) for x in samples])
-            scores = dists - length_penalty * len_samples  # add penalty term for length
+            if length_penalty_type == "additive":
+                scores = dists - length_penalty * len_samples  # add penalty term for length
+            else:
+                scores = dists / length_penalty
 
             # select samples to carry over to next generation
             i_popn = select_indices(select, scores, max_popn_size)
@@ -296,7 +301,8 @@ def evo_search(L: Language,
 
         # diagnostics
         log = {"scores": wandb.Histogram(scores[i_popn]),
-               "lengths": wandb.Histogram(len_samples),
+               "sample lengths": wandb.Histogram(len_samples),
+               "chosen lengths": wandb.Histogram(len_samples[i_popn]),
                "dists": wandb.Histogram(dists),
                "avg_score": np.mean(scores),
                "avg_length": np.mean(len_samples),
@@ -370,7 +376,7 @@ def run_on_nat_points(id: str):
     evo_search(**config, save_to=f"../out/simple_ns/{id}-z2-strict.out",)
 
 def run_on_lsystems():
-    with open('./sweeps/config.yaml') as file:
+    with open('configs/config.yaml') as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     wandb.init(project="novelty", config=config)
     config = wandb.config
@@ -389,22 +395,22 @@ def run_on_lsystems():
                    save_to=f"../out/ns/{wandb.run.id}")
     else:  # simple
         raise NotImplementedError
-        args = {
-            "L": lang,
-            "init_popn": [lang.parse(x) for x in config.train_data],
-            "d": hausdorff,
-            "select": config.select,
-            "samples_per_program": 1,
-            "samples_ratio": config.samples_ratio,
-            "keep_per_iter": config.keep_per_iter,
-            "iters": config.iters,
-            "alpha": config.alpha,
-            "gaussian_blur": config.gaussian_blur,
-            "length_cap": config.length_cap,
-            "length_penalty": config.length_penalty,
-            "debug": True,
-        }
-        simple_search(**args, save_to=f"../out/ns/{wandb.run.id}")
+        # args = {
+        #     "L": lang,
+        #     "init_popn": [lang.parse(x) for x in config.train_data],
+        #     "d": hausdorff,
+        #     "select": config.select,
+        #     "samples_per_program": 1,
+        #     "samples_ratio": config.samples_ratio,
+        #     "keep_per_iter": config.keep_per_iter,
+        #     "iters": config.iters,
+        #     "alpha": config.alpha,
+        #     "gaussian_blur": config.gaussian_blur,
+        #     "length_cap": config.length_cap,
+        #     "length_penalty": config.length_penalty,
+        #     "debug": True,
+        # }
+        # simple_search(**args, save_to=f"../out/ns/{wandb.run.id}")
 
 
 def viz_real_points_results(path: str):
