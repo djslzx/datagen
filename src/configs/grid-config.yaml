@@ -29,9 +29,11 @@ parameters:
       samples_ratio:
         value: 10
       keep_per_iter:
-        value: 5
+        value: 10
       length_cap:
         value: 200
+      length_penalty_type:
+        values: ["additive", "inverse"]
       length_penalty:
         value: 1e-3
       ablate_mutator:
