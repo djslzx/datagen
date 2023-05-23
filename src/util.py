@@ -12,6 +12,39 @@ from os import mkdir
 from einops import reduce
 
 
+def flatten(nested_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Flatten a nested dictionary of string keys into a single-level dictionary where
+    nested keys are concatenated like so:
+    a: {b: 1, c: 2} => {a.b: 1, a.c: 2}
+    """
+    out = {}
+    for k, v in nested_dict.items():
+        if isinstance(v, Dict):
+            for vk, vv in flatten(v).items():
+                out[f"{k}.{vk}"] = vv
+        else:
+            out[k] = v
+    return out
+
+
+def test_flatten():
+    cases = [
+        {}, {},
+        {"a": 1}, {"a": 1},
+        {"a": {"x": 1, "y": 2}}, {"a.x": 1, "a.y": 2},
+        {"a": {"x": 1, "y": 2}, "b": 3}, {"a.x": 1, "a.y": 2, "b": 3},
+        {"a": {"x": {"1": 1,
+                     "2": 2},
+               "y": 2},
+         "b": 3},
+        {"a.x.1": 1, "a.x.2": 2, "a.y": 2, "b": 3},
+    ]
+    for x, y in zip(cases[::2], cases[1::2]):
+        out = flatten(x)
+        assert y == out, f"Expected {y} but got {out}"
+
+
 class ParamTester:
     """
     Streamline iteration through sets of parameter values.
@@ -161,6 +194,7 @@ def plot(imgs: List[np.array],
          shape: Optional[Tuple[int, int]] = None,
          labels: Optional[List[str]] = None,
          title="",
+         fontsize=6,
          saveto=None):  # pragma: no cover
     # infer reasonable shape if none given
     if shape is None:
@@ -180,7 +214,7 @@ def plot(imgs: List[np.array],
     if shape == (1, 1):
         ax.imshow(imgs[0])
         if labels is not None:
-            ax.set_title(labels[0], pad=3, fontsize=6)
+            ax.set_title(labels[0], pad=3, fontsize=fontsize)
     else:
         # clear axis ticks
         for axis in ax.flat:
@@ -193,10 +227,14 @@ def plot(imgs: List[np.array],
             axis = axes[i]
             axis.imshow(img[0])  # remove color dim
             if labels is not None:
-                axis.set_title(labels[i], pad=3, fontsize=6)
+                axis.set_title(labels[i], pad=3, fontsize=fontsize)
 
-    fig.suptitle(title, fontsize=8)
-    plt.tight_layout(pad=0.3, w_pad=0.1, h_pad=0.1)
+    fig.suptitle(title, fontsize=fontsize)
+    plt.tight_layout(pad=0.1, w_pad=0.1, h_pad=0.1)
+    if labels is not None:
+        plt.subplots_adjust(wspace=0, hspace=0.2)
+    else:
+        plt.subplots_adjust(wspace=0, hspace=0)
     if saveto:
         dpi = int(96 * 2/3 * (max(shape) // 3 + 1))
         plt.savefig(saveto, dpi=dpi)
