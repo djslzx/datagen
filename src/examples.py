@@ -1,4 +1,6 @@
-from typing import List, Dict, Set
+"""
+Examples for test domains
+"""
 
 _lsystem_book_examples = [
     'F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F', 90,
@@ -12,7 +14,7 @@ _lsystem_book_examples = [
     'F-F-F-F;F~F-F+F-F-F', 90,
     # nondeterminism
     'F;F~F+F+,F~-F-F', 90,
-    'F;F~F+F+F,F~F-F-F', 60,
+    'F;F~F+F+F,F~F-F-F', 90,
     'F;F~F+F++F-F--FF-F+,F~-F+FF++F+F--F-F', 90,
     '-F;F~FF-F-F+F+F-F-FF+F+FFF-F+F+FF+F-FF-F-F+F+FF,F~+FF-F-F+F+FF+FFF-F-F+FFF-F-FF+F+F-F-F+F+FF', 90, 
     # L/R rules
@@ -20,13 +22,13 @@ _lsystem_book_examples = [
     '-L;L~LFLF+RFR+FLFL-FRF-LFL-FR+F+RF-LFL-FRFRFR+,R~-LFLFLF+RFR+FL-F-LF+RFR+FLF+RFRF-LFL-FRFR', 90,
     'L;L~LFRFL-F-RFLFR+F+LFRFL,R~RFLFR+F+LFRFL-F-RFLFR', 90,
     # branching, edge rewriting
-    'F;F~F[+F]F[-F]F', 25.7,
+    'F;F~F[+F]F[-F]F', 20,
     'F;F~F[+F]F[-F][F]', 20,
-    'F;F~FF-[-F+F+F]+[+F-F-F]', 22.5,
+    'F;F~FF-[-F+F+F]+[+F-F-F]', 20,
     # branching, node rewriting
     'F;F~F[+F]F[-F]+F,F~FF', 20,
-    'F;F~F[+F][-F]FF,F~FF', 25.7,
-    'F;F~F-[[F]+F]+F[+FF]-F,F~FF', 22.5,
+    'F;F~F[+F][-F]FF,F~FF', 20,
+    'F;F~F-[[F]+F]+F[+FF]-F,F~FF', 20,
     # stochastic branching
     'F;F~F[+F]FF,F~F[-F]FF,F~F[+F][-F]FF,F~FFF,F~FF', 20,
     'F;F~F[+F],F~F[-F],F~FF', 20,
@@ -34,12 +36,8 @@ _lsystem_book_examples = [
     # moss
     'F;F~F[+F]F[-F]F,F~F[+F]F,F~F[-F]F', 20,
 ]
-
-lsystem_book_examples = _lsystem_book_examples[::2]  # skip angles
-lsystem_book_F_examples = [s.replace("X", "F").replace("L", "F").replace("R", "F")
-                           for s in lsystem_book_examples]
-lsystem_book_det_examples = [s for s in lsystem_book_examples
-                             if "," not in s]
+lsystem_book_examples = [f"{angle};{ex}" for ex, angle in zip(_lsystem_book_examples[::2], _lsystem_book_examples[1::2])]
+lsystem_book_det_examples = [s for s in lsystem_book_examples if "," not in s]
 
 # note: most of these names are wrong and have nothing to do with the given l-system
 _lsystem_chatgpt_examples = [
