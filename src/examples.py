@@ -25,7 +25,7 @@ _lsystem_book_examples = [
     'F;F~FF-[-F+F+F]+[+F-F-F]', 22.5,
     # branching, node rewriting
     'F;F~F[+F]F[-F]+F,F~FF', 20,
-    'F;F~F[+F][-F]FF,F~FF', 25.7, 
+    'F;F~F[+F][-F]FF,F~FF', 25.7,
     'F;F~F-[[F]+F]+F[+FF]-F,F~FF', 22.5,
     # stochastic branching
     'F;F~F[+F]FF,F~F[-F]FF,F~F[+F][-F]FF,F~FFF,F~FF', 20,
@@ -38,6 +38,8 @@ _lsystem_book_examples = [
 lsystem_book_examples = _lsystem_book_examples[::2]  # skip angles
 lsystem_book_F_examples = [s.replace("X", "F").replace("L", "F").replace("R", "F")
                            for s in lsystem_book_examples]
+lsystem_book_det_examples = [s for s in lsystem_book_examples
+                             if "," not in s]
 
 # note: most of these names are wrong and have nothing to do with the given l-system
 _lsystem_chatgpt_examples = [
