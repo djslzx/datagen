@@ -2,7 +2,8 @@ use egg::{*, rewrite as rw};
 
 define_language! {
     enum LSystem {
-        "lsystem" = LSystem([Id; 2]),
+        "lsystem" = LSystem([Id; 3]),
+        "angle" = Angle(Id),
         "axiom" = Axiom(Id),
         "symbols" = Symbols([Id; 2]),
         "symbol" = Symbol(Id),
@@ -14,9 +15,12 @@ define_language! {
         "arrow" = Arrow([Id; 2]),
         "F" = Draw,
         "f" = Hop,
+        "L" = L,
+        "R" = R,
         "+" = Add,
         "-" = Sub,
         "nil" = Nil,
+        Num(i32),
     }
 }
 
@@ -72,7 +76,7 @@ pub fn simplify(s: &str) -> String {
         rw!("collapse-nil-symbol";
             "(symbol nil)" => "nil"),
         rw!("collapse-nil-axiom";
-            "(lsystem nil ?x)" => "nil"),
+            "(lsystem ?x nil ?y)" => "nil"),
         rw!("collapse-nil-rhs";
             "(arrow ?x nil)" => "nil"),
         rw!("collapse-nil-rule";
@@ -82,7 +86,7 @@ pub fn simplify(s: &str) -> String {
         rw!("collapse-nil-rules-rhs";
             "(rules ?x nil)" => "(rule ?x)"),
         rw!("collapse-nil-all-rules";
-            "(lsystem ?x nil)" => "nil"),
+            "(lsystem ?x ?y nil)" => "nil"),
 
         // retracing: X[X] => X
         rw!("retracing";
@@ -129,20 +133,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_angle() {
+        // 90;F;F~F
+        let input = "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))";
+        let ans = "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))";
+        let output = simplify(input);
+        assert_eq!(output, ans)
+    }
+
+    #[test]
     fn test_empty_turn() {
         let inputs = vec![
             // F;F~F
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))",
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))",
             // F;F~+-+--+++--F
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (term +) \
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbols (term +) \
             (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term -) \
             (symbols (term +) (symbols (term +) (symbols (term +) (symbols (term -) \
             (symbols (term -) (symbol (nonterm F)))))))))))))))",
             // "F;F~-+F+-",
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (term -) \
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbols (term -) \
             (symbols (term +) (symbols (nonterm F) (symbols (term +) (symbol (term -)))))))))",
         ];
-        let ans = "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))";
+        let ans = "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))";
         for input in inputs {
             let output = simplify(input);
             assert_eq!(output, ans)
@@ -153,22 +166,22 @@ mod tests {
     fn test_extra_brackets() {
         // keep rhs brackets: X~[Y] => X~Y
         assert_eq!( // F;F~[F]
-            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbol (nonterm F)))))))"),
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbol (nonterm F)))))))"
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbol (nonterm F)))))))"),
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbol (nonterm F)))))))"
         );
         assert_eq!( // F;F~[FF+FF]
-            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))))"),
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))))"
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))))"),
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (bracket (symbols (nonterm F) (symbols (nonterm F) (symbols (term +) (symbols (nonterm F) (symbol (nonterm F)))))))))))"
         );
 
         // rm nested brackets: [[X]] -> [X]
         assert_eq!( // [[F]];F~F -> [F];F~F
-            simplify("(lsystem (axiom (symbol (bracket (symbol (bracket (symbol (nonterm F))))))) (rule (arrow F (symbol (nonterm F)))))"),
-            "(lsystem (axiom (symbol (bracket (symbol (nonterm F))))) (rule (arrow F (symbol (nonterm F)))))"
+            simplify("(lsystem (angle 90) (axiom (symbol (bracket (symbol (bracket (symbol (nonterm F))))))) (rule (arrow F (symbol (nonterm F)))))"),
+            "(lsystem (angle 90) (axiom (symbol (bracket (symbol (nonterm F))))) (rule (arrow F (symbol (nonterm F)))))"
         );
         assert_eq!( // [[[[[[[F]]]]]]];F~F -> [F];F~F
-            simplify("(lsystem (axiom (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (nonterm F))))))))))))))))) (rule (arrow F (symbol (nonterm F)))))"),
-            "(lsystem (axiom (symbol (bracket (symbol (nonterm F))))) (rule (arrow F (symbol (nonterm F)))))"
+            simplify("(lsystem (angle 90) (axiom (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (bracket (symbol (nonterm F))))))))))))))))) (rule (arrow F (symbol (nonterm F)))))"),
+            "(lsystem (angle 90) (axiom (symbol (bracket (symbol (nonterm F))))) (rule (arrow F (symbol (nonterm F)))))"
         )
     }
 
@@ -177,24 +190,24 @@ mod tests {
         // retracing: [X]X => X
         // F;F~[F]F
         assert_eq!(
-            simplify("(lsystem (axiom (symbol (nonterm F))) \
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) \
             (rule (arrow F (symbols (bracket (symbol (nonterm F))) (symbol (nonterm F))))))"),
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
         );
         // F;F~[FF]FF
         assert_eq!(
-            simplify("(lsystem (axiom (symbol (nonterm F))) \
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) \
             (rule (arrow F (symbols (bracket (symbols (nonterm F) (symbol (nonterm F)))) \
             (symbols (nonterm F) (symbol (nonterm F)))))))"),
-            "(lsystem (axiom (symbol (nonterm F))) \
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) \
             (rule (arrow F (symbols (nonterm F) (symbol (nonterm F))))))"
         );
         // F;F~[+F-F]+F-F
         assert_eq!(
-            simplify("(lsystem (axiom (symbol (nonterm F))) \
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) \
             (rule (arrow F (symbols (bracket (symbols (term +) (symbols (nonterm F) (symbols (term -) (symbol (nonterm F)))))) \
             (symbols (term +) (symbols (nonterm F) (symbols (term -) (symbol (nonterm F)))))))))"),
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F \
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F \
             (symbols (term +) (symbols (nonterm F) (symbols (term -) (symbol (nonterm F))))))))"
         );
     }
@@ -204,8 +217,8 @@ mod tests {
         // only turns in brackets: [---+-+...--+] => empty symbols
         assert_eq!(
             // F;F~[-+-+---]F[++++] => F;F~F
-            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbols (bracket (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term -) (symbol (term -))))))))) (symbols (nonterm F) (symbol (bracket (symbols (term +) (symbols (term +) (symbols (term +) (symbol (term +))))))))))))"),
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbols (bracket (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term +) (symbols (term -) (symbols (term -) (symbol (term -))))))))) (symbols (nonterm F) (symbol (bracket (symbols (term +) (symbols (term +) (symbols (term +) (symbol (term +))))))))))))"),
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
         );
     }
 
@@ -214,7 +227,7 @@ mod tests {
         // only turns in axiom => empty axiom
         assert_eq!(
             // [---];F~F => empty
-            simplify("(lsystem (axiom (symbol (bracket (symbols (term -) (symbols (term -) (symbol (term -))))))) (rule (arrow F (symbol (nonterm F)))))"),
+            simplify("(lsystem (angle 90) (axiom (symbol (bracket (symbols (term -) (symbols (term -) (symbol (term -))))))) (rule (arrow F (symbol (nonterm F)))))"),
             "nil"
         )
     }
@@ -223,7 +236,7 @@ mod tests {
     fn test_empty_rules() {
         assert_eq!(
             // F;F~+ => empty
-            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (term +)))))"),
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (term +)))))"),
             "nil"
         )
     }
@@ -232,19 +245,19 @@ mod tests {
     fn test_nil_collapse() {
         // F;F~nil => nil
         assert_eq!(
-            simplify("(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol nil))))"),
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol nil))))"),
             "nil"
         );
         // F;F~F,F~nil => F;F~F
         assert_eq!(
-            simplify("(lsystem (axiom (symbol (nonterm F))) \
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) \
                                   (rules (arrow F (symbol (nonterm F))) \
                                          (rule (arrow F (symbol nil))))))"),
-            "(lsystem (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
+            "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))"
         );
         // F;F~nil,F~nil => nil
         assert_eq!(
-            simplify("(lsystem (axiom (symbol (nonterm F))) \
+            simplify("(lsystem (angle 90) (axiom (symbol (nonterm F))) \
                                (rules (arrow F nil) \
                                       (rule (arrow F nil))))"),
             "nil"

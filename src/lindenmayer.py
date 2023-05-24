@@ -8,7 +8,7 @@ from scipy.ndimage import gaussian_filter
 import itertools as it
 from sys import stderr, maxsize
 
-from eggy import simplify
+import eggy
 from lang import Language, Tree, Grammar, ParseError
 from featurizers import ResnetFeaturizer
 import util
@@ -202,7 +202,10 @@ class S0LSystem(LSystem):
 
     @staticmethod
     def from_str(s: str) -> 'S0LSystem':
-        return S0LSystem.from_sentence(list(s))
+        if s.count(';') > 1:
+            return S0LSystem.from_sentence(list(s.split(';',maxsplit=1)[1]))
+        else:
+            return S0LSystem.from_sentence(list(s))
 
     @staticmethod
     def from_sentence(s: List[str] | Tuple[str]) -> 'S0LSystem':
@@ -238,26 +241,29 @@ class LSys(Language):
     """
     Defines the L-System domain used for novelty search.
     """
+    ANGLES = [20, 45, 60, 90]
+
     sol_metagrammar = r"""
-        lsystem: axiom ";" rules   -> lsystem
-        axiom: symbols             -> axiom
-        symbols: symbol symbols    -> symbols
-               | symbol            -> symbol
-        symbol: "[" symbols "]"    -> bracket
-              | NT                 -> nonterm
-              | T                  -> term
-        rules: rule "," rules      -> rules
-             | rule                -> rule
-        rule: NT "~" symbols       -> arrow
-        NT: /[Ff]/
-        T: "+"
-         | "-"
+        lsystem: angle ";" axiom ";" rules -> lsystem
+        axiom: symbols                     -> axiom
+        symbols: symbol symbols            -> symbols
+               | symbol                    -> symbol
+        symbol: "[" symbols "]"            -> bracket
+              | NT                         -> nonterm
+              | T                          -> term
+        rules: rule "," rules              -> rules
+             | rule                        -> rule
+        rule: NT "~" symbols               -> arrow
+        NT: "F" | "f" | "L" | "R"
+        T: "+" | "-"
+        angle: NUMBER
 
         %import common.WS
+        %import common.NUMBER
         %ignore WS
     """
     sol_types = {
-        "lsystem": ["Axiom", "Rules", "LSystem"],
+        "lsystem": ["Angle", "Axiom", "Rules", "LSystem"],
         "axiom": ["Symbols", "Axiom"],
         "symbols": ["Symbol", "Symbols", "Symbols"],
         "symbol": ["Symbol", "Symbols"],
@@ -269,30 +275,32 @@ class LSys(Language):
         "arrow": ["Nonterm", "Symbols", "Rule"],
         "F": ["Nonterm"],
         "f": ["Nonterm"],
+        "L": ["Nonterm"],
+        "R": ["Nonterm"],
         "+": ["Term"],
         "-": ["Term"],
     }
-    # sol_types.update({
-    #     token: ["Nonterm"] for token in "LRXYAB"
-    # })
+    sol_types.update({angle: ["Angle"] for angle in ANGLES})
 
     dol_metagrammar = r"""
-        lsystem: axiom ";" rule   -> lsystem
-        axiom: symbols            -> axiom
-        symbols: symbol symbols   -> symbols
-               | symbol           -> symbol
-        symbol: "[" symbols "]"   -> bracket
-              | NT                -> nonterm
-              | T                 -> term
-        rule: NT "~" symbols      -> arrow
-        NT: "F"
+        lsystem: angle ";" axiom ";" rule   -> lsystem
+        axiom: symbols                      -> axiom
+        symbols: symbol symbols             -> symbols
+               | symbol                     -> symbol
+        symbol: "[" symbols "]"             -> bracket
+              | NT                          -> nonterm
+              | T                           -> term
+        rule: NT "~" symbols                -> arrow
+        NT: "F" | "f" | "L" | "R"
         T: "+" | "-"
+        angle: NUMBER
 
         %import common.WS
+        %import common.NUMBER
         %ignore WS
     """
     dol_types = {
-        "lsystem": ["Axiom", "Rule", "LSystem"],
+        "lsystem": ["Angle", "Axiom", "Rule", "LSystem"],
         "axiom": ["Symbols", "Axiom"],
         "symbols": ["Symbol", "Symbols", "Symbols"],
         "symbol": ["Symbol", "Symbols"],
@@ -301,11 +309,15 @@ class LSys(Language):
         "term": ["Term", "Symbol"],
         "arrow": ["Nonterm", "Symbols", "Rule"],
         "F": ["Nonterm"],
+        "f": ["Nonterm"],
+        "L": ["Nonterm"],
+        "R": ["Nonterm"],
         "+": ["Term"],
         "-": ["Term"],
     }
+    dol_types.update({angle: ["Angle"] for angle in ANGLES})
 
-    def __init__(self, theta: float, step_length: int, render_depth: int, n_rows: int, n_cols: int, aa=True,
+    def __init__(self, step_length: int, render_depth: int, n_rows: int, n_cols: int, aa=True,
                  kind="stochastic", quantize=False, disable_last_layer=False, softmax_outputs=True):
         self.kind = kind
         assert kind in {"stochastic", "deterministic"}, f"LSys must be 'stochastic' or 'deterministic', but got {kind}"
@@ -322,7 +334,6 @@ class LSys(Language):
                          featurizer=ResnetFeaturizer(quantize=quantize,
                                                      disable_last_layer=disable_last_layer,
                                                      softmax_outputs=softmax_outputs))
-        self.theta = theta
         self.step_length = step_length
         self.render_depth = render_depth
         self.n_rows = n_rows
@@ -337,7 +348,7 @@ class LSys(Language):
         if env is None: env = {}
 
         # fetch env variables if present, otherwise use object fields
-        theta = env["theta"] if "theta" in env else self.theta
+        theta = float(t.children[0].children[0].value)  # extract angle (hacky)
         render_depth = env["render_depth"] if "render_depth" in env else self.render_depth
         step_length = env["step_length"] if "step_length" in env else self.step_length
         n_rows = env["n_rows"] if "n_rows" in env else self.n_rows
@@ -351,7 +362,7 @@ class LSys(Language):
     @property
     def str_semantics(self) -> Dict:
         semantics = {
-            "lsystem": lambda ax, rs: f"{ax};{rs}",
+            "lsystem": lambda angle, ax, rs: f"{angle};{ax};{rs}",
             "axiom": lambda xs: xs,
             "symbols": lambda x, xs: f"{x}{xs}",
             "symbol": lambda x: x,
@@ -361,6 +372,7 @@ class LSys(Language):
             "rules": lambda r, rs: f"{r},{rs}",
             "rule": lambda r: r,
             "arrow": lambda nt, xs: f"{nt}~{xs}",
+            "angle": lambda a: a,
             "F": lambda: "F",
             "f": lambda: "f",
             "+": lambda: "+",
@@ -368,35 +380,37 @@ class LSys(Language):
         }
         semantics.update({
             token: (lambda: token)
-            for token in "LRXYAB"
+            for token in ["L", "R"] + LSys.ANGLES
         })
         return semantics
 
     def simplify(self, t: Tree) -> Tree:
         """Simplify using egg and deduplicate rules"""
         sexp = t.to_sexp()
-        sexp_simpl = simplify(sexp)
+        sexp_simpl = eggy.simplify_lsystem(sexp)
         if "nil" in sexp_simpl:
             if sexp_simpl != "nil":
                 print(f"WARNING: found nil in expression: {sexp} => {sexp_simpl}", file=stderr)
             raise NilError(f"Unexpected 'nil' in simplified expr: {sexp} => {sexp_simpl}")
         s_simpl = self.to_str(Tree.from_sexp(sexp_simpl))
-        s_dedup = LSys.dedup_rules(s_simpl)
-        return self.parse(s_dedup)
+        if self.kind == "stochastic":
+            s_dedup = LSys.dedup_rules(s_simpl)
+            return self.parse(s_dedup)
+        return self.parse(s_simpl)
 
     @staticmethod
     def dedup_rules(s: str) -> str:
-        s_axiom, s_rules = s.split(";")
+        s_angle, s_axiom, s_rules = s.split(";")
         rules = set(s_rules.split(","))
         s_rules = ",".join(sorted(rules, key=lambda x: (len(x), x)))
-        return f"{s_axiom};{s_rules}"
+        return f"{s_angle};{s_axiom};{s_rules}"
 
     def __str__(self) -> str:
         excluded_keys = {"model", "parser"}
-        return "\n".join([f"<StochLSys:"] +
+        return "\n".join([f"<LSys:"] +
                          [f"  {key}={val}"
                           for key, val in self.__dict__.items()
-                          if key not in excluded_keys])
+                          if key not in excluded_keys]) + ">"
 
 
 class NilError(ParseError):
@@ -429,7 +443,7 @@ def test_lsys_simplify():
         "F;F~+,F~+": "nil",
         "F;F~F,F~+,F~+": "F;F~F",
     }
-    L = LSys(theta=90, step_length=3, render_depth=3, n_rows=128, n_cols=128)
+    L = LSys(step_length=3, render_depth=3, n_rows=128, n_cols=128)
     for x, y in cases.items():
         t_x = L.parse(x)
         try:
@@ -441,25 +455,20 @@ def test_lsys_simplify():
 
 if __name__ == "__main__":
     import view
-    from torch import from_numpy, Tensor, stack
+    from torch import from_numpy, stack
     from featurizers import ResnetFeaturizer
     np.set_printoptions(threshold=maxsize)
 
-    examples = [
-        # "F-F;F~-" + "F" * n for n in range(1, 10)
-        # "F;F~FF",
-        # "F;F~F[+F][-F]F",
-        "FFF+FFF[[+FF]];F~F+F++FF+F",
-        "-FF[+F+FFFF]+++F-++F-FF[F]F+++F--FFFF[F]-[-[+-+FF+[F]]F+-FFF+F[[+F]]]F;F~F+-F+FFF-FFFFFF+F[F]",
-        "F-F;F~-FFFFFFFF",
-        "F;F~+FF+F",
-        "F;F~F[--F][F]F[[F[[F[FFF]]-F[-F[-FF]-F]FFFFF-[[FF][[[FF]F-[-FFF]F]F]FF]]FF]F]-",
-        # "F;F~+--+F",
-        # "F;F~+--+F,F~F",
-        # "F;F~[+F][-F]F,F~FF",
+    templates = [
+        "F;F~F[+F][-F]F",
+        "F;F~FF+-F[+][-][[+--]]",
     ]
+    examples = []
+    for t in templates:
+        for angle in LSys.ANGLES:
+            examples.append(f"{angle};{t}")
+
     params = {
-        "theta": 45,
         "step_length": 3,
         "render_depth": 3,
         "n_rows": 128,
@@ -467,19 +476,24 @@ if __name__ == "__main__":
     }
     L = LSys(**params, kind="deterministic")
     print(L)
-    # view.plot_lsys_at_depths(L, examples, "", 3, depths=(1, 6))
-    M = [L.eval(L.parse(x), {"aa": True}) for x in examples]
-    print("aa:", np.unique(M))
-    util.plot(M, title="aa")
+    programs = [L.simplify(L.parse(x)) for x in examples]
+    for x, p in zip(examples, programs):
+        print(f"{x} => {L.to_str(p)}")
 
-    # M_no_aa = [L.eval(L.parse(x), {"aa": False}) for x in examples]
+    # view.plot_lsys_at_depths(L, examples, "", n_imgs_per_plot=len(LSys.ANGLES), depths=(1, 6))
+    #
+    # M = [L.eval(p, {"aa": True}) for p in programs]
+    # shape = (len(templates), len(LSys.ANGLES))
+    # util.plot(M, shape=shape, labels=[L.to_str(p) for p in programs], title="aa")
+    #
+    # M_no_aa = [L.eval(p, {"aa": False}) for p in programs]
     # print("no aa:", np.unique(M_no_aa))
-    # util.plot(M_no_aa, title="no aa")
-
-    # test effect of gaussian blur
+    # util.plot(M_no_aa, title="no aa", shape=shape)
+    #
+    # # test effect of gaussian blur
     # ft = ResnetFeaturizer()
     # preprocessed = ft.preprocess(stack([from_numpy(x) for x in M]))
-    # util.plot(preprocessed, title="resnet preprocessed")
-    # for i in range(6):
+    # util.plot(preprocessed, title="resnet preprocessed", shape=shape)
+    # for i in range(3):
     #     filtered = [gaussian_filter(x, sigma=i) for x in M]
-    #     util.plot(filtered, title=f"gaussian filter, sigma={i}")
+    #     util.plot(filtered, title=f"gaussian filter, sigma={i}", shape=shape)
