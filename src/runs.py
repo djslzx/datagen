@@ -9,6 +9,7 @@ from typing import List
 
 from lindenmayer import LSys
 from util import flatten
+from simple_ns import features
 
 
 def make_df(sweep_path: str):
@@ -49,11 +50,15 @@ def render_run(run_id: str):
                   saveto=f"../sweeps/{run_id}/step{step}.png")
 
 
-def render_strs(lsys: LSys, strs: List[str]):
-    for s in strs:
-        t = lsys.parse(s)
-        img = lsys.eval(t)
-        yield img
+def eval_run(run_id: str):
+    df = pd.read_csv(f"../sweeps/{run_id}/{run_id}.csv")
+    l = LSys(theta=45, step_length=4, render_depth=3, n_rows=128, n_cols=128, kind="deterministic")
+    # todo:
+    #  - measure knn distance (in feature space) from programs in df to target programs (book ex's)
+    #  - produce multiple distances by filtering points into different subsets:
+    #    - by generation
+    #    - archive/samples/chosen/not chosen
+    #    -
 
 
 if __name__ == '__main__':
