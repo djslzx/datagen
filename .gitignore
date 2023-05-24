@@ -147,3 +147,4 @@ Cargo.lock
 datasets/*
 profiles/*
 out/*
+/eggy/target/wheels/
