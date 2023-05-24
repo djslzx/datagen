@@ -230,7 +230,7 @@ def plot(imgs: List[np.array],
                 axis.set_title(labels[i], pad=3, fontsize=fontsize)
 
     fig.suptitle(title, fontsize=fontsize)
-    plt.tight_layout(pad=0.1, w_pad=0.1, h_pad=0.1)
+    plt.tight_layout(pad=0.5, w_pad=0.1, h_pad=0.1)
     if labels is not None:
         plt.subplots_adjust(wspace=0, hspace=0.2)
     else:
