@@ -7,13 +7,11 @@ To make this easier, we build a Docker image that extends manylinux-cross to add
 
 Build the Docker image:
 ```shell
-$ docker build -t maturin:latest 
+$ docker build -t maturin:latest . 
 ```
 Run:
 ```shell
-$ docker run -it --platform linux/amd64 -v \ 
-   ~/Documents/research/prob-repl/eggy:/home/shared \
-   messense/manylinux2014-cross:x86_64
+$ docker run -it --platform linux/amd64 -v eggy:/home/shared maturin:latest
 ```
 Building on the Docker image directly won't work because of macOS and cargo shenanigans:
 https://github.com/rust-lang/cargo/issues/10781
