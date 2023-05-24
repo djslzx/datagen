@@ -30,22 +30,7 @@ import util
 
 Distance = Callable[[np.ndarray, np.ndarray], float]
 
-def features(L: Language, s: Collection[Tree], n_samples: int, batch_size=4, gaussian_blur=False) -> np.ndarray:
-    return batched_features(L, s, batch_size=batch_size, n_samples=n_samples, gaussian_blur=gaussian_blur)
-    # # output shape: (|s|, n)
-    # xs = []
-    # for x in s:
-    #     if x is not None:
-    #         outputs = [L.eval(x, env={}) for _ in range(n_samples)]
-    #         xs.append(L.featurizer.apply(outputs))
-    # out = np.array(xs)
-    # assert out.shape[:2] == (len(s), n_samples), \
-    #     f"Expected shape {(len(s), n_samples)}, but got {out.shape}"
-    # return rearrange(out, "n samples features -> n (samples features)")
-
-def batched_features(L: Language, S: Collection[Tree],
-                     batch_size: int, n_samples: int,
-                     gaussian_blur=False) -> np.ndarray:
+def features(L: Language, S: Collection[Tree], n_samples: int, batch_size=4, gaussian_blur=False) -> np.ndarray:
     # take samples from programs in S, then batch them and feed them through
     # the feature extractor for L
     def samples():
