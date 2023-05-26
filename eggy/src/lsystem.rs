@@ -133,6 +133,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_fixpoint() {
+        // check that the following expressions stay the same after simplification
+        let inputs = vec![
+            // F~F[F]
+            "(lsystem (angle 90) \
+                      (axiom (symbol (nonterm F))) \
+                      (rule (arrow F \
+                                   (bracket (symbol (nonterm F))))))",
+            // F~+[F[F]]
+            "(lsystem (angle 90) \
+                      (axiom (symbol (nonterm F))) \
+                      (rule (arrow F \
+                                   (symbols (term +) \
+                                            (bracket (symbols (nonterm F) \
+                                                              (bracket (symbol (nonterm F)))))))))",
+            // F~F[F[F]]
+            "(lsystem (angle 90) \
+                      (axiom (symbol (nonterm F))) \
+                      (rule (arrow F \
+                                   (symbols (nonterm F) \
+                                            (bracket (symbols (nonterm F) \
+                                                              (bracket (symbol (nonterm F)))))))))",
+        ];
+        for input in inputs {
+            assert_eq!(simplify(input), input);
+        }
+    }
+
+    #[test]
     fn test_angle() {
         // 90;F;F~F
         let input = "(lsystem (angle 90) (axiom (symbol (nonterm F))) (rule (arrow F (symbol (nonterm F)))))";
