@@ -186,11 +186,6 @@ def evo_search(L: Language,
             for i, (x, dist, length, score) in enumerate(zip(S, dists, lengths, scores)):
                 writer.writerow((t, L.to_str(x), "S", dist, length, score, i in I))
 
-    def concat(a: Union[np.ndarray, List], b: np.ndarray) -> np.ndarray:
-        if not a: return b
-        elif not b: return a
-        else: return np.concatenate((a, b), axis=0)
-
     ## prep data files
     # write metadata
     with open(f"{save_to}.metadata", "w") as f:
@@ -220,7 +215,7 @@ def evo_search(L: Language,
             if archive_early: update_archive(archive, e_archive, samples, e_samples)
 
             # score samples wrt archive + popn
-            knn.fit(concat(e_archive, e_popn))
+            knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
             dists, _ = knn.kneighbors(e_samples)
             dists = np.sum(dists, axis=1)
             len_samples = np.array([len(x) for x in samples])
