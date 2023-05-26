@@ -191,6 +191,13 @@ if __name__ == "__main__":
     import lindenmayer
     import util
 
+    # cool discovered stuff
+    generated = [
+        "45;FF;F~FFF+FFF",  # flower
+        "60;FF;F~FFF-F",  # abstract
+        "60;F;F~F+FFFFF",  # abstract
+        "45;F;F~+FFFFFFFF",  # honeycomb
+    ]
     lsys = lindenmayer.LSys(step_length=3, render_depth=3, n_rows=128, n_cols=128, kind="deterministic")
-    imgs = [lsys.eval(lsys.parse(s)) for s in lsystem_book_det_examples]
+    imgs = [lsys.eval(lsys.parse(s)) for s in lsystem_book_det_examples + generated]
     util.plot(imgs)
