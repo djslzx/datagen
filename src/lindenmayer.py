@@ -243,6 +243,7 @@ class LSys(Language):
     Defines the L-System domain used for novelty search.
     """
     ANGLES = [20, 45, 60, 90]
+    EXTRA_NONTERMINALS = [] # ["f", "L", "R"]
 
     sol_metagrammar = r"""
         lsystem: angle ";" axiom ";" rules -> lsystem
@@ -276,12 +277,10 @@ class LSys(Language):
         "arrow": ["Nonterm", "Symbols", "Rule"],
         "angle": ["Num", "Angle"],
         "F": ["Nonterm"],
-        "f": ["Nonterm"],
-        "L": ["Nonterm"],
-        "R": ["Nonterm"],
         "+": ["Term"],
         "-": ["Term"],
     }
+    sol_types.update({nt: ["Nonterm"] for nt in EXTRA_NONTERMINALS})
     sol_types.update({angle: ["Num"] for angle in ANGLES})
 
     dol_metagrammar = r"""
@@ -312,12 +311,10 @@ class LSys(Language):
         "arrow": ["Nonterm", "Symbols", "Rule"],
         "angle": ["Num", "Angle"],
         "F": ["Nonterm"],
-        "f": ["Nonterm"],
-        "L": ["Nonterm"],
-        "R": ["Nonterm"],
         "+": ["Term"],
         "-": ["Term"],
     }
+    dol_types.update({nt: ["Nonterm"] for nt in EXTRA_NONTERMINALS})
     dol_types.update({angle: ["Num"] for angle in ANGLES})
 
     def __init__(self, step_length: int, render_depth: int, n_rows: int, n_cols: int, aa=True,
@@ -376,15 +373,10 @@ class LSys(Language):
             "rule": lambda r: r,
             "arrow": lambda nt, xs: f"{nt}~{xs}",
             "angle": lambda a: a,
-            "F": lambda: "F",
-            "f": lambda: "f",
-            "+": lambda: "+",
-            "-": lambda: "-",
         }
-        semantics.update({
-            token: (lambda: str(token))
-            for token in ["L", "R"] + LSys.ANGLES
-        })
+        # constants
+        for token in ["F", "+", "-"] + LSys.EXTRA_NONTERMINALS + LSys.ANGLES:
+            semantics[token] = str(token)
         return semantics
 
     def simplify(self, t: Tree) -> Tree:
@@ -486,8 +478,10 @@ if __name__ == "__main__":
     L.fit(programs, alpha=1)
     print(L.model)
     samples = [L.sample() for _ in range(25)]
-    pp(samples)
-    util.plot([L.eval(x) for x in samples], shape=(5, 5))
+    for x in samples:
+        s = L.to_str(x)
+        print(f"{s}: {x}")
+    # util.plot([L.eval(x) for x in samples], shape=(5, 5))
 
     # view.plot_lsys_at_depths(L, examples, "", n_imgs_per_plot=len(LSys.ANGLES), depths=(1, 6))
     #
