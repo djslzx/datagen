@@ -1,6 +1,7 @@
 from __future__ import annotations
 import random
-from typing import *
+from pprint import pp
+from typing import Dict, List, Iterator, Tuple, Any
 from math import sin, cos, radians
 import numpy as np
 import skimage.draw
@@ -254,9 +255,9 @@ class LSys(Language):
         rules: rule "," rules              -> rules
              | rule                        -> rule
         rule: NT "~" symbols               -> arrow
+        angle: NUMBER                      -> angle
         NT: "F" | "f" | "L" | "R"
         T: "+" | "-"
-        angle: NUMBER
 
         %import common.WS
         %import common.NUMBER
@@ -273,6 +274,7 @@ class LSys(Language):
         "rules": ["Rule", "Rules", "Rules"],
         "rule": ["Rule", "Rules"],
         "arrow": ["Nonterm", "Symbols", "Rule"],
+        "angle": ["Num", "Angle"],
         "F": ["Nonterm"],
         "f": ["Nonterm"],
         "L": ["Nonterm"],
@@ -280,7 +282,7 @@ class LSys(Language):
         "+": ["Term"],
         "-": ["Term"],
     }
-    sol_types.update({angle: ["Angle"] for angle in ANGLES})
+    sol_types.update({angle: ["Num"] for angle in ANGLES})
 
     dol_metagrammar = r"""
         lsystem: angle ";" axiom ";" rule   -> lsystem
@@ -291,9 +293,9 @@ class LSys(Language):
               | NT                          -> nonterm
               | T                           -> term
         rule: NT "~" symbols                -> arrow
+        angle: NUMBER                       -> angle
         NT: "F" | "f" | "L" | "R"
         T: "+" | "-"
-        angle: NUMBER
 
         %import common.WS
         %import common.NUMBER
@@ -308,6 +310,7 @@ class LSys(Language):
         "nonterm": ["Nonterm", "Symbol"],
         "term": ["Term", "Symbol"],
         "arrow": ["Nonterm", "Symbols", "Rule"],
+        "angle": ["Num", "Angle"],
         "F": ["Nonterm"],
         "f": ["Nonterm"],
         "L": ["Nonterm"],
@@ -315,7 +318,7 @@ class LSys(Language):
         "+": ["Term"],
         "-": ["Term"],
     }
-    dol_types.update({angle: ["Angle"] for angle in ANGLES})
+    dol_types.update({angle: ["Num"] for angle in ANGLES})
 
     def __init__(self, step_length: int, render_depth: int, n_rows: int, n_cols: int, aa=True,
                  kind="stochastic", quantize=False, disable_last_layer=False, softmax_outputs=True):
@@ -379,7 +382,7 @@ class LSys(Language):
             "-": lambda: "-",
         }
         semantics.update({
-            token: (lambda: token)
+            token: (lambda: str(token))
             for token in ["L", "R"] + LSys.ANGLES
         })
         return semantics
@@ -479,6 +482,12 @@ if __name__ == "__main__":
     programs = [L.simplify(L.parse(x)) for x in examples]
     for x, p in zip(examples, programs):
         print(f"{x} => {L.to_str(p)}")
+
+    L.fit(programs, alpha=1)
+    print(L.model)
+    samples = [L.sample() for _ in range(25)]
+    pp(samples)
+    util.plot([L.eval(x) for x in samples], shape=(5, 5))
 
     # view.plot_lsys_at_depths(L, examples, "", n_imgs_per_plot=len(LSys.ANGLES), depths=(1, 6))
     #
