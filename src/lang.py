@@ -103,7 +103,11 @@ class Tree:
         sym = self.value
         args = [c.to_str(semantics) for c in self.children]
         if sym in semantics:
-            return semantics[sym](*args)
+            f = semantics[sym]
+            if callable(f):
+                return f(*args)
+            else:
+                return f
         else:
             return sym
 
