@@ -7,9 +7,27 @@ parameters:
   disable_last_layer:
     values: [ "true", "false" ]
   softmax_outputs:
-     values: [ "true", "false" ]
+    values: [ "true", "false" ]
   train_data:
-    value: ["F;F~F", "F;F~FF", "F[+F][-F]FF;F~FF", "F+F-F;F~F+FF", "F;F~F[+F][-F]F"]
+    value:
+      - "20;F;F~F"
+      - "90;F;F~FF"
+      - "45;F[+F][-F]FF;F~FF"
+      - "60;F+F-F;F~F+FF"
+      - "60;F;F~F[+F][-F]F"
+  holdout_data:
+    value:
+      - "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"
+      - "90;-F;F~F+F-F-F+F"
+      - "90;F-F-F-F;F~FF-F-F-F-F-F+F"
+      - "90;F-F-F-F;F~FF-F-F-F-FF"
+      - "90;F-F-F-F;F~FF-F+F-F-FF"
+      - "90;F-F-F-F;F~FF-F--F-F"
+      - "90;F-F-F-F;F~F-FF--F-F"
+      - "90;F-F-F-F;F~F-F+F-F-F"
+      - "20;F;F~F[+F]F[-F]F"
+      - "20;F;F~F[+F]F[-F][F]"
+      - "20;F;F~FF-[-F+F+F]+[+F-F-F]"
 
   # novelty search hyperparams
   search:
@@ -46,8 +64,6 @@ parameters:
   # rendering params
   render:
     parameters:
-      theta:
-        value: 45
       step_length:
         value: 4
       render_depth:
