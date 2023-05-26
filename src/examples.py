@@ -183,3 +183,11 @@ regex_split = {
     "text and nums": _regex_text_and_nums,
     "nums": _regex_nums
 }
+
+if __name__ == "__main__":
+    import lindenmayer
+    import util
+
+    lsys = lindenmayer.LSys(step_length=3, render_depth=3, n_rows=128, n_cols=128, kind="deterministic")
+    imgs = [lsys.eval(lsys.parse(s)) for s in lsystem_book_det_examples]
+    util.plot(imgs)
