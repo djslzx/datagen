@@ -202,6 +202,7 @@ def simple_search(L: Language,
 
 def evo_search(L: Language,
                init_popn: List[Tree],
+               holdout: List[Tree],
                d: Distance,
                select: str,
                max_popn_size: int,
@@ -216,7 +217,8 @@ def evo_search(L: Language,
                gaussian_blur=False,
                length_cap=1000,
                length_penalty_type="additive",
-               length_penalty=0.1,
+               length_penalty_additive_coeff=0.1,
+               length_penalty_inverse_coeff=10,
                ablate_mutator=False,
                simplify=False,
                **kvs) -> Tuple[List[Tree], List[Tree]]:
@@ -231,24 +233,33 @@ def evo_search(L: Language,
         I_A = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
         A.extend(S[I_A])
         E_A.extend(E_S[I_A])
-
-    # write metadata
-    with open(f"{save_to}.metadata", "w") as f:
-        pp(wandb.run.config.as_dict(), stream=f)
-
-    # write columns
-    with open(f"{save_to}.csv", "w") as f:
-        writer = csv.writer(f)
-        writer.writerow(["step", "program", "kind", "dist", "length", "score", "chosen"])
-
-    def log_data(t: int, dA, S, I, dists, lengths):
+    def log_data(t: int, dA, S, I, dists, lengths, scores):
+        """
+        Save one generation of evolved programs:
+        - t: time step
+        - dA: new programs in archive
+        - S: new program samples
+        - I: indices of programs selected for next generation from S
+        - dists: dists_i = novelty distance for S_i
+        - lengths: lengths_i = length(S_i)
+        """
         assert len(S) == len(dists) == len(lengths)
         with open(f"{save_to}.csv", "a") as f:
             writer = csv.writer(f)
             for x in dA:
                 writer.writerow((t, L.to_str(x), "A", None, len(x), None, None))
-            for i, (x, dist, length) in enumerate(zip(S, dists, lengths)):
-                writer.writerow((t, L.to_str(x), "S", dist, length, dist - length_penalty * length, i in I))
+            for i, (x, dist, length, score) in enumerate(zip(S, dists, lengths, scores)):
+                writer.writerow((t, L.to_str(x), "S", dist, length, score, i in I))
+
+    ## prep data files
+    # write metadata
+    with open(f"{save_to}.metadata", "w") as f:
+        pp(wandb.run.config.as_dict(), stream=f)
+
+    # write column headers
+    with open(f"{save_to}.csv", "w") as f:
+        writer = csv.writer(f)
+        writer.writerow(["step", "program", "kind", "dist", "length", "score", "chosen"])
 
     samples_per_iter = samples_ratio * max_popn_size
     full_archive = []
@@ -256,7 +267,10 @@ def evo_search(L: Language,
     popn = init_popn
     e_archive = []
     e_popn = embed(popn)
+    e_hold_out = embed(holdout)
     metric = make_dist(d=d, k=samples_per_program) if samples_per_program > 1 else "minkowski"
+    holdout_knn = NearestNeighbors(metric=metric)
+    holdout_knn.fit(e_hold_out)
     knn = NearestNeighbors(metric=metric)
     for t in range(iters):
         with util.Timing(f"Iteration {t}") as timer:
@@ -272,26 +286,34 @@ def evo_search(L: Language,
             dists = np.sum(dists, axis=1)
             len_samples = np.array([len(x) for x in samples])
             if length_penalty_type == "additive":
-                scores = dists - length_penalty * len_samples  # add penalty term for length
+                scores = dists - length_penalty_additive_coeff * len_samples  # add penalty term for length
             else:
-                scores = dists / length_penalty
+                scores = dists / (len_samples + length_penalty_inverse_coeff)
 
             # select samples to carry over to next generation
             i_popn = select_indices(select, scores, max_popn_size)
             if not archive_early: update_archive(archive, e_archive, samples, e_samples)
-            log_data(t=t, dA=archive[-keep_per_iter:], S=samples, I=i_popn, dists=dists, lengths=len_samples)
+            log_data(t=t, dA=archive[-keep_per_iter:], S=samples, I=i_popn, dists=dists, lengths=len_samples, scores=scores)
             popn = samples[i_popn]
             e_popn = e_samples[i_popn]
             full_archive.extend(popn)
 
-        # diagnostics
+        # distance from hold_out set
+        sample_holdout_dists, _ = holdout_knn.kneighbors(e_samples)
+        sample_holdout_dists = np.sum(sample_holdout_dists, axis=1)
+        select_holdout_dists = sample_holdout_dists[i_popn]
+
         log = {"scores": wandb.Histogram(scores[i_popn]),
                "sample lengths": wandb.Histogram(len_samples),
                "chosen lengths": wandb.Histogram(len_samples[i_popn]),
+               "sample holdout dists": wandb.Histogram(sample_holdout_dists),
+               "selected holdout dists": wandb.Histogram(select_holdout_dists),
                "dists": wandb.Histogram(dists),
-               "avg_score": np.mean(scores),
-               "avg_length": np.mean(len_samples),
-               "avg_dist": np.mean(dists),
+               "avg score": np.mean(scores),
+               "avg length": np.mean(len_samples),
+               "avg dist": np.mean(dists),
+               "avg sample holdout dist": np.mean(sample_holdout_dists),
+               "avg selected holdout dist": np.mean(select_holdout_dists),
                "runtime": timer.time()}
 
         if t > 0 and isinstance(L, lindenmayer.LSys):
@@ -360,8 +382,11 @@ def run_on_nat_points(id: str):
     wandb.init(project="novelty", config=config)
     evo_search(**config, save_to=f"../out/simple_ns/{id}-z2-strict.out",)
 
-def run_on_lsystems():
-    with open('configs/config.yaml') as file:
+def lsystem_sweep():
+    run_on_lsystems('configs/config.yaml')
+
+def run_on_lsystems(filename: str):
+    with open(filename) as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     wandb.init(project="novelty", config=config)
     config = wandb.config
@@ -372,10 +397,12 @@ def run_on_lsystems():
         softmax_outputs=config.softmax_outputs,
     )
     train_data = [lang.parse(x) for x in config.train_data]
+    holdout_data = [lang.parse(x) for x in config.holdout_data]
     if config.search["kind"] == "evo":
         evo_search(**config.search,
                    L=lang,
                    init_popn=train_data,
+                   holdout=holdout_data,
                    d=hausdorff,
                    save_to=f"../out/ns/{wandb.run.id}")
     else:  # simple
@@ -414,8 +441,6 @@ if __name__ == '__main__':
     # viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
     # viz_real_points_results(f"../out/simple_ns/7hea21on.csv")
     # run_on_nat_points()
-    # sweep_id = wandb.sweep(sweep=, project='novelty')
-    # wandb.agent(sweep_id, function=run_on_lsystems)
-    pass
+    run_on_lsystems(filename="configs/static-config.yaml")
 
-run_on_lsystems()
+# lsystem_sweep()
