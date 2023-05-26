@@ -161,7 +161,7 @@ class Language:
         t = Tree.from_tuple(s)
         return t
 
-    def fit(self, corpus: List[Tree], alpha=0.):
+    def fit(self, corpus: List[Tree], alpha):
         weights = np.ones(len(corpus))
         if self.model.gram == 1:
             counts = sum_scans(corpus, weights, scanner=unigram_scan)

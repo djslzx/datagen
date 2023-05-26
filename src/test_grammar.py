@@ -108,5 +108,5 @@ def test_fit_lsys():
     ]
     lsys = LSys(90, 3, 3, 128, 128)
     parsed_corpus = [lsys.parse(x) for x in corpus]
-    lsys.fit(parsed_corpus)
+    lsys.fit(parsed_corpus, alpha=1)
     print(lsys.model)
