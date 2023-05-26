@@ -210,9 +210,10 @@ def plot(imgs: List[np.array],
     if isinstance(imgs[0], np.ndarray) and imgs[0].dtype != float:
         imgs = [img.astype(float) for img in imgs]
 
-    fig, ax = plt.subplots(*shape)
+    fig, ax = plt.subplots(*shape, figsize=(1.28 * shape[0] + 0.5,
+                                            1.28 * shape[1] + 0.5))
     if shape == (1, 1):
-        ax.imshow(imgs[0])
+        ax.imshow(imgs[0][0])
         if labels is not None:
             ax.set_title(labels[0], pad=3, fontsize=fontsize)
     else:
@@ -236,8 +237,7 @@ def plot(imgs: List[np.array],
     else:
         plt.subplots_adjust(wspace=0, hspace=0)
     if saveto:
-        dpi = int(96 * 2/3 * (max(shape) // 3 + 1))
-        plt.savefig(saveto, dpi=dpi)
+        plt.savefig(saveto)
     else:
         plt.show()
     plt.close()
