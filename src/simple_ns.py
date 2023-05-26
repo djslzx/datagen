@@ -318,7 +318,7 @@ def run_on_nat_points(id: str):
     evo_search(**config, save_to=f"../out/simple_ns/{id}-z2-strict.out",)
 
 def lsystem_sweep():
-    run_on_lsystems('configs/config.yaml')
+    run_on_lsystems('configs/simple-config.yaml')
 
 def run_on_lsystems(filename: str):
     with open(filename) as file:
