@@ -64,8 +64,8 @@ parameters:
         values: ["true", "false"]
       archive_early:
         values: [ "true", "false" ]
-      gaussian_blur:
-        values: [ "true", "false" ]
+      gaussian_blur_sigma:
+        values: [ 1, 2, 3, 4, 5 ]
 
   # rendering params
   render:

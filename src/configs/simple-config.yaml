@@ -1,13 +1,13 @@
 program: simple_ns.py
 method: grid
 metric:
-  goal: maximize
-  name: avg_dist
+  goal: minimize
+  name: "avg sample holdout dist"
 parameters:
   disable_last_layer:
-    values: [ "true", "false" ]
+    values: [ true, false ]
   softmax_outputs:
-    values: [ "true", "false" ]
+    values: [ true, false ]
   train_data:
     value:
       - "20;F;F~F"
@@ -32,14 +32,12 @@ parameters:
   # novelty search hyperparams
   search:
     parameters:
-      kind:
-        value: evo
       samples_per_program:
         value: 1
       iters:
-        value: 100
+        value: 200
       select:
-        values: [strict, weighted]
+        value: strict
       alpha:
         value: 1
       max_popn_size:
@@ -51,15 +49,17 @@ parameters:
       length_cap:
         value: 200
       length_penalty_type:
-        values: ["additive", "inverse"]
-      length_penalty:
-        value: 1e-3
+        values: [additive, inverse]
+      length_penalty_additive_coeff:
+        value: 1e-2
+      length_penalty_inverse_coeff:
+        value: 10
       ablate_mutator:
-        values: ["true", "false"]
+        values: [true, false]
       archive_early:
-        values: [ "true", "false" ]
+        value: false
       gaussian_blur_sigma:
-        values: [ 0, 3 ]
+        value: 3
 
   # rendering params
   render:
