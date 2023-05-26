@@ -90,7 +90,7 @@ class Tree:
             args = " ".join(s_args)
             return f"({self.value} {args})"
         else:
-            return self.value
+            return str(self.value)
 
     def to_tuple(self) -> Tuple:
         if not self.is_leaf():
