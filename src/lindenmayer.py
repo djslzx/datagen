@@ -453,6 +453,8 @@ if __name__ == "__main__":
     from torch import from_numpy, stack
     from featurizers import ResnetFeaturizer
     np.set_printoptions(threshold=maxsize)
+    L = LSys(step_length=3, render_depth=4, n_rows=128, n_cols=128, kind="deterministic")
+    print(L)
 
     templates = [
         "F;F~F[+F][-F]F",
@@ -463,25 +465,43 @@ if __name__ == "__main__":
         for angle in LSys.ANGLES:
             examples.append(f"{angle};{t}")
 
-    params = {
-        "step_length": 3,
-        "render_depth": 3,
-        "n_rows": 128,
-        "n_cols": 128,
-    }
-    L = LSys(**params, kind="deterministic")
-    print(L)
-    programs = [L.simplify(L.parse(x)) for x in examples]
-    for x, p in zip(examples, programs):
+    programs = [L.parse(x) for x in examples]
+    simplified_programs = [L.simplify(p) for p in programs]
+    for x, p in zip(examples, simplified_programs):
         print(f"{x} => {L.to_str(p)}")
 
+    def sample_and_show(lsys: LSys, side_len: int):
+        samples = [lsys.sample() for _ in range(side_len ** 2)]
+        for x in samples:
+            s = lsys.to_str(x)
+            print(f"{s}: {x}")
+        util.plot([lsys.eval(x) for x in samples], shape=(side_len, side_len))
+
+    L.model.normalize_()
+    sample_and_show(L, 20)  # uniform random
+    uniform_samples = [L.sample() for _ in range(20 ** 2)]
+
     L.fit(programs, alpha=1)
-    print(L.model)
-    samples = [L.sample() for _ in range(25)]
-    for x in samples:
-        s = L.to_str(x)
-        print(f"{s}: {x}")
-    # util.plot([L.eval(x) for x in samples], shape=(5, 5))
+    sample_and_show(L, 20)  # fitted to unsimplified samples
+
+    L.model.normalize_()
+    L.fit(simplified_programs, alpha=1)
+    sample_and_show(L, 20)  # fitted to simplified
+
+    L.model.normalize_()
+    L.fit(uniform_samples, alpha=1)
+    sample_and_show(L, 20)  # fitted to uniformly generated data, unsimplified
+
+    L.model.normalize_()
+    uniform_simplified = []
+    for p in uniform_samples:
+        try:
+            x = L.simplify(p)
+            uniform_simplified.append(x)
+        except NilError:
+            pass
+    L.fit(uniform_simplified, alpha=1)
+    sample_and_show(L, 20)  # fitted to uniformly generated data, simplified
 
     # view.plot_lsys_at_depths(L, examples, "", n_imgs_per_plot=len(LSys.ANGLES), depths=(1, 6))
     #
