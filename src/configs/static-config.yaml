@@ -1,5 +1,6 @@
-disable_last_layer: "true"
-softmax_outputs: "false"
+disable_last_layer: true
+softmax_outputs: false
+simplify: true
 
 train_data:
   - "20;F;F~F"
