@@ -26,6 +26,9 @@ _lsystem_book_examples = [
     'F;F~F[+F]F[-F][F]', 20,
     'F;F~FF-[-F+F+F]+[+F-F-F]', 20,
     # branching, node rewriting
+    'F;F~F[+F]F[-F]+F', 20,
+    'F;F~F[+F][-F]FF', 20,
+    'F;F~F-[[F]+F]+F[+FF]-F', 20,
     'F;F~F[+F]F[-F]+F,F~FF', 20,
     'F;F~F[+F][-F]FF,F~FF', 20,
     'F;F~F-[[F]+F]+F[+FF]-F,F~FF', 20,
