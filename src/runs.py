@@ -9,7 +9,6 @@ from typing import List
 
 from lindenmayer import LSys
 from util import flatten
-from simple_ns import features
 
 
 def make_df(sweep_path: str):
