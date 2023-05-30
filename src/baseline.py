@@ -4,6 +4,7 @@ Randomly sample programs from a uniform PCFG over L-systems
 
 from __future__ import annotations
 
+import random
 from typing import List, Set, Dict, Tuple, Callable, Optional, Any
 import multiprocessing as mp
 import lark.exceptions
@@ -18,6 +19,7 @@ from tqdm import tqdm
 import pickle
 import sys
 
+from featurizers import ResnetFeaturizer
 from lang import Language, Tree
 from lindenmayer import LSys, NilError
 from regexpr import Regex
@@ -28,9 +30,9 @@ from view import read_outfile
 LEN_CAP = 100
 
 # init lsystem metagrammar
-lsys = LSys(45, 3, 3, 128, 128)
-lsys_fitted = LSys(45, 3, 3, 128, 128)
-lsys_fitted.fit([lsys_fitted.parse(s) for s in examples.lsystem_book_F_examples], alpha=0.01)
+lsys = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=3)
+lsys_fitted = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=3)
+lsys_fitted.fit([lsys_fitted.parse(s) for s in examples.lsystem_book_det_examples], alpha=0.01)
 
 
 def sample_lsys(i) -> str:
@@ -182,37 +184,49 @@ def mds(mat: np.ndarray) -> np.ndarray:
     return m.fit_transform(mat)
 
 
+def random_lsystem(L: LSys, length: int) -> Tree:
+    tokens = ["F", "+", "-"]
+    weights = [0.6, 0.2, 0.2]
+    s = "90;F;F~" + "".join(random.choices(tokens, weights=weights, k=length))
+    return L.parse(s)
+
+
 if __name__ == '__main__':
+    L = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=3)
+    for _ in range(3):
+        imgs = [L.eval(random_lsystem(L, length=100)) for _ in range(100)]
+        util.plot(imgs, shape=(10, 10))
+
     # write_histograms("../out/plots/hists/distances_100k_n=100.dat", n_renders=100)
     # prune_table("../out/plots/hists/distances_100k.dat",
     #             "../out/plots/hists/distances_37k.dat",
     #             N=37_000)
-    cols = ["dist", "src", "dst", "key"]
-    data = []
-    with open("../out/plots/hists/distances_100k.dat", "rb") as f:
-        while True:
-            try:
-                row = pickle.load(f)
-                data.append(row)
-            except EOFError:
-                break
-
-    df = pd.DataFrame(data, columns=cols)
-    print(df["key"].value_counts())
-    print(df)
-
-    mat = dissimilarity_matrix(df, key="train")
-    print(mat)
-    print(mat.shape)
-
-    m = mds(mat)
-    print(m)
-    print(m.shape)
-    mdf = pd.DataFrame(m, columns=["x", "y"])
-    print(mdf)
-
-    sns.relplot(data=mdf, x="x", y="y", hue="key")
-    plt.show()
+    # cols = ["dist", "src", "dst", "key"]
+    # data = []
+    # with open("../out/plots/hists/distances_100k.dat", "rb") as f:
+    #     while True:
+    #         try:
+    #             row = pickle.load(f)
+    #             data.append(row)
+    #         except EOFError:
+    #             break
+    #
+    # df = pd.DataFrame(data, columns=cols)
+    # print(df["key"].value_counts())
+    # print(df)
+    #
+    # mat = dissimilarity_matrix(df, key="train")
+    # print(mat)
+    # print(mat.shape)
+    #
+    # m = mds(mat)
+    # print(m)
+    # print(m.shape)
+    # mdf = pd.DataFrame(m, columns=["x", "y"])
+    # print(mdf)
+    #
+    # sns.relplot(data=mdf, x="x", y="y", hue="key")
+    # plt.show()
 
     # sns.displot(df, x="dist", col="key", stat="density", common_norm=False)
     # plt.show()
