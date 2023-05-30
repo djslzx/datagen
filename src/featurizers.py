@@ -8,6 +8,7 @@ from sys import stderr
 from scipy.spatial import distance as dist
 from einops import rearrange
 import Levenshtein
+from scipy.ndimage import gaussian_filter
 
 
 class Featurizer:
@@ -52,7 +53,7 @@ class TextPredictor(Featurizer):
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, quantize=False, disable_last_layer=False, softmax_outputs=True):
+    def __init__(self, quantize=False, disable_last_layer=False, softmax_outputs=True, sigma=0):
         self.quantize = quantize
         if quantize:
             weights = quantization.ResNet50_QuantizedWeights.DEFAULT
@@ -70,6 +71,7 @@ class ResnetFeaturizer(Featurizer):
             self.categories = weights.meta["categories"]
         self.model.eval()
         self.softmax_outputs = softmax_outputs
+        self.sigma = sigma
 
     def __repr__(self) -> str:
         return ("<ResnetFeaturizer: "
@@ -80,6 +82,8 @@ class ResnetFeaturizer(Featurizer):
         return 2048 if self.disable_last_layer else 1000
 
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
+        if self.sigma > 0:
+            batch = [gaussian_filter(img, sigma=self.sigma) for img in batch]
         batch = np.stack(batch)
         assert isinstance(batch, np.ndarray), f"Expected ndarray, but got {type(batch)}"
         assert len(batch.shape) == 4, f"Expected shape [b, c, w, h] but got {batch.shape}"

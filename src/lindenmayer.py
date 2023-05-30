@@ -11,7 +11,7 @@ from sys import stderr, maxsize
 
 import eggy
 from lang import Language, Tree, Grammar, ParseError
-from featurizers import ResnetFeaturizer
+from featurizers import Featurizer
 import util
 
 
@@ -317,8 +317,7 @@ class LSys(Language):
     dol_types.update({nt: ["Nonterm"] for nt in EXTRA_NONTERMINALS})
     dol_types.update({angle: ["Num"] for angle in ANGLES})
 
-    def __init__(self, step_length: int, render_depth: int, n_rows: int, n_cols: int, aa=True,
-                 kind="stochastic", quantize=False, disable_last_layer=False, softmax_outputs=True):
+    def __init__(self, kind: str, featurizer: Featurizer, step_length: int, render_depth: int, n_rows=128, n_cols=128, aa=True):
         self.kind = kind
         assert kind in {"stochastic", "deterministic"}, f"LSys must be 'stochastic' or 'deterministic', but got {kind}"
         if kind == "stochastic":
@@ -331,9 +330,7 @@ class LSys(Language):
                          parser_start="lsystem",
                          root_type="LSystem",
                          model=Grammar.from_components(parser_types, gram=2),
-                         featurizer=ResnetFeaturizer(quantize=quantize,
-                                                     disable_last_layer=disable_last_layer,
-                                                     softmax_outputs=softmax_outputs))
+                         featurizer=featurizer)
         self.step_length = step_length
         self.render_depth = render_depth
         self.n_rows = n_rows

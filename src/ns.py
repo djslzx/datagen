@@ -1,7 +1,6 @@
 """
 ns without the evo
 """
-import copy
 from math import ceil
 from pprint import pp
 from typing import List, Union, Callable, Collection, Dict, Any
@@ -15,12 +14,12 @@ from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import directed_hausdorff
 from scipy.special import softmax
-from scipy.ndimage import gaussian_filter
 from einops import rearrange, reduce
 import wandb
 import yaml
 from tqdm import tqdm
 
+from featurizers import ResnetFeaturizer
 from lang import Language, Tree, ParseError
 import point
 import lindenmayer
@@ -30,16 +29,13 @@ import util
 
 Distance = Callable[[np.ndarray, np.ndarray], float]
 
-def features(L: Language, S: Collection[Tree], n_samples: int, batch_size=4, gaussian_blur_sigma=0) -> np.ndarray:
+def features(L: Language, S: Collection[Tree], n_samples: int, batch_size=4) -> np.ndarray:
     # take samples from programs in S, then batch them and feed them through
     # the feature extractor for L
     def samples():
         for x in S:
             for _ in range(n_samples):
-                bmp = L.eval(x, env={})
-                if gaussian_blur_sigma > 0:
-                    bmp = gaussian_filter(bmp, sigma=gaussian_blur_sigma)
-                yield bmp
+                yield L.eval(x, env={})
     ys = []
     n_batches = ceil(len(S) * n_samples / batch_size)
     for batch in tqdm(util.batched(samples(), batch_size=batch_size), total=n_batches):
@@ -144,7 +140,6 @@ def evo_search(L: Language,
                iters: int,
                save_to: str,
                archive_early=False,
-               gaussian_blur_sigma=0,
                length_cap=1000,
                length_penalty_type="additive",
                length_penalty_additive_coeff=0.1,
@@ -159,7 +154,7 @@ def evo_search(L: Language,
     assert length_penalty_type in {"additive", "inverse"}
 
     def embed(S):
-        return features(L, S, n_samples=samples_per_program, batch_size=8, gaussian_blur_sigma=gaussian_blur_sigma)
+        return features(L, S, n_samples=samples_per_program, batch_size=8)
 
     def update_archive(A, E_A, S, E_S):
         # just take the first `keep_per_iter` instead of random sampling?
@@ -281,7 +276,6 @@ def run_on_real_points() -> str:
         "keep_per_iter": 1,
         "iters": 10,
         "alpha": 1,
-        "gaussian_blur_sigma": 0,
     }
     wandb.init(project="novelty", config=config)
     evo_search(**config, save_to=f"../out/simple_ns/{wandb.run.id}")
@@ -307,7 +301,6 @@ def run_on_nat_points(id: str):
         "keep_per_iter": 1,
         "iters": 10,
         "alpha": 1,
-        "gaussian_blur_sigma": 0,
     }
     wandb.init(project="novelty", config=config)
     evo_search(**config, save_to=f"../out/simple_ns/{id}-z2-strict.out",)
@@ -320,11 +313,11 @@ def run_on_lsystems(filename: str):
         config = yaml.load(file, Loader=yaml.FullLoader)
     wandb.init(project="novelty", config=config)
     config = wandb.config
+    featurizer = ResnetFeaturizer(**config.featurizer)
     lang = lindenmayer.LSys(
-        **config.render,
         kind="deterministic",
-        disable_last_layer=config.disable_last_layer,
-        softmax_outputs=config.softmax_outputs,
+        featurizer=featurizer,
+        **config.render,
     )
     train_data = [lang.parse(x) for x in config.train_data]
     holdout_data = [lang.parse(x) for x in config.holdout_data]
@@ -333,6 +326,7 @@ def run_on_lsystems(filename: str):
                init_popn=train_data,
                holdout=holdout_data,
                d=hausdorff,
+               simplify=config.simplify,
                save_to=f"../out/ns/{wandb.run.id}")
 
 
@@ -352,7 +346,7 @@ if __name__ == '__main__':
     # viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
     # viz_real_points_results(f"../out/simple_ns/7hea21on.csv")
     # run_on_nat_points()
-    # run_on_lsystems(filename="configs/static-config.yaml")
+    run_on_lsystems(filename="configs/static-config.yaml")
     pass
 
-lsystem_sweep()
+# lsystem_sweep()

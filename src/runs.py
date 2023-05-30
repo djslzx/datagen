@@ -1,14 +1,11 @@
-import pdb
-
-import pandas
+from pprint import pp
+import numpy as np
 import pandas as pd
-
-import util
 import wandb
-from typing import List
+from typing import List, Dict
 
 from lindenmayer import LSys
-from util import flatten
+import util
 
 
 def make_df(sweep_path: str):
@@ -21,7 +18,7 @@ def make_df(sweep_path: str):
             "name": run.name,
             "id": run.id,
         }
-        record.update(flatten({
+        record.update(util.flatten({
             k: v for k, v in run.config.items()
             if not k.startswith('_') and not k.startswith("parameters")
         }))
@@ -50,7 +47,7 @@ def render_run(prefix:str, run_id: str):
 
 def eval_run(run_id: str):
     df = pd.read_csv(f"../sweeps/{run_id}/{run_id}.csv")
-    l = LSys(theta=45, step_length=4, render_depth=3, n_rows=128, n_cols=128, kind="deterministic")
+    l = LSys(step_length=4, render_depth=3, n_rows=128, n_cols=128, kind="deterministic")
     # todo:
     #  - measure knn distance (in feature space) from programs in df to target programs (book ex's)
     #  - produce multiple distances by filtering points into different subsets:
@@ -58,10 +55,28 @@ def eval_run(run_id: str):
     #    - archive/samples/chosen/not chosen
     #    -
 
+def sum_configs(configs: List[Dict]):
+    """Flatten config dicts and count up each occurrence of each value"""
+    def keep(key, val):
+        return not key.startswith("parameters.") and \
+            not key.endswith(".desc") and \
+            ("ablate_mutator" in key or
+             "length_penalty_type" in key or
+             "softmax_outputs" in key)
+    hist = {}
+    for config in configs:
+        for k, v in util.flatten(config).items():
+            if keep(k, v):
+                key = f"{k}={v}"
+                hist[key] = hist.get(key, 0) + 1
+    return sorted({k: v for k, v in hist.items() if 1 < v}.items())
+
 
 if __name__ == '__main__':
-    df = make_df("djsl/novelty/tvwm5xkd")
-    df.to_csv("project.csv")
-    df = pandas.read_csv("project.csv")
-    for run_id in df.id.unique()[160:]:
-        render_run(run_id)
+    name = "2a5p4beb"
+    df = make_df(f"djsl/novelty/{name}")
+    df.to_csv(f"{name}.csv")
+    # df = pd.read_csv("project.csv")
+    # for run_id in df.id.unique()[160:]:
+    # run_id = "lbiu7veh"
+    # render_run("../sweeps/sweeps3/", run_id)

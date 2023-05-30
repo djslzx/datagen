@@ -1,14 +1,10 @@
-disable_last_layer: true
-softmax_outputs: false
 simplify: true
-
 train_data:
   - "20;F;F~F"
   - "90;F;F~FF"
   - "45;F[+F][-F]FF;F~FF"
   - "60;F+F-F;F~F+FF"
   - "60;F;F~F[+F][-F]F"
-
 holdout_data:
   - "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"
   - "90;-F;F~F+F-F-F+F"
@@ -33,14 +29,18 @@ search:
 
   # length penalties
   length_cap: 200
-  length_penalty_type: inverse
+  length_penalty_type: additive
   length_penalty_inverse_coeff: 1
   length_penalty_additive_coeff: 0
 
   # heuristics
   ablate_mutator: false
   archive_early: true
-  gaussian_blur_sigma: 3
+
+featurizer:
+  disable_last_layer: true
+  softmax_outputs: false
+  sigma: 3
 
 render:
   step_length: 4

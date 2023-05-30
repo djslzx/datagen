@@ -29,6 +29,15 @@ parameters:
       - "20;F;F~F[+F]F[-F][F]"
       - "20;F;F~FF-[-F+F+F]+[+F-F-F]"
 
+  featurizer:
+    parameters:
+      disable_last_layer:
+        value: true
+      softmax_outputs:
+        value: false
+      sigma:
+        values: [0, 3]
+
   # novelty search hyperparams
   search:
     parameters:
@@ -52,6 +61,9 @@ parameters:
         values: [additive, inverse]
       length_penalty_additive_coeff:
         value: 1e-2
+#        distribution: log_uniform_values
+#          min: 0.0001
+#          max: 0.1
       length_penalty_inverse_coeff:
         value: 10
       ablate_mutator:
