@@ -4,10 +4,6 @@ metric:
   goal: minimize
   name: "avg sample holdout dist"
 parameters:
-  disable_last_layer:
-    values: [ true, false ]
-  softmax_outputs:
-    values: [ true, false ]
   train_data:
     value:
       - "20;F;F~F"
@@ -28,6 +24,9 @@ parameters:
       - "20;F;F~F[+F]F[-F]F"
       - "20;F;F~F[+F]F[-F][F]"
       - "20;F;F~FF-[-F+F+F]+[+F-F-F]"
+
+  simplify:
+    values: [true, false]
 
   featurizer:
     parameters:
@@ -67,11 +66,9 @@ parameters:
       length_penalty_inverse_coeff:
         value: 10
       ablate_mutator:
-        values: [true, false]
+        values: false
       archive_early:
         value: false
-      gaussian_blur_sigma:
-        value: 3
 
   # rendering params
   render:

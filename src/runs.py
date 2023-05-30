@@ -4,6 +4,7 @@ import pandas as pd
 import wandb
 from typing import List, Dict
 
+from featurizers import ResnetFeaturizer
 from lindenmayer import LSys
 import util
 
@@ -27,8 +28,9 @@ def make_df(sweep_path: str):
 
 
 def render_run(prefix:str, run_id: str):
-    df = pd.read_csv(f"{prefix}/{run_id}/{run_id}.csv")
-    l = LSys(step_length=4, render_depth=3, n_rows=128, n_cols=128, kind="deterministic")
+    df = pd.read_csv(f"{prefix}/{run_id}.csv")
+    l = LSys(step_length=4, render_depth=3, n_rows=128, n_cols=128, kind="deterministic",
+             featurizer=ResnetFeaturizer())
     # plot rows in batches by generation
     # step program kind dist length score chosen
     steps = df.step.unique()
@@ -37,16 +39,15 @@ def render_run(prefix:str, run_id: str):
         print(f"  step: {step}")
         gen = df.loc[(df.step == step) & (df.chosen == True)].sort_values(by='score', ascending=False)[:100]
         imgs = [l.eval(l.parse(x.program)) for i, x in gen.iterrows()]
-        labels = [f"{x.score:.3e}{'*' if x.chosen else ''}" for i, x in gen.iterrows()]
+        # labels = [f"{x.score:.3e}{'*' if x.chosen else ''}" for i, x in gen.iterrows()]
         util.plot(imgs, shape=(10, 10),
-                  # labels=labels,
                   title=f"{run_id} step={step}",
                   fontsize=3,
-                  saveto=f"{prefix}/{run_id}/step{step}.png")
+                  saveto=f"{prefix}/{run_id}-step{step}.png")
 
 
 def eval_run(run_id: str):
-    df = pd.read_csv(f"../sweeps/{run_id}/{run_id}.csv")
+    df = pd.read_csv(f"../sweeps/{run_id}.csv")
     l = LSys(step_length=4, render_depth=3, n_rows=128, n_cols=128, kind="deterministic")
     # todo:
     #  - measure knn distance (in feature space) from programs in df to target programs (book ex's)
@@ -74,9 +75,8 @@ def sum_configs(configs: List[Dict]):
 
 if __name__ == '__main__':
     name = "2a5p4beb"
-    df = make_df(f"djsl/novelty/{name}")
-    df.to_csv(f"{name}.csv")
-    # df = pd.read_csv("project.csv")
-    # for run_id in df.id.unique()[160:]:
-    # run_id = "lbiu7veh"
-    # render_run("../sweeps/sweeps3/", run_id)
+    # df = make_df(f"djsl/novelty/{name}")
+    # df.to_csv(f"{name}.csv")
+    df = pd.read_csv(f"{name}.csv")
+    for run_id in df.id.unique():
+        render_run("../out/sweeps/2a5p4beb/", run_id)

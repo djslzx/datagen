@@ -89,31 +89,6 @@ def chamfer(X: np.ndarray, Y: np.ndarray) -> float:
 def hausdorff(X: np.ndarray, Y: np.ndarray) -> float:
     return directed_hausdorff(X, Y)[0]
 
-def log_mds(L: Language, t: int, samples_per_program: int,
-            A: List, e_A: List[np.ndarray],
-            A_: List, e_A_: List[np.ndarray],
-            S: np.ndarray, e_S: np.ndarray,
-            P: np.ndarray, e_P: np.ndarray,
-            P_: np.ndarray, e_P_: np.ndarray) -> wandb.Table:
-    """Log the positions of the archive, samples, and population as a table for viz"""
-    assert samples_per_program == 1, f"MDS not implemented for samples_per_program > 1, got {samples_per_program}"
-    mds = MDS(n_components=2, metric=True, random_state=0)  # use fixed random state for reproducibility
-    # each embedding matrix has shape [k_i, embedding_size], so concat along axis 0
-    if not A:
-        embeddings = np.concatenate((e_A_, e_S, e_P, e_P_), axis=0)
-    else:
-        embeddings = np.concatenate((e_A, e_A_, e_S, e_P, e_P_), axis=0)
-    mds_embeddings = mds.fit_transform(embeddings)
-
-    # split mds_embeddings into pieces matching original inputs
-    table = wandb.Table(columns=["t", "x", "y", "kind", "program"])
-    kinds = {"A": A, "A'": A_, "S": S, "P": P, "P'": P_}
-    endpoints = util.split_endpoints([len(v) for v in kinds.values()])
-    for (kind, xs), (start, end) in zip(kinds.items(), endpoints):
-        for i, pt in enumerate(mds_embeddings[start:end]):
-            table.add_data(t, *pt, kind, L.to_str(xs[i]))
-    return table
-
 def log_best_and_worst(k: int, L: Language, samples: np.ndarray, scores: np.ndarray) -> Dict:
     def summarize(indices):
         img = rearrange([L.eval(x) for x in samples[indices]], "b color row col -> row (b col) color")
@@ -125,7 +100,6 @@ def log_best_and_worst(k: int, L: Language, samples: np.ndarray, scores: np.ndar
     i_worst = np.argsort(scores)[:k]
     return {"best": summarize(i_best),
             "worst": summarize(i_worst)}
-
 
 def evo_search(L: Language,
                init_popn: List[Tree],
@@ -145,8 +119,7 @@ def evo_search(L: Language,
                length_penalty_additive_coeff=0.1,
                length_penalty_inverse_coeff=10,
                ablate_mutator=False,
-               simplify=False,
-               **kvs):
+               simplify=False):
     assert samples_ratio >= 2, \
         "Number of samples taken should be significantly larger than number of samples kept"
     assert len(init_popn) >= 5, \
@@ -255,7 +228,6 @@ def evo_search(L: Language,
 
         wandb.log(log)
 
-
 def run_on_real_points() -> str:
     lang = point.RealPoint()
     train_data = [
@@ -329,7 +301,6 @@ def run_on_lsystems(filename: str):
                simplify=config.simplify,
                save_to=f"../out/ns/{wandb.run.id}")
 
-
 def viz_real_points_results(path: str):
     data = pd.read_csv(path)
     lang = point.RealPoint()
@@ -339,7 +310,6 @@ def viz_real_points_results(path: str):
     data["y"] = outputs[:, 1]
     sns.scatterplot(data, x="x", y="y", hue="step", markers="kind")
     plt.show()
-
 
 if __name__ == '__main__':
     # run_id = run_on_real_points()
