@@ -1,11 +1,17 @@
 from pprint import pp
 import numpy as np
 import pandas as pd
+import yaml
+from sklearn.neighbors import NearestNeighbors
+import matplotlib.pyplot as plt
+import seaborn as sns
 import wandb
-from typing import List, Dict
+from typing import List, Dict, Union
 
+from lang import Tree
 from featurizers import ResnetFeaturizer
 from lindenmayer import LSys
+from ns import extract_features
 import util
 
 
@@ -27,7 +33,7 @@ def make_df(sweep_path: str):
     return pd.DataFrame(records)
 
 
-def render_run(prefix:str, run_id: str):
+def render_run(prefix: str,  run_id: str):
     df = pd.read_csv(f"{prefix}/{run_id}.csv")
     l = LSys(step_length=4, render_depth=3, n_rows=128, n_cols=128, kind="deterministic",
              featurizer=ResnetFeaturizer())
@@ -45,16 +51,54 @@ def render_run(prefix:str, run_id: str):
                   fontsize=3,
                   saveto=f"{prefix}/{run_id}-step{step}.png")
 
-
-def eval_run(run_id: str):
-    df = pd.read_csv(f"../sweeps/{run_id}.csv")
-    l = LSys(step_length=4, render_depth=3, n_rows=128, n_cols=128, kind="deterministic")
     # todo:
     #  - measure knn distance (in feature space) from programs in df to target programs (book ex's)
     #  - produce multiple distances by filtering points into different subsets:
     #    - by generation
     #    - archive/samples/chosen/not chosen
-    #    -
+    #  - viz closest data points to each example by generation to show iterative improvement
+    #  - measure redundancy: number of repeated feature vectors
+    #    (should show a difference between additive/inverse length penalty)
+    #  - check relative novelty between runs
+    #  - viz how token probabilities change over time - max likelihood program?
+def eval_run(prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
+    lang = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=4, render_depth=3)
+    def embed(s: Union[List[Tree], np.ndarray]): return extract_features(lang, s, n_samples=1)
+
+    df = pd.read_csv(f"{prefix}/{run_id}.csv")
+    holdout_trees = [lang.parse(x) for x in holdout]
+    holdout_embeddings = embed(holdout_trees)
+
+    # knn distance to test examples over time
+    avg_dists = []  # store avg knn distance for line plot
+
+    steps = df.step.unique()
+    print(run_id)
+    for step in steps[::stride]:
+        print(f"  step: {step}")
+        gen = df.loc[(df.step <= step) & (df.chosen == True)].program
+        gen = np.array([lang.parse(x) for x in gen], dtype=object)
+        gen_embeddings = embed(gen)
+
+        knn = NearestNeighbors(n_neighbors=n_neighbors, metric="minkowski")
+        knn.fit(gen_embeddings)
+        dists, indices = knn.kneighbors(holdout_embeddings)
+
+        avg_dist = np.sum(dists, axis=1)
+        avg_dists.append(avg_dist)
+
+        # produce img matrix
+        images = []
+        for i in range(len(holdout)):
+            target = holdout_trees[i]
+            neighbors = gen[indices[i]].tolist()
+            images.extend([lang.eval(x) for x in [target] + neighbors])
+        util.plot(images, shape=(len(holdout), 1 + n_neighbors),
+                  saveto=f"{prefix}/{run_id}-knn-step{step}.png")
+
+    # produce line plot
+    # sns.relplot(avg_dists, )
+
 
 def sum_configs(configs: List[Dict]):
     """Flatten config dicts and count up each occurrence of each value"""
@@ -77,6 +121,18 @@ if __name__ == '__main__':
     name = "2a5p4beb"
     # df = make_df(f"djsl/novelty/{name}")
     # df.to_csv(f"{name}.csv")
-    df = pd.read_csv(f"{name}.csv")
-    for run_id in df.id.unique():
-        render_run("../out/sweeps/2a5p4beb/", run_id)
+    with open("configs/static-config.yaml") as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+    holdout_data = config['holdout_data']
+    # holdout_data = [
+    #     "90;[[[[F-F]-F]F-F]]FF;F~-[F][F-FF]FF[F[+F]F]FF+F",
+    #     "20;F;F~[F+FF]-FFF",
+    #     "60;F;F~[F[-[[-+F[FFF]]FF][FF]F]FF]+F[++FF+F]F",
+    # ]
+    # df = pd.read_csv(f"{name}.csv")
+    # for run_id in df.id.unique()[:1]:
+        # render_run("../out/sweeps/2a5p4beb/", run_id)
+    # run_id = "tjo8rg0t"
+    run_id = "lbiu7veh"
+    eval_run("../out/sweeps/2a5p4beb", run_id, holdout_data, stride=10, n_neighbors=10)
+    # eval_run("../out/ns/", run_id, holdout_data, stride=40, n_neighbors=5)

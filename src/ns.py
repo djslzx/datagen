@@ -29,7 +29,7 @@ import util
 
 Distance = Callable[[np.ndarray, np.ndarray], float]
 
-def features(L: Language, S: Collection[Tree], n_samples: int, batch_size=4) -> np.ndarray:
+def extract_features(L: Language, S: Collection[Tree], n_samples: int, batch_size=4) -> np.ndarray:
     # take samples from programs in S, then batch them and feed them through
     # the feature extractor for L
     def samples():
@@ -127,7 +127,7 @@ def evo_search(L: Language,
     assert length_penalty_type in {"additive", "inverse"}
 
     def embed(S):
-        return features(L, S, n_samples=samples_per_program, batch_size=8)
+        return extract_features(L, S, n_samples=samples_per_program, batch_size=8)
 
     def update_archive(A, E_A, S, E_S):
         # just take the first `keep_per_iter` instead of random sampling?
@@ -200,6 +200,7 @@ def evo_search(L: Language,
             e_popn = e_samples[i_popn]
 
         # distance from hold_out set
+        # fixme: this finds kNN(samples, book-examples), but we want kNN(book-examples, samples)
         sample_holdout_dists, _ = holdout_knn.kneighbors(e_samples)
         sample_holdout_dists = np.sum(sample_holdout_dists, axis=1)
         select_holdout_dists = sample_holdout_dists[i_popn]
