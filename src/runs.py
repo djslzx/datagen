@@ -58,16 +58,13 @@ def render_run(prefix: str, run_id: str, stride: int):
                   saveto=f"{prefix}/{run_id}-step{step}.png")
 
 # todo:
-#  - measure knn distance (in feature space) from programs in df to target programs (book ex's)
 #  - produce multiple distances by filtering points into different subsets:
-#    - by generation
 #    - archive/samples/chosen/not chosen
-#  - viz closest data points to each example by generation to show iterative improvement
 #  - measure redundancy: number of repeated feature vectors
 #    (should show a difference between additive/inverse length penalty)
 #  - check relative novelty between runs
 #  - viz how token probabilities change over time - max likelihood program?
-def eval_run(prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
+def viz_closest(prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
     lang = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=4, render_depth=3)
     def embed(s: Union[List[Tree], np.ndarray]): return extract_features(lang, s, n_samples=1)
 
@@ -75,9 +72,6 @@ def eval_run(prefix: str, run_id: str, holdout: List[str], stride: int, n_neighb
     n_holdout = len(holdout)
     holdout_trees = [lang.parse(x) for x in holdout]
     holdout_embeddings = embed(holdout_trees)
-
-    # knn distance to test examples over time
-    avg_dists = []  # store avg knn distance for line plot
 
     steps = df.step.unique()
     print(run_id)
@@ -89,10 +83,7 @@ def eval_run(prefix: str, run_id: str, holdout: List[str], stride: int, n_neighb
 
         knn = NearestNeighbors(n_neighbors=n_neighbors, metric="minkowski")
         knn.fit(gen_embeddings)
-        dists, indices = knn.kneighbors(holdout_embeddings)
-
-        avg_dist = np.sum(dists, axis=1)
-        avg_dists.append(avg_dist)
+        _, indices = knn.kneighbors(holdout_embeddings)
 
         # produce img matrix
         images = []
@@ -103,8 +94,35 @@ def eval_run(prefix: str, run_id: str, holdout: List[str], stride: int, n_neighb
         util.plot(images, shape=(n_holdout, 1 + n_neighbors),
                   saveto=f"{prefix}/{run_id}-knn-step{step}.png")
 
+
+def plot_avg_dist(prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
+    lang = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=4, render_depth=3)
+    def embed(s: Union[List[Tree], np.ndarray]): return extract_features(lang, s, n_samples=1)
+
+    df = pd.read_csv(f"{prefix}/{run_id}.csv")
+    holdout_trees = [lang.parse(x) for x in holdout]
+    holdout_embeddings = embed(holdout_trees)
+    rows = []
+
+    steps = df.step.unique()
+    print(run_id)
+    for step in steps[::stride]:
+        print(f"  step: {step}")
+        gen = df.loc[(df.step <= step) & (df.chosen == True)].program
+        gen = [lang.parse(x) for x in gen]
+        gen_embeddings = embed(gen)
+
+        knn = NearestNeighbors(n_neighbors=n_neighbors, metric="minkowski")
+        knn.fit(gen_embeddings)
+        dists, _ = knn.kneighbors(holdout_embeddings)
+        sum_dists = np.sum(dists, axis=1)
+        for i, d in enumerate(sum_dists):
+            rows.append([step, i, d])
+
     # produce line plot
-    # sns.relplot(avg_dists, )
+    plot_df = pd.DataFrame(rows, columns=["step", "source", "dist"])
+    sns.relplot(plot_df, kind="line", x="step", y="dist", hue="source")
+    plt.show()
 
 
 def sum_configs(configs: List[Dict]):
@@ -124,7 +142,7 @@ def sum_configs(configs: List[Dict]):
     return sorted({k: v for k, v in hist.items() if 1 < v}.items())
 
 
-def mock_run_csv(n_steps: int, angle: int, filename: str):
+def mock_run_csv(n_steps: int, angle: int, filename: str, max_angle=359):
     """Generate mock run data to test analyses"""
     with open(f"{filename}.csv", "w") as f:
         # write column headers
@@ -133,16 +151,22 @@ def mock_run_csv(n_steps: int, angle: int, filename: str):
 
         # write rows
         for step in range(n_steps):
-            for n_toks in range(1, 360//angle - 1):
+            for n_toks in range(1, max_angle//angle):
                 program = f"{angle};F;F~{'+' * n_toks}F" + ("F" * step)
                 writer.writerow([step, program, "S", 0, len(program), 0, True])
 
 
 def test_evals():
-    mock_run_csv(n_steps=10, angle=15, filename="../out/sweeps/mock/mock")
-    render_run("../out/sweeps/mock", "mock", stride=1)
     holdout = ["45;F;F~+F" + ("F" * step) for step in range(10)]
-    eval_run("../out/sweeps/mock", "mock", holdout=holdout, stride=1, n_neighbors=6)
+    ## std
+    # mock_run_csv(n_steps=10, angle=15, filename="../out/sweeps/mock/mock")
+    # render_run("../out/sweeps/mock", "mock", stride=1)
+    # viz_closest("../out/sweeps/mock", "mock", holdout=holdout, stride=1, n_neighbors=6)
+    # plot_avg_dist("../out/sweeps/mock", "mock", holdout=holdout, stride=1, n_neighbors=1)
+    ## small
+    # mock_run_csv(n_steps=10, angle=15, max_angle=45, filename="../out/sweeps/mock/small")
+    # viz_closest("../out/sweeps/mock", "small", holdout=holdout, stride=2, n_neighbors=2)
+    plot_avg_dist("../out/sweeps/mock", "small", holdout=holdout, stride=2, n_neighbors=1)
 
 
 if __name__ == '__main__':
@@ -161,5 +185,5 @@ if __name__ == '__main__':
     # for run_id in df.id.unique()[:1]:
         # render_run("../out/sweeps/2a5p4beb/", run_id)
     # run_id = "lbiu7veh"
-    # eval_run("../out/sweeps/2a5p4beb", run_id, holdout_data, stride=10, n_neighbors=10)
+    # viz_closest("../out/sweeps/2a5p4beb", run_id, holdout_data, stride=10, n_neighbors=10)
     test_evals()
