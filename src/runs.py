@@ -106,7 +106,7 @@ def plot_avg_dist(prefix: str, run_id: str, holdout: List[str], stride: int, n_n
 
     steps = df.step.unique()
     print(run_id)
-    for step in steps[::stride]:
+    for step in steps[::stride] + (steps[-1:] if (len(holdout) - 1) % stride == 0 else []):
         print(f"  step: {step}")
         gen = df.loc[(df.step <= step) & (df.chosen == True)].program
         gen = [lang.parse(x) for x in gen]
@@ -170,20 +170,15 @@ def test_evals():
 
 
 if __name__ == '__main__':
-    # name = "2a5p4beb"
+    name = "2a5p4beb"
     # df = make_df(f"djsl/novelty/{name}")
     # df.to_csv(f"{name}.csv")
-    # with open("configs/static-config.yaml") as file:
-    #     config = yaml.load(file, Loader=yaml.FullLoader)
-    # holdout_data = config['holdout_data']
-    # holdout_data = [
-    #     "90;[[[[F-F]-F]F-F]]FF;F~-[F][F-FF]FF[F[+F]F]FF+F",
-    #     "20;F;F~[F+FF]-FFF",
-    #     "60;F;F~[F[-[[-+F[FFF]]FF][FF]F]FF]+F[++FF+F]F",
-    # ]
-    # df = pd.read_csv(f"{name}.csv")
-    # for run_id in df.id.unique()[:1]:
-        # render_run("../out/sweeps/2a5p4beb/", run_id)
-    # run_id = "lbiu7veh"
-    # viz_closest("../out/sweeps/2a5p4beb", run_id, holdout_data, stride=10, n_neighbors=10)
-    test_evals()
+    with open("configs/static-config.yaml") as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+    holdout_data = config['holdout_data']
+    df = pd.read_csv(f"{name}.csv")
+    for run_id in df.id.unique():
+        # render_run("../out/sweeps/2a5p4beb/", run_id, stride=10)
+        # viz_closest("../out/sweeps/2a5p4beb", run_id, holdout_data, stride=10, n_neighbors=10)
+        plot_avg_dist("../out/sweeps/2a5p4beb/", run_id, stride=50, n_neighbors=5, holdout=holdout_data)
+    # test_evals()
