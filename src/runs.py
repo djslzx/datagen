@@ -16,7 +16,7 @@ from ns import extract_features
 import util
 
 
-def make_df(sweep_path: str):
+def make_df(sweep_path: str, filter_same=False):
     api = wandb.Api()
     sweep = api.sweep(sweep_path)
     runs = sweep.runs
@@ -31,6 +31,17 @@ def make_df(sweep_path: str):
             if not k.startswith('_') and not k.startswith("parameters")
         }))
         records.append(record)
+
+    if filter_same:
+        keep_keys = set()
+        for k, v in records[0].items():
+            if any(record[k] != v for record in records[1:]):
+                keep_keys.add(k)
+        records = [
+            {k: record[k] for k in keep_keys}
+            for record in records
+        ]
+
     return pd.DataFrame(records)
 
 
@@ -169,16 +180,19 @@ def test_evals():
     plot_avg_dist("../out/sweeps/mock", "small", holdout=holdout, stride=2, n_neighbors=1)
 
 
-if __name__ == '__main__':
-    name = "2a5p4beb"
-    # df = make_df(f"djsl/novelty/{name}")
-    # df.to_csv(f"{name}.csv")
+def get_holdout() -> List[str]:
     with open("configs/static-config.yaml") as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
-    holdout_data = config['holdout_data']
-    df = pd.read_csv(f"{name}.csv")
-    for run_id in df.id.unique():
+    return config['holdout_data']
+
+
+if __name__ == '__main__':
+    name = "mnb681wg" # "frpkg2v5" #"2a5p4beb"
+    df = make_df(f"djsl/novelty/{name}", filter_same=True)
+    df.to_csv(f"../out/summary/{name}.csv")
+    # df = pd.read_csv(f"{name}.csv")
+    # for run_id in df.id.unique():
         # render_run("../out/sweeps/2a5p4beb/", run_id, stride=10)
         # viz_closest("../out/sweeps/2a5p4beb", run_id, holdout_data, stride=10, n_neighbors=10)
-        plot_avg_dist("../out/sweeps/2a5p4beb/", run_id, stride=50, n_neighbors=5, holdout=holdout_data)
+        # plot_avg_dist("../out/sweeps/2a5p4beb/", run_id, stride=50, n_neighbors=5, holdout=holdout_data)
     # test_evals()
