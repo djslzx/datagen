@@ -94,7 +94,7 @@ if __name__ == '__main__':  # pragma: no cover
             "F+F;F~FF",
         ]
     ]
-    # check_resnet_with_images("../resnet-test/screenshots")
+    # check_resnet_with_images("../resnet-tests/screenshots")
     check_resnet_classifier(popn=seed, n_samples=1)
     # check_featurizer(featurizer=ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True),
     #                  popn=seed, n_samples=1, n_neighbors=len(seed))

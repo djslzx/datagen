@@ -1,29 +1,71 @@
 import pytest
 from util import *
 
-
-def test_find_closing_bracket():
+def test_flatten():
     cases = [
-        ("]", 0),
-        ("[]]", 2),
-        ("[][][][]]", 8),
-        ("[[]]]", 4),
+        {}, {},
+        {"a": 1}, {"a": 1},
+        {"a": {"x": 1, "y": 2}}, {"a.x": 1, "a.y": 2},
+        {"a": {"x": 1, "y": 2}, "b": 3}, {"a.x": 1, "a.y": 2, "b": 3},
+        {"a": {"x": {"1": 1,
+                     "2": 2},
+               "y": 2},
+         "b": 3},
+        {"a.x.1": 1, "a.x.2": 2, "a.y": 2, "b": 3},
     ]
-    for s, pos in cases:
-        out = find_closing_bracket(s)
-        assert pos == out, f"Expected to find closing bracket at {pos} for string {s}, but got {out}"
+    for x, y in zip(cases[::2], cases[1::2]):
+        out = flatten(x)
+        assert y == out, f"Expected {y} but got {out}"
 
 
-def test_find_closing_bracket_failing():
+def test_split_endpoints():
     cases = [
-        "",
-        "[]",
-        "[][][][",
-        "[[[[]]]]",
+        [0], [(0, 0)],
+        [1], [(0, 1)],
+        [1, 1], [(0, 1), (1, 2)],
+        [1, 2, 1], [(0, 1), (1, 3), (3, 4)],
+        [1, 2, 1, 5, 10], [(0, 1), (1, 3), (3, 4), (4, 9), (9, 19)],
     ]
-    for s in cases:
-        with pytest.raises(ValueError):
-            find_closing_bracket(s)
+    for x, y in zip(cases[::2], cases[1::2]):
+        out = split_endpoints(x)
+        assert y == out, f"Expected {y} but got {out}"
+
+
+def test_batch():
+    cases = [
+        ([0, 1, 2, 3, 4, 5], 1), [[0], [1], [2], [3], [4], [5]],
+        ([0, 1, 2, 3, 4, 5], 2), [[0, 1], [2, 3], [4, 5]],
+        ([0, 1, 2, 3, 4, 5], 3), [[0, 1, 2], [3, 4, 5]],
+        ([0, 1, 2, 3, 4, 5], 4), [[0, 1, 2, 3], [4, 5]],
+        ([0, 1, 2, 3, 4, 5], 5), [[0, 1, 2, 3, 4], [5]],
+        ([0, 1, 2, 3, 4, 5], 6), [[0, 1, 2, 3, 4, 5]],
+        ([0, 1, 2, 3, 4, 5], 7), [[0, 1, 2, 3, 4, 5]],
+    ]
+    for args, ans in zip(cases[::2], cases[1::2]):
+        out = list(batched(*args))
+        assert out == ans, f"Expected {ans} but got {out}"
+
+
+def test_param_tester():
+    p = ParamTester({"a": [1, 2],
+                     "b": [0, 1, 2],
+                     "c": 0})
+    configs = [
+        {"a": 1, "b": 0, "c": 0},
+        {"a": 2, "b": 0, "c": 0},
+        {"a": 1, "b": 1, "c": 0},
+        {"a": 2, "b": 1, "c": 0},
+        {"a": 1, "b": 2, "c": 0},
+        {"a": 2, "b": 2, "c": 0},
+    ]
+    for i, config in enumerate(p):
+        assert configs[i] == config, f"Expected {configs[i]} on iter {i} but got {config}"
+
+    # single config
+    p = ParamTester({"a": 0, "b": 1, "c": [2]})
+    config = {"a": 0, "b": 1, "c": 2}
+    for out in p:
+        assert out == config, f"Expected {config} but got {out}"
 
 
 def test_stack_repeat():
@@ -59,7 +101,6 @@ def test_split_list():
     for s, t, y in cases:
         out = split_list(s, t)
         assert out == y, f"Expected {y}, but got {out}"
-    print(" [+] passed test_split_list")
 
 
 def test_language():
@@ -94,7 +135,6 @@ def test_unique():
     for x, y in cases:
         out, _ = unique(x)
         assert out == y, f"Expected {y}, got {out}"
-    print(" [+] test_unique() passed")
 
 
 def test_approx_eq():

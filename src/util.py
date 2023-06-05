@@ -28,23 +28,6 @@ def flatten(nested_dict: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def test_flatten():
-    cases = [
-        {}, {},
-        {"a": 1}, {"a": 1},
-        {"a": {"x": 1, "y": 2}}, {"a.x": 1, "a.y": 2},
-        {"a": {"x": 1, "y": 2}, "b": 3}, {"a.x": 1, "a.y": 2, "b": 3},
-        {"a": {"x": {"1": 1,
-                     "2": 2},
-               "y": 2},
-         "b": 3},
-        {"a.x.1": 1, "a.x.2": 2, "a.y": 2, "b": 3},
-    ]
-    for x, y in zip(cases[::2], cases[1::2]):
-        out = flatten(x)
-        assert y == out, f"Expected {y} but got {out}"
-
-
 class ParamTester:
     """
     Streamline iteration through sets of parameter values.
@@ -75,19 +58,6 @@ def split_endpoints(lengths: List[int]) -> List[Tuple[int, int]]:
     return list(zip(splits[:-1], splits[1:]))
 
 
-def test_split_endpoints():
-    cases = [
-        [0], [(0, 0)],
-        [1], [(0, 1)],
-        [1, 1], [(0, 1), (1, 2)],
-        [1, 2, 1], [(0, 1), (1, 3), (3, 4)],
-        [1, 2, 1, 5, 10], [(0, 1), (1, 3), (3, 4), (4, 9), (9, 19)],
-    ]
-    for x, y in zip(cases[::2], cases[1::2]):
-        out = split_endpoints(x)
-        assert y == out, f"Expected {y} but got {out}"
-
-
 def pad_array(arr: np.ndarray, batch_size: int) -> np.ndarray:
     r = len(arr) % batch_size
     if r != 0:
@@ -107,43 +77,6 @@ def batched(iterable: Iterable, batch_size: int) -> Iterable[List]:
             b.append(x)
     if b:  # leftover elts
         yield b
-
-
-def test_batch():
-    cases = [
-        ([0, 1, 2, 3, 4, 5], 1), [[0], [1], [2], [3], [4], [5]],
-        ([0, 1, 2, 3, 4, 5], 2), [[0, 1], [2, 3], [4, 5]],
-        ([0, 1, 2, 3, 4, 5], 3), [[0, 1, 2], [3, 4, 5]],
-        ([0, 1, 2, 3, 4, 5], 4), [[0, 1, 2, 3], [4, 5]],
-        ([0, 1, 2, 3, 4, 5], 5), [[0, 1, 2, 3, 4], [5]],
-        ([0, 1, 2, 3, 4, 5], 6), [[0, 1, 2, 3, 4, 5]],
-        ([0, 1, 2, 3, 4, 5], 7), [[0, 1, 2, 3, 4, 5]],
-    ]
-    for args, ans in zip(cases[::2], cases[1::2]):
-        out = list(batched(*args))
-        assert out == ans, f"Expected {ans} but got {out}"
-
-
-def test_param_tester():
-    p = ParamTester({"a": [1, 2],
-                     "b": [0, 1, 2],
-                     "c": 0})
-    configs = [
-        {"a": 1, "b": 0, "c": 0},
-        {"a": 2, "b": 0, "c": 0},
-        {"a": 1, "b": 1, "c": 0},
-        {"a": 2, "b": 1, "c": 0},
-        {"a": 1, "b": 2, "c": 0},
-        {"a": 2, "b": 2, "c": 0},
-    ]
-    for i, config in enumerate(p):
-        assert configs[i] == config, f"Expected {configs[i]} on iter {i} but got {config}"
-
-    # single config
-    p = ParamTester({"a": 0, "b": 1, "c": [2]})
-    config = {"a": 0, "b": 1, "c": 2}
-    for out in p:
-        assert out == config, f"Expected {config} but got {out}"
 
 
 class Timing(object):
@@ -172,22 +105,6 @@ class Timing(object):
 
 def cut_ext(filename: str) -> str:
     return filename[:filename.rfind(".")]
-
-
-def find_closing_bracket(s: str, brackets="[]") -> int:
-    assert brackets in {"[]", "()", "{}"}
-    c_open, c_close = brackets
-    assert s[0] != c_open, f"Expected string to skip open bracket, but received: {s}"
-    n_brackets = 0
-    for i, c in enumerate(s):
-        if c == c_open:
-            n_brackets += 1
-        elif c == c_close:
-            if n_brackets == 0:
-                return i
-            else:
-                n_brackets -= 1
-    raise ValueError(f"Mismatched brackets in {s}")
 
 
 def plot(imgs: List[np.array],

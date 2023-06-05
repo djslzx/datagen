@@ -5,7 +5,6 @@ from typing import Dict, List, Iterator, Tuple, Any
 from math import sin, cos, radians
 import numpy as np
 import skimage.draw
-from scipy.ndimage import gaussian_filter
 import itertools as it
 from sys import stderr, maxsize
 
@@ -407,42 +406,6 @@ class LSys(Language):
 
 class NilError(ParseError):
     pass
-
-
-def test_lsys_simplify():
-    cases = {
-        "F;F~F": "F;F~F",
-        "F;F~+-+--+++--F": "F;F~F",
-        "F;F~-+F+-": "F;F~F",
-        "F;F~[F]F": "F;F~F",
-        "F;F~[FF]FF": "F;F~FF",
-        "F;F~[+F-F]+F-F": "F;F~+F-F",
-        "F;F~[F]": "F;F~[F]",
-        "F;F~[FF+FF]": "F;F~[FF+FF]",
-        "F;F~F,F~F,F~F": "F;F~F",
-        "F;F~F,F~+-F,F~F": "F;F~F",
-        "F;F~F,F~+F-": "F;F~F,F~+F-",
-        "F;F~F,F~+F-,F~F": "F;F~F,F~+F-",
-        "F;F~F,F~FF,F~F,F~FF": "F;F~F,F~FF",
-        "F;F~F[+F]F,F~F,F~F[+F]F": "F;F~F,F~F[+F]F",
-        "F;F~[-+-+---]F[++++]": "F;F~F",
-        "+;F~F": "nil",
-        "[++];F~F": "nil",
-        "[++];F~[F]": "nil",
-        "[++];F~[F][+++]": "nil",
-        "F;F~+": "nil",
-        "F;F~F,F~+": "F;F~F",
-        "F;F~+,F~+": "nil",
-        "F;F~F,F~+,F~+": "F;F~F",
-    }
-    L = LSys(step_length=3, render_depth=3, n_rows=128, n_cols=128)
-    for x, y in cases.items():
-        t_x = L.parse(x)
-        try:
-            out = L.to_str(L.simplify(t_x))
-            assert out == y, f"Expected {x} => {y} but got {out}"
-        except NilError:
-            assert y == "nil", f"Got NilError on unexpected input {x}"
 
 
 if __name__ == "__main__":
