@@ -3,28 +3,24 @@ ns without the evo
 """
 from math import ceil
 from pprint import pp
-from typing import List, Union, Callable, Collection, Dict, Any
+from typing import List, Callable, Collection, Dict
 import csv
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import directed_hausdorff
 from scipy.special import softmax
-from einops import rearrange, reduce
+from einops import rearrange
 import wandb
 import yaml
 from tqdm import tqdm
 
 from featurizers import ResnetFeaturizer
-from lang import Language, Tree, ParseError
-import point
-import lindenmayer
-import regexpr
-import examples
+from lang.lang import Language, Tree, ParseError
+from lang import lindenmayer, point
 import util
 
 Distance = Callable[[np.ndarray, np.ndarray], float]

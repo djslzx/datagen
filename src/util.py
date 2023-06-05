@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import time
 import sys
 from os import mkdir
-from einops import reduce
 
 
 def flatten(nested_dict: Dict[str, Any]) -> Dict[str, Any]:

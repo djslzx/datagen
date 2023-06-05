@@ -1,7 +1,7 @@
 from featurizers import ResnetFeaturizer
 from grammar import *
-import lang
-from lindenmayer import LSys
+from lang import lang
+from lang.lindenmayer import LSys
 
 nat_components = {
     "add": ["Int", "Int", "Int"],

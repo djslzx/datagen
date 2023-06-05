@@ -6,9 +6,8 @@ import lark.exceptions
 import numpy as np
 from typing import *
 
-from lang import Language
-from lindenmayer import LSys
-from regexpr import Regex
+from lang.lindenmayer import LSys
+from lang.regexpr import Regex
 from featurizers import ResnetFeaturizer
 import util
 

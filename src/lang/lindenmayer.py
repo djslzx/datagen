@@ -9,7 +9,7 @@ import itertools as it
 from sys import stderr, maxsize
 
 import eggy
-from lang import Language, Tree, Grammar, ParseError
+from lang.lang import Language, Tree, Grammar, ParseError
 from featurizers import Featurizer
 import util
 

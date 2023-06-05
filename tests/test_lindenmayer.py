@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
-from pprint import pp
 
-from lindenmayer import *
+from lang.lindenmayer import *
 from featurizers import ResnetFeaturizer
 from util import vec_approx_eq
 

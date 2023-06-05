@@ -5,7 +5,7 @@ from typing import Dict, Any
 import numpy as np
 from sys import stderr
 
-from lang import Language, Tree, Grammar
+from lang.lang import Language, Tree, Grammar
 from featurizers import TextClassifier
 from examples import regex_handcoded_examples
 

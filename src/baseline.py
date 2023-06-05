@@ -5,24 +5,22 @@ Randomly sample programs from a uniform PCFG over L-systems
 from __future__ import annotations
 
 import random
-from typing import List, Set, Dict, Tuple, Callable, Optional, Any
+from typing import List, Callable, Optional, Any
 import multiprocessing as mp
 import lark.exceptions
 import numpy as np
 from scipy.spatial import distance
 from sklearn import manifold
 import itertools as it
-from matplotlib import pyplot as plt
-import seaborn as sns
 import pandas as pd
 from tqdm import tqdm
 import pickle
 import sys
 
 from featurizers import ResnetFeaturizer
-from lang import Language, Tree
-from lindenmayer import LSys, NilError
-from regexpr import Regex
+from lang.lang import Language, Tree
+from lang.lindenmayer import LSys, NilError
+from lang.regexpr import Regex
 import examples
 import util
 from view import read_outfile

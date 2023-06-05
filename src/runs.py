@@ -9,9 +9,9 @@ import seaborn as sns
 import wandb
 from typing import List, Dict, Union
 
-from lang import Tree
+from lang.lang import Tree
+from lang.lindenmayer import LSys
 from featurizers import ResnetFeaturizer
-from lindenmayer import LSys
 from ns import extract_features
 import util
 
