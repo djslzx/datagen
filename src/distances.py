@@ -2,7 +2,6 @@
 Experiments with different distance metrics for probabilistic programs
 """
 from typing import List, Callable
-
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd

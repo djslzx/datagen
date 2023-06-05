@@ -409,7 +409,6 @@ class NilError(ParseError):
 
 
 if __name__ == "__main__":
-    import view
     from torch import from_numpy, stack
     from featurizers import ResnetFeaturizer
     np.set_printoptions(threshold=maxsize)
