@@ -1,20 +1,21 @@
 """
 Distances on line images produced by turtle interpretation of l-systems
 """
-
+import os
 from typing import List, Tuple
 import numpy as np
 import pandas as pd
 import cv2 as cv
 from sklearn.neighbors import NearestNeighbors
+from PIL import Image
+from glob import glob
 
+import examples
 import featurizers as feat
 import util
 from lang.lindenmayer import LSys
 from ns import extract_features
 
-Image = np.ndarray
-Vec = np.ndarray
 
 def plot_nearest_neighbors(targets: np.ndarray, guesses: np.ndarray,
                            e_targets: np.ndarray, e_guesses: np.ndarray,
@@ -49,14 +50,14 @@ def plot_nearest_neighbors(targets: np.ndarray, guesses: np.ndarray,
     util.plot(images, shape=(n_targets, 1 + k))
 
 
-def eval_and_embed(xs: List[str]) -> Tuple[Image, Vec]:
+def eval_and_embed(lang: LSys, xs: List[str]) -> Tuple[np.ndarray, np.ndarray]:
     trees = [lang.parse(s) for s in xs]
     imgs = np.array([lang.eval(t) for t in trees])
     features = extract_features(lang, trees)
     return imgs, features
 
 
-if __name__ == "__main__":
+def check_nn_lsystems():
     lang = LSys(kind="deterministic", featurizer=feat.ResnetFeaturizer(), step_length=3, render_depth=3)
     target_strs = [
         "90;F;F~[+F][-F]F",
@@ -72,7 +73,64 @@ if __name__ == "__main__":
         "45;F;F~+F+F+F",
         "90;F;F~+F+F+F"
     ]
-    target_imgs, target_embeddings = eval_and_embed(target_strs)
-    guess_imgs, guess_embeddings = eval_and_embed(guess_strs)
-
+    target_imgs, target_embeddings = eval_and_embed(lang, target_strs)
+    guess_imgs, guess_embeddings = eval_and_embed(lang, guess_strs)
     plot_nearest_neighbors(target_imgs, guess_imgs, target_embeddings, guess_embeddings, k=len(guess_imgs))
+
+
+def generate_lsystem_pics(path: str):
+    """
+    Generate n images from the l-system and save them to path
+    """
+    os.makedirs(path, exist_ok=True)
+    lang = LSys(kind="deterministic",
+                featurizer=feat.ResnetFeaturizer(
+                    disable_last_layer=True,
+                    softmax_outputs=True,
+                    sigma=0,
+                ),
+                step_length=3,
+                render_depth=3)
+    for i, x in enumerate(examples.lsystem_book_det_examples):
+        t = lang.parse(x)
+        img = lang.eval(t)
+        Image.fromarray(img).save(f"{path}/system-{i}.png")
+
+
+def check_pics(path: str, n_files=None):
+    featurizer = feat.ResnetFeaturizer(
+        disable_last_layer=True,
+        softmax_outputs=False,
+        sigma=2,
+    )
+    imgs = []
+    filenames = glob(path)[:n_files]
+    assert filenames, f"Got empty glob for {path}"
+
+    for filename in filenames:
+        with Image.open(filename) as im:
+            img = np.array(im.resize((224, 224)))[..., :3]
+            imgs.append(img)
+
+    embeddings = []
+    for batch in util.batched(imgs, batch_size=16):
+        if len(batch) == 1:
+            batch = [batch]
+        e = featurizer.apply(batch)
+        embeddings.extend(e)
+
+    imgs = np.stack(imgs)
+    embeddings = np.stack(embeddings)
+    plot_nearest_neighbors(targets=imgs, guesses=imgs,
+                           e_targets=embeddings, e_guesses=embeddings,
+                           k=len(imgs) - 1)
+
+
+
+if __name__ == "__main__":
+    dir = "/Users/djsl/Documents/research/prob-repl/tests/images"
+
+    # check_nn_lsystems()
+    # check_pics(f"{dir}/natural/*", n_files=None)
+    generate_lsystem_pics(f"{dir}/lsystems")
+    check_pics(f"{dir}/lsystems/*", n_files=None)
