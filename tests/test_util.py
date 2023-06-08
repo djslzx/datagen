@@ -68,28 +68,6 @@ def test_param_tester():
         assert out == config, f"Expected {config} but got {out}"
 
 
-def test_stack_repeat():
-    cases = [
-        ([[0, 1],
-          [0, 0]],
-         3,
-         [
-             [[0, 1],
-              [0, 0]],
-             [[0, 1],
-              [0, 0]],
-             [[0, 1],
-              [0, 0]],
-         ]),
-        ([1], 2, [[1], [1]])
-    ]
-    for x, k, y in cases:
-        x = np.array(x)
-        y = np.array(y)
-        out = stack_repeat(x, k)
-        assert np.array_equal(y, out), f"Expected {y}, but got {out}"
-
-
 def test_split_list():
     cases = [
         (["aa", "bb", "cc"], "x", [["aa", "bb", "cc"]]),

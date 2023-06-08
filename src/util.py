@@ -159,11 +159,6 @@ def plot(imgs: List[np.array],
     plt.close()
 
 
-def stack_repeat(array: np.ndarray, k) -> np.ndarray:
-    """Stacks `k` copies of `array`"""
-    return np.repeat(array[None, ...], k, axis=0)
-
-
 def split_list(s: List[str], t: str) -> List[List[str]]:
     out = []
     while True:
