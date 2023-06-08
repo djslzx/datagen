@@ -122,14 +122,10 @@ def plot(imgs: List[np.array],
     assert len(imgs) <= shape[0] * shape[1], f"Received {len(imgs)} with shape {shape}"
     assert labels is None or len(imgs) == len(labels), f"Received {len(imgs)} images and {len(labels)} labels"
 
-    # convert image to floats if needed
-    if isinstance(imgs[0], np.ndarray) and imgs[0].dtype != float:
-        imgs = [img.astype(float) for img in imgs]
-
     fig, ax = plt.subplots(*shape, figsize=(1.28 * shape[1] + 0.5,
                                             1.28 * shape[0] + 0.5))
     if shape == (1, 1):
-        ax.imshow(imgs[0][0])
+        ax.imshow(imgs[0])
         if labels is not None:
             ax.set_title(labels[0], pad=3, fontsize=fontsize)
     else:
@@ -142,7 +138,7 @@ def plot(imgs: List[np.array],
         axes: List[plt.Axes] = ax.flat
         for i, img in enumerate(imgs):
             axis = axes[i]
-            axis.imshow(img[0])  # remove color dim
+            axis.imshow(img)
             if labels is not None:
                 axis.set_title(labels[i], pad=3, fontsize=fontsize)
 

@@ -84,9 +84,12 @@ class ResnetFeaturizer(Featurizer):
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if self.sigma > 0:
             batch = [gaussian_filter(img, sigma=self.sigma) for img in batch]
-        batch = np.stack(batch)
+            batch = np.stack(batch)
+        elif isinstance(batch, List):
+            batch = np.stack(batch)
+
         assert isinstance(batch, np.ndarray), f"Expected ndarray, but got {type(batch)}"
-        assert len(batch.shape) == 4, f"Expected shape [b, c, w, h] but got {batch.shape}"
+        assert len(batch.shape) == 4, f"Expected shape [b h w c] but got {batch.shape}"
 
         # resnet only plays nice with uint8 matrices
         if batch.dtype != np.uint8:
@@ -94,7 +97,7 @@ class ResnetFeaturizer(Featurizer):
             batch = batch.astype(np.uint8)
 
         # run resnet
-        batch = self.preprocess(T.from_numpy(batch))
+        batch = self.preprocess(T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w")))
         features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
 
         if self.softmax_outputs:

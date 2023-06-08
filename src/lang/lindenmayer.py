@@ -7,6 +7,7 @@ import numpy as np
 import skimage.draw
 import itertools as it
 from sys import stderr, maxsize
+from einops import repeat
 
 import eggy
 from lang.lang import Language, Tree, Grammar, ParseError
@@ -94,7 +95,7 @@ class LSystem:
                 stack.append((r, c, heading))
             elif char == ']':
                 r, c, heading = stack.pop()
-        return util.stack_repeat(canvas, 3)
+        return repeat(canvas, "h w -> h w c", c=3)
 
 
 class D0LSystem(LSystem):
