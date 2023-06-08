@@ -78,7 +78,7 @@ def check_nn_lsystems():
     plot_nearest_neighbors(target_imgs, guess_imgs, target_embeddings, guess_embeddings, k=len(guess_imgs))
 
 
-def generate_lsystem_pics(path: str):
+def generate_lsystem_pics(systems: List[str], path: str):
     """
     Generate n images from the l-system and save them to path
     """
@@ -91,7 +91,7 @@ def generate_lsystem_pics(path: str):
                 ),
                 step_length=3,
                 render_depth=3)
-    for i, x in enumerate(examples.lsystem_book_det_examples):
+    for i, x in enumerate(systems):
         t = lang.parse(x)
         img = lang.eval(t)
         Image.fromarray(img).save(f"{path}/system-{i}.png")
@@ -109,7 +109,7 @@ def check_pics(path: str, n_files=None):
 
     for filename in filenames:
         with Image.open(filename) as im:
-            img = np.array(im.resize((224, 224)))[..., :3]
+            img = np.array(im.resize((256, 256)))[..., :3]
             imgs.append(img)
 
     embeddings = []
@@ -132,5 +132,5 @@ if __name__ == "__main__":
 
     # check_nn_lsystems()
     # check_pics(f"{dir}/natural/*", n_files=None)
-    generate_lsystem_pics(f"{dir}/lsystems")
+    generate_lsystem_pics(examples.lsystem_book_det_examples, f"{dir}/lsystems")
     check_pics(f"{dir}/lsystems/*", n_files=None)
