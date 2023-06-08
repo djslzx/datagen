@@ -57,59 +57,39 @@ def eval_and_embed(lang: LSys, xs: List[str]) -> Tuple[np.ndarray, np.ndarray]:
     return imgs, features
 
 
-def check_nn_lsystems():
-    lang = LSys(kind="deterministic", featurizer=feat.ResnetFeaturizer(), step_length=3, render_depth=3)
-    target_strs = [
-        "90;F;F~[+F][-F]F",
-        "90;F;F~+F+F+F",
-    ]
-    guess_strs = [
-        "15;F;F~[+F][-F]F",
-        "30;F;F~[+F][-F]F",
-        "45;F;F~[+F][-F]F",
-        "90;F;F~[+F][-F]F",
-        "15;F;F~+F+F+F",
-        "30;F;F~+F+F+F",
-        "45;F;F~+F+F+F",
-        "90;F;F~+F+F+F"
-    ]
-    target_imgs, target_embeddings = eval_and_embed(lang, target_strs)
-    guess_imgs, guess_embeddings = eval_and_embed(lang, guess_strs)
-    plot_nearest_neighbors(target_imgs, guess_imgs, target_embeddings, guess_embeddings, k=len(guess_imgs))
+def check_nn_lsystems(featurizer: feat.Featurizer, systems: List[str]):
+    lang = LSys(kind="deterministic",
+                featurizer=featurizer,
+                step_length=3,
+                render_depth=3)
+    images, embeddings = eval_and_embed(lang, systems)
+    plot_nearest_neighbors(images, images, embeddings, embeddings, k=len(systems))
 
 
-def generate_lsystem_pics(systems: List[str], path: str):
+def generate_lsystem_pics(featurizer: feat.Featurizer, systems: List[str], path: str):
     """
     Generate n images from the l-system and save them to path
     """
     os.makedirs(path, exist_ok=True)
     lang = LSys(kind="deterministic",
-                featurizer=feat.ResnetFeaturizer(
-                    disable_last_layer=True,
-                    softmax_outputs=True,
-                    sigma=0,
-                ),
+                featurizer=featurizer,
                 step_length=3,
                 render_depth=3)
     for i, x in enumerate(systems):
         t = lang.parse(x)
         img = lang.eval(t)
-        Image.fromarray(img).save(f"{path}/system-{i}.png")
+        Image.fromarray(img).save(f"{path}/system-{i:02d}.png")
 
 
-def check_pics(path: str, n_files=None):
-    featurizer = feat.ResnetFeaturizer(
-        disable_last_layer=True,
-        softmax_outputs=False,
-        sigma=2,
-    )
+def check_pics(featurizer: feat.Featurizer, path: str, n_files=None):
     imgs = []
-    filenames = glob(path)[:n_files]
+    filenames = sorted(glob(path)[:n_files])
     assert filenames, f"Got empty glob for {path}"
 
     for filename in filenames:
         with Image.open(filename) as im:
             img = np.array(im.resize((256, 256)))[..., :3]
+            # img = np.array(im.resize((256, 256)))[..., :3]
             imgs.append(img)
 
     embeddings = []
@@ -123,14 +103,17 @@ def check_pics(path: str, n_files=None):
     embeddings = np.stack(embeddings)
     plot_nearest_neighbors(targets=imgs, guesses=imgs,
                            e_targets=embeddings, e_guesses=embeddings,
-                           k=len(imgs) - 1)
-
+                           k=len(imgs))
 
 
 if __name__ == "__main__":
     dir = "/Users/djsl/Documents/research/prob-repl/tests/images"
-
-    # check_nn_lsystems()
+    featurizer = feat.ResnetFeaturizer(
+        disable_last_layer=True,
+        softmax_outputs=True,
+        sigma=0,
+    )
+    check_nn_lsystems(featurizer, examples.lsystem_book_det_examples)
     # check_pics(f"{dir}/natural/*", n_files=None)
-    generate_lsystem_pics(examples.lsystem_book_det_examples, f"{dir}/lsystems")
-    check_pics(f"{dir}/lsystems/*", n_files=None)
+    generate_lsystem_pics(featurizer, examples.lsystem_book_det_examples, f"{dir}/lsystems")
+    check_pics(featurizer, f"{dir}/lsystems/*")
