@@ -74,7 +74,8 @@ def generate_lsystem_pics(featurizer: feat.Featurizer, systems: List[str], path:
     lang = LSys(kind="deterministic",
                 featurizer=featurizer,
                 step_length=3,
-                render_depth=3)
+                render_depth=3,
+                vary_color=False)
     for i, x in enumerate(systems):
         t = lang.parse(x)
         img = lang.eval(t)
@@ -110,10 +111,10 @@ if __name__ == "__main__":
     dir = "/Users/djsl/Documents/research/prob-repl/tests/images"
     featurizer = feat.ResnetFeaturizer(
         disable_last_layer=True,
-        softmax_outputs=True,
+        softmax_outputs=False,
         sigma=0,
     )
-    check_nn_lsystems(featurizer, examples.lsystem_book_det_examples)
+    # check_nn_lsystems(featurizer, examples.lsystem_book_det_examples)
     # check_pics(f"{dir}/natural/*", n_files=None)
     generate_lsystem_pics(featurizer, examples.lsystem_book_det_examples, f"{dir}/lsystems")
     check_pics(featurizer, f"{dir}/lsystems/*")

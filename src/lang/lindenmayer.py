@@ -7,7 +7,7 @@ import numpy as np
 import skimage.draw
 import itertools as it
 from sys import stderr, maxsize
-from einops import repeat
+import colorsys
 
 import eggy
 from lang.lang import Language, Tree, Grammar, ParseError
@@ -57,32 +57,46 @@ class LSystem:
         return depth, word
 
     @staticmethod
-    def draw(s: str, d: float, theta: float, n_rows: int = 512, n_cols: int = 512, aa=True) -> np.ndarray:  # pragma: no cover
+    def draw(s: str, d: float, theta: float,
+             n_rows: int = 512, n_cols: int = 512, aa=True,
+             vary_color=True, hue_start=240, hue_end=300, hue_step=0.5) -> np.ndarray:  # pragma: no cover
         """
         Draw the turtle interpretation of the string `s` onto a `n_rows` x `n_cols` array,
         using scikit-image's drawing library (with anti-aliasing).
+
+        Color strokes by recency, varying hue within the range (hue_start, hue_end),
+        with hues in 0-360 degrees.  Hue is incremented by hue_step for each stroke.
         """
         r, c = n_rows//2, n_cols//2  # parser_start at center of canvas
         heading = 90  # parser_start facing up (logo)
         stack = []
-        canvas = np.zeros((n_rows, n_cols), dtype=np.uint8)
+        canvas = np.zeros((n_rows, n_cols, 3), dtype=np.uint8)
+        hue_angle = 0
         for char in s:
             if char == 'F':
+                # choose hue based on recency
+                if vary_color:
+                    hue = hue_start + (hue_angle % (hue_end - hue_start))
+                    rgb = 255 * np.array(colorsys.hsv_to_rgb(hue / 360, 1, 1))
+                    hue_angle += hue_step
+                else:
+                    rgb = np.array([255, 255, 255])
+
                 r1 = r + int(d * sin(radians(heading)))
                 c1 = c + int(d * cos(radians(heading)))
                 # only draw if at least one coordinate is within the canvas
                 if ((0 <= r1 < n_rows and 0 <= c1 < n_cols) or
                     (0 <= r < n_rows and 0 <= c < n_cols)):
                     if aa:
-                        rs, cs, val = skimage.draw.line_aa(r, c, r1, c1)
+                        rs, cs, intensities = skimage.draw.line_aa(r, c, r1, c1)
                         mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
-                        rs, cs, val = rs[mask], cs[mask], val[mask]
-                        canvas[rs, cs] = val * 255
+                        rs, cs, intensities = rs[mask], cs[mask], intensities[mask]
+                        canvas[rs, cs] = np.outer(intensities, rgb)
                     else:
                         rs, cs = skimage.draw.line(r, c, r1, c1)
                         mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
                         rs, cs = rs[mask], cs[mask]
-                        canvas[rs, cs] = 255
+                        canvas[rs, cs] = rgb
                 r, c = r1, c1
             elif char == 'f':
                 r += int(d * sin(radians(heading)))
@@ -95,7 +109,7 @@ class LSystem:
                 stack.append((r, c, heading))
             elif char == ']':
                 r, c, heading = stack.pop()
-        return repeat(canvas, "h w -> h w c", c=3)
+        return canvas
 
 
 class D0LSystem(LSystem):
@@ -317,7 +331,8 @@ class LSys(Language):
     dol_types.update({nt: ["Nonterm"] for nt in EXTRA_NONTERMINALS})
     dol_types.update({angle: ["Num"] for angle in ANGLES})
 
-    def __init__(self, kind: str, featurizer: Featurizer, step_length: int, render_depth: int, n_rows=128, n_cols=128, aa=True):
+    def __init__(self, kind: str, featurizer: Featurizer, step_length: int, render_depth: int,
+                 n_rows=128, n_cols=128, aa=True, vary_color=True):
         self.kind = kind
         assert kind in {"stochastic", "deterministic"}, f"LSys must be 'stochastic' or 'deterministic', but got {kind}"
         if kind == "stochastic":
@@ -336,6 +351,7 @@ class LSys(Language):
         self.n_rows = n_rows
         self.n_cols = n_cols
         self.aa = aa
+        self.vary_color = vary_color
 
     def none(self) -> Any:
         return np.zeros((self.n_rows, self.n_cols))
@@ -351,10 +367,19 @@ class LSys(Language):
         n_rows = env["n_rows"] if "n_rows" in env else self.n_rows
         n_cols = env["n_cols"] if "n_cols" in env else self.n_cols
         aa = env["aa"] if "aa" in env else self.aa
+        vary_color = env["vary_color"] if "vary_color" in env else False
 
         lsys = S0LSystem.from_str(s)
         sample = lsys.nth_expansion(render_depth)
-        return LSystem.draw(sample, d=step_length, theta=theta, n_rows=n_rows, n_cols=n_cols, aa=aa)
+        return LSystem.draw(
+            sample,
+            d=step_length,
+            theta=theta,
+            n_rows=n_rows,
+            n_cols=n_cols,
+            aa=aa,
+            vary_color=vary_color,
+        )
 
     @property
     def str_semantics(self) -> Dict:
