@@ -57,7 +57,7 @@ def eval_and_embed(lang: LSys, xs: List[str]) -> Tuple[np.ndarray, np.ndarray]:
     return imgs, features
 
 
-def check_nn_lsystems(featurizer: feat.Featurizer, systems: List[str]):
+def rank_lsys(featurizer: feat.Featurizer, systems: List[str]):
     lang = LSys(kind="deterministic",
                 featurizer=featurizer,
                 step_length=3,
@@ -82,7 +82,7 @@ def generate_lsystem_pics(featurizer: feat.Featurizer, systems: List[str], path:
         Image.fromarray(img).save(f"{path}/system-{i:02d}.png")
 
 
-def check_pics(featurizer: feat.Featurizer, path: str, n_files=None):
+def rank_pics(featurizer: feat.Featurizer, path: str, n_files=None):
     imgs = []
     filenames = sorted(glob(path)[:n_files])
     assert filenames, f"Got empty glob for {path}"
@@ -90,7 +90,6 @@ def check_pics(featurizer: feat.Featurizer, path: str, n_files=None):
     for filename in filenames:
         with Image.open(filename) as im:
             img = np.array(im.resize((256, 256)))[..., :3]
-            # img = np.array(im.resize((256, 256)))[..., :3]
             imgs.append(img)
 
     embeddings = []
@@ -114,8 +113,15 @@ if __name__ == "__main__":
         softmax_outputs=False,
         sigma=0,
     )
-    # check_nn_lsystems(featurizer, examples.lsystem_book_det_examples)
-    # check_pics(f"{dir}/natural/*", n_files=None)
-    generate_lsystem_pics(featurizer, examples.lsystem_book_det_examples, f"{dir}/lsystems",
+    # rank_lsys(featurizer, examples.lsystem_book_det_examples)
+    # rank_pics(f"{dir}/natural/*", n_files=None)
+    generate_lsystem_pics(featurizer,
+                          examples.lsystem_book_det_examples,
+                          f"{dir}/lsystems/color",
                           vary_color=True)
-    check_pics(featurizer, f"{dir}/lsystems/*")
+    generate_lsystem_pics(featurizer,
+                          examples.lsystem_book_det_examples,
+                          f"{dir}/lsystems/white",
+                          vary_color=False)
+    rank_pics(featurizer, f"{dir}/lsystems/color/*")
+    rank_pics(featurizer, f"{dir}/lsystems/white/*")
