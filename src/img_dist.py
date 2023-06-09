@@ -4,11 +4,11 @@ Distances on line images produced by turtle interpretation of l-systems
 import os
 from typing import List, Tuple
 import numpy as np
-import pandas as pd
 import cv2 as cv
 from sklearn.neighbors import NearestNeighbors
 from PIL import Image
 from glob import glob
+import Levenshtein as lev
 
 import examples
 import featurizers as feat
@@ -66,7 +66,7 @@ def check_nn_lsystems(featurizer: feat.Featurizer, systems: List[str]):
     plot_nearest_neighbors(images, images, embeddings, embeddings, k=len(systems))
 
 
-def generate_lsystem_pics(featurizer: feat.Featurizer, systems: List[str], path: str):
+def generate_lsystem_pics(featurizer: feat.Featurizer, systems: List[str], path: str, vary_color=True):
     """
     Generate n images from the l-system and save them to path
     """
@@ -75,7 +75,7 @@ def generate_lsystem_pics(featurizer: feat.Featurizer, systems: List[str], path:
                 featurizer=featurizer,
                 step_length=3,
                 render_depth=3,
-                vary_color=False)
+                vary_color=vary_color)
     for i, x in enumerate(systems):
         t = lang.parse(x)
         img = lang.eval(t)
@@ -116,5 +116,6 @@ if __name__ == "__main__":
     )
     # check_nn_lsystems(featurizer, examples.lsystem_book_det_examples)
     # check_pics(f"{dir}/natural/*", n_files=None)
-    generate_lsystem_pics(featurizer, examples.lsystem_book_det_examples, f"{dir}/lsystems")
+    generate_lsystem_pics(featurizer, examples.lsystem_book_det_examples, f"{dir}/lsystems",
+                          vary_color=True)
     check_pics(featurizer, f"{dir}/lsystems/*")

@@ -225,66 +225,6 @@ def test_S0L_to_code():
         assert out == y, f"Expected {y}, but got {out}"
 
 
-def demo_draw():  # pragma: no cover
-    systems: Dict[str, LSystem] = {
-        'koch': D0LSystem(
-            axiom='F-F-F-F',
-            productions={
-                'F': 'F-F+F+FF-F-F+F'
-            },
-        ),
-        'islands': D0LSystem(
-            axiom='F+F+F+F',
-            productions={
-                'F': 'F+f-FF+F+FF+Ff+FF-f+FF-F-FF-Ff-FFF',
-                'f': 'ffffff',
-            },
-        ),
-        'branch': D0LSystem(
-            axiom='F',
-            productions={
-                'F': 'F[+F]F[-F]F'
-            },
-        ),
-        'wavy-branch': D0LSystem(
-            axiom='F',
-            productions={
-                'F': 'FF-[-F+F+F]+[+F-F-F]'
-            },
-        ),
-        'stochastic-branch': S0LSystem(
-            axiom='F',
-            productions={
-                'F': ['F[+F]F[-F]F',
-                      'F[+F]F',
-                      'F[-F]F']
-            },
-            distribution={
-                'F': [0.33,
-                      0.33,
-                      0.34]
-            },
-        ),
-    }
-
-    for name, angle, levels, samples in [
-        ('koch', 90, 4, 1),
-        ('islands', 90, 3, 1),
-        ('branch', 25.7, 5, 1),
-        ('branch', 73, 5, 1),
-        ('wavy-branch', 22.5, 5, 1),
-        ('stochastic-branch', 22.5, 5, 5),
-    ]:
-        for sample in range(samples):
-            system = systems[name]
-            print(system)
-            for _, word in enumerate(system.expansions(levels)):
-                mat = LSystem.draw(s=word, d=5, theta=angle)
-                plt.imshow(mat)
-                plt.show()
-            print()
-
-
 def test_lsys_simplify():
     cases = {
         "90;F;F~F": "90;F;F~F",
@@ -319,10 +259,3 @@ def test_lsys_simplify():
             assert out == y, f"Expected {x} => {y} but got {out}"
         except NilError:
             assert y == "nil", f"Got NilError on unexpected input {x}"
-
-
-if __name__ == '__main__':  # pragma: no cover
-    # demo_draw()
-    # demo_bigram_metagrammar()
-    # demo_weighted_metagrammar()
-    pass

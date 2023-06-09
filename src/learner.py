@@ -14,7 +14,7 @@ import time
 from sys import stderr
 
 import util
-from lang.lang import Language, Tree, ParseError
+from lang.tree import Language, Tree, ParseError
 from lang.lindenmayer import LSys
 from lang.regexpr import Regex
 from grammar import LearnedGrammar, ConvFeatureExtractor, SBertFeatureExtractor, FeatureExtractor

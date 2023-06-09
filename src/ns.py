@@ -19,7 +19,7 @@ import yaml
 from tqdm import tqdm
 
 from featurizers import ResnetFeaturizer
-from lang.lang import Language, Tree, ParseError
+from lang.tree import Language, Tree, ParseError
 from lang import lindenmayer, point
 import util
 

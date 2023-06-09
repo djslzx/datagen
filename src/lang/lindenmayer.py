@@ -4,14 +4,17 @@ from pprint import pp
 from typing import Dict, List, Iterator, Tuple, Any
 from math import sin, cos, radians
 import numpy as np
-import skimage.draw
+import skimage
 import itertools as it
 from sys import stderr, maxsize
 import colorsys
+import matplotlib.pyplot as plt
+import torch as T
+import einops
 
 import eggy
-from lang.lang import Language, Tree, Grammar, ParseError
-from featurizers import Featurizer
+from lang.tree import Language, Tree, Grammar, ParseError
+from featurizers import Featurizer, ResnetFeaturizer
 import util
 
 
@@ -367,7 +370,7 @@ class LSys(Language):
         n_rows = env["n_rows"] if "n_rows" in env else self.n_rows
         n_cols = env["n_cols"] if "n_cols" in env else self.n_cols
         aa = env["aa"] if "aa" in env else self.aa
-        vary_color = env["vary_color"] if "vary_color" in env else False
+        vary_color = env["vary_color"] if "vary_color" in env else self.vary_color
 
         lsys = S0LSystem.from_str(s)
         sample = lsys.nth_expansion(render_depth)
@@ -434,49 +437,57 @@ class NilError(ParseError):
     pass
 
 
-if __name__ == "__main__":
-    from torch import from_numpy, stack
-    from featurizers import ResnetFeaturizer
-    np.set_printoptions(threshold=maxsize)
-    L = LSys(step_length=3, render_depth=4, n_rows=128, n_cols=128, kind="deterministic")
-    print(L)
+def demo_draw():  # pragma: no cover
+    systems = {
+        'koch': "90;F-F-F-F;F~F-F+F+FF-F-F+F",
+        'islands': "90;F+F+F+F;F~F+f-FF+F+FF+Ff+FF-f+FF-F-FF-Ff-FFF,f~ffffff",
+        'branch': "25.7;F;F~FF-[-F+F+F]+[+F-F-F]",
+        'stochastic-branch': "22.5;F;F~F[+F]F[-F]F,F~F[+F]F,F~F[-F]F",
+    }
+    lang = LSys(kind="stochastic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=4)
+    for name, s in systems.items():
+        t = lang.parse(s)
+        img = lang.eval(t)
+        plt.imshow(img)
+        plt.title(name)
+        plt.show()
 
-    templates = [
-        "F;F~F[+F][-F]F",
-        "F;F~FF+-F[+][-][[+--]]",
+
+def compare_fitting(L: LSys, templates: List[str]):
+    def sample_and_show(side_len: int):
+        samples = [L.sample() for _ in range(side_len ** 2)]
+        pp([L.to_str(x) for x in samples])
+        util.plot([L.eval(x) for x in samples], shape=(side_len, side_len))
+
+    programs = [
+        L.parse(f"{angle};{t}")
+        for t in templates
+        for angle in LSys.ANGLES
     ]
-    examples = []
-    for t in templates:
-        for angle in LSys.ANGLES:
-            examples.append(f"{angle};{t}")
-
-    programs = [L.parse(x) for x in examples]
     simplified_programs = [L.simplify(p) for p in programs]
-    for x, p in zip(examples, simplified_programs):
-        print(f"{x} => {L.to_str(p)}")
+    for pre, post in zip(programs, simplified_programs):
+        print(f"{L.to_str(pre)} => {L.to_str(post)}")
 
-    def sample_and_show(lsys: LSys, side_len: int):
-        samples = [lsys.sample() for _ in range(side_len ** 2)]
-        for x in samples:
-            s = lsys.to_str(x)
-            print(f"{s}: {x}")
-        util.plot([lsys.eval(x) for x in samples], shape=(side_len, side_len))
-
+    # uniform random
     L.model.normalize_()
-    sample_and_show(L, 20)  # uniform random
+    sample_and_show(20)
     uniform_samples = [L.sample() for _ in range(20 ** 2)]
 
+    # fitted to unsimplified samples
     L.fit(programs, alpha=1)
-    sample_and_show(L, 20)  # fitted to unsimplified samples
+    sample_and_show(20)
 
+    # fitted to simplified
     L.model.normalize_()
     L.fit(simplified_programs, alpha=1)
-    sample_and_show(L, 20)  # fitted to simplified
+    sample_and_show(20)
 
+    # fitted to uniformly generated data, unsimplified
     L.model.normalize_()
     L.fit(uniform_samples, alpha=1)
-    sample_and_show(L, 20)  # fitted to uniformly generated data, unsimplified
+    sample_and_show(20)
 
+    # fitted to uniformly generated data, simplified
     L.model.normalize_()
     uniform_simplified = []
     for p in uniform_samples:
@@ -486,22 +497,43 @@ if __name__ == "__main__":
         except NilError:
             pass
     L.fit(uniform_simplified, alpha=1)
-    sample_and_show(L, 20)  # fitted to uniformly generated data, simplified
+    sample_and_show(20)
 
-    # view.plot_lsys_at_depths(L, examples, "", n_imgs_per_plot=len(LSys.ANGLES), depths=(1, 6))
-    #
-    # M = [L.eval(p, {"aa": True}) for p in programs]
-    # shape = (len(templates), len(LSys.ANGLES))
-    # util.plot(M, shape=shape, labels=[L.to_str(p) for p in programs], title="aa")
-    #
-    # M_no_aa = [L.eval(p, {"aa": False}) for p in programs]
-    # print("no aa:", np.unique(M_no_aa))
-    # util.plot(M_no_aa, title="no aa", shape=shape)
-    #
-    # # test effect of gaussian blur
-    # ft = ResnetFeaturizer()
-    # preprocessed = ft.preprocess(stack([from_numpy(x) for x in M]))
-    # util.plot(preprocessed, title="resnet preprocessed", shape=shape)
-    # for i in range(3):
-    #     filtered = [gaussian_filter(x, sigma=i) for x in M]
-    #     util.plot(filtered, title=f"gaussian filter, sigma={i}", shape=shape)
+
+def compare_gaussian_blur(L: LSys, templates: List[str]):
+    programs = [
+        L.parse(f"{angle};{t}")
+        for t in templates
+        for angle in LSys.ANGLES
+    ]
+
+    # anti-aliasing
+    shape = (len(templates), len(LSys.ANGLES))
+    labels = [L.to_str(p) for p in programs]
+    M = [L.eval(p, {"aa": True}) for p in programs]
+    util.plot(M, shape=shape, labels=labels, title="aa")
+
+    # no anti-aliasing
+    M_no_aa = [L.eval(p, {"aa": False}) for p in programs]
+    util.plot(M_no_aa, shape=shape, labels=labels, title="no aa")
+
+    # test effect of gaussian blur
+    ft = ResnetFeaturizer()
+    preprocessed = ft.preprocess(einops.rearrange(T.stack([T.from_numpy(x) for x in M]),
+                                        "n h w c -> n c h w"))
+    preprocessed = einops.rearrange(preprocessed, "n c h w -> n h w c")
+    util.plot(preprocessed, title="resnet preprocessed", shape=shape)
+    for i in range(3):
+        filtered = [skimage.filters.gaussian(x, sigma=i, channel_axis=-1) for x in M]
+        util.plot(filtered, title=f"gaussian filter, sigma={i}", shape=shape)
+
+
+if __name__ == "__main__":
+    # demo_draw()
+    L = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=4)
+    templates = [
+        "F;F~F[+F][-F]F",
+        "F;F~FF+-F[+][-][[+--]]",
+    ]
+    # compare_fitting(L, templates)
+    compare_gaussian_blur(L, templates)

@@ -1,6 +1,6 @@
 from featurizers import ResnetFeaturizer
 from grammar import *
-from lang import lang
+from lang import tree
 from lang.lindenmayer import LSys
 
 nat_components = {

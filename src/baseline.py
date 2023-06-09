@@ -18,7 +18,7 @@ import pickle
 import sys
 
 from featurizers import ResnetFeaturizer
-from lang.lang import Language, Tree
+from lang.tree import Language, Tree
 from lang.lindenmayer import LSys, NilError
 from lang.regexpr import Regex
 import examples
