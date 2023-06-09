@@ -30,12 +30,12 @@ search:
   # length penalties
   length_cap: 200
   length_penalty_type: additive
-  length_penalty_inverse_coeff: 1
+  length_penalty_inverse_coeff: 50
   length_penalty_additive_coeff: 0
 
   # heuristics
   ablate_mutator: false
-  archive_early: true
+  archive_early: false
 
 featurizer:
   disable_last_layer: true
