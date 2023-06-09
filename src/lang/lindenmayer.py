@@ -62,7 +62,7 @@ class LSystem:
     @staticmethod
     def draw(s: str, d: float, theta: float,
              n_rows: int = 512, n_cols: int = 512, aa=True,
-             vary_color=True, hue_start=240, hue_end=300, hue_step=0.5) -> np.ndarray:  # pragma: no cover
+             vary_color=True, hue_start=0, hue_end=360, hue_step=0.5) -> np.ndarray:  # pragma: no cover
         """
         Draw the turtle interpretation of the string `s` onto a `n_rows` x `n_cols` array,
         using scikit-image's drawing library (with anti-aliasing).
@@ -80,10 +80,10 @@ class LSystem:
                 # choose hue based on recency
                 if vary_color:
                     hue = hue_start + (hue_angle % (hue_end - hue_start))
-                    rgb = 255 * np.array(colorsys.hsv_to_rgb(hue / 360, 1, 1))
+                    rgb = np.array(colorsys.hsv_to_rgb(hue / 360, 0.6, 1))
                     hue_angle += hue_step
                 else:
-                    rgb = np.array([255, 255, 255])
+                    rgb = np.ones(3)
 
                 r1 = r + int(d * sin(radians(heading)))
                 c1 = c + int(d * cos(radians(heading)))
@@ -94,12 +94,12 @@ class LSystem:
                         rs, cs, intensities = skimage.draw.line_aa(r, c, r1, c1)
                         mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
                         rs, cs, intensities = rs[mask], cs[mask], intensities[mask]
-                        canvas[rs, cs] = np.outer(intensities, rgb)
+                        canvas[rs, cs] = np.outer(intensities, rgb) * 255
                     else:
                         rs, cs = skimage.draw.line(r, c, r1, c1)
                         mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
                         rs, cs = rs[mask], cs[mask]
-                        canvas[rs, cs] = rgb
+                        canvas[rs, cs] = rgb * 255
                 r, c = r1, c1
             elif char == 'f':
                 r += int(d * sin(radians(heading)))
@@ -510,7 +510,7 @@ def compare_gaussian_blur(L: LSys, templates: List[str]):
     # anti-aliasing
     shape = (len(templates), len(LSys.ANGLES))
     labels = [L.to_str(p) for p in programs]
-    M = [L.eval(p, {"aa": True}) for p in programs]
+    M = [L.eval(p, {"aa": True, }) for p in programs]
     util.plot(M, shape=shape, labels=labels, title="aa")
 
     # no anti-aliasing
