@@ -8,7 +8,7 @@ from sys import stderr
 from scipy.spatial import distance as dist
 from einops import rearrange
 import Levenshtein
-from scipy.ndimage import gaussian_filter
+import skimage
 
 
 class Featurizer:
@@ -53,7 +53,7 @@ class TextPredictor(Featurizer):
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, quantize=False, disable_last_layer=False, softmax_outputs=True, sigma=0):
+    def __init__(self, quantize=False, disable_last_layer=True, softmax_outputs=True, sigma=0):
         self.quantize = quantize
         if quantize:
             weights = quantization.ResNet50_QuantizedWeights.DEFAULT
@@ -82,14 +82,15 @@ class ResnetFeaturizer(Featurizer):
         return 2048 if self.disable_last_layer else 1000
 
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
+        # gaussian filter
         if self.sigma > 0:
-            batch = [gaussian_filter(img, sigma=self.sigma) for img in batch]
+            batch = [skimage.filters.gaussian(img, sigma=self.sigma, channel_axis=-1) for img in batch]
             batch = np.stack(batch)
         elif isinstance(batch, List):
             batch = np.stack(batch)
 
-        assert isinstance(batch, np.ndarray), f"Expected ndarray, but got {type(batch)}"
         assert len(batch.shape) == 4, f"Expected shape [b h w c] but got {batch.shape}"
+        assert batch.shape[-1] in {3, 4}, f"Expected 3 or 4 channels but got {batch.shape[-1]} in shape {batch.shape}"
 
         # resnet only plays nice with uint8 matrices
         if batch.dtype != np.uint8:
@@ -97,11 +98,14 @@ class ResnetFeaturizer(Featurizer):
             batch = batch.astype(np.uint8)
 
         # run resnet
-        batch = self.preprocess(T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w")))
+        batch = T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w"))  # remove alpha channel, reshape
+        batch = self.preprocess(batch)
         features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
 
+        # softmax
         if self.softmax_outputs:
             features = features.softmax(-1)
+
         return features.detach().numpy()
 
     def top_k_classes(self, features: np.ndarray, k: int) -> List[str]:
