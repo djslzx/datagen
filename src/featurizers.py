@@ -53,7 +53,7 @@ class TextPredictor(Featurizer):
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, quantize=False, disable_last_layer=True, softmax_outputs=True, sigma=0):
+    def __init__(self, quantize=False, disable_last_layer=True, softmax_outputs=False, sigma=0):
         self.quantize = quantize
         if quantize:
             weights = quantization.ResNet50_QuantizedWeights.DEFAULT
@@ -86,6 +86,7 @@ class ResnetFeaturizer(Featurizer):
         if self.sigma > 0:
             batch = [skimage.filters.gaussian(img, sigma=self.sigma, channel_axis=-1) for img in batch]
             batch = np.stack(batch)
+            batch = batch.astype(np.uint8)
         elif isinstance(batch, List):
             batch = np.stack(batch)
 
