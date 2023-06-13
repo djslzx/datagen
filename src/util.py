@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import time
 import sys
 from os import mkdir
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 
 def add_border(image: np.ndarray, thickness=1) -> np.ndarray:
@@ -20,23 +21,35 @@ def add_border(image: np.ndarray, thickness=1) -> np.ndarray:
     return out
 
 
-def plot_images_at_positions(images: np.ndarray, positions: np.ndarray) -> plt.Axes:
-    ax = plt.gca()
+def fig_images_at_positions(images: np.ndarray, positions: np.ndarray) -> plt.Figure:
     # translate positions so that the min x and y positions are 0
     positions[:, 0] -= positions[:, 0].min()
     positions[:, 1] -= positions[:, 1].min()
 
     # find the max x and y positions
     i_xlim = positions[:,0].argmax()
-    xlim = images[i_xlim].shape[0] + positions[i_xlim, 0]
     i_ylim = positions[:, 1].argmax()
+    xlim = images[i_xlim].shape[0] + positions[i_xlim, 0]
     ylim = images[i_ylim].shape[1] + positions[i_ylim, 1]
-    ax.set_xlim(0, xlim)
-    ax.set_ylim(0, ylim)
 
+    fig = plt.figure(figsize=(xlim/100, ylim/100))
     for image, pos in zip(images, positions):
-        tx, ty = pos
-        ax.imshow(image, extent=(tx, tx + image.shape[0], ty, ty + image.shape[1]))
+        x, y = pos
+        fig.figimage(image, xo=x, yo=y, origin='upper')
+    return fig
+
+
+def imscatter(images: np.ndarray, positions: np.ndarray, zoom=1, figsize=(10, 10)):
+    plt.figure(figsize=figsize)
+    ax = plt.gca()
+    for image, position in zip(images, positions):
+        im = OffsetImage(image, zoom=zoom)
+        ab = AnnotationBbox(im,  position, xycoords='data', frameon=False)
+        ax.add_artist(ab)
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    ax.update_datalim(positions)
+    ax.autoscale()
     return ax
 
 

@@ -6,17 +6,20 @@ import os
 from typing import List, Tuple
 import numpy as np
 import cv2 as cv
+import pandas as pd
 import sklearn.manifold as manifold
 from matplotlib import pyplot as plt
 from sklearn.neighbors import NearestNeighbors
 from PIL import Image
 from glob import glob
 import Levenshtein as leven
+from tqdm import tqdm
 
 import examples
 import featurizers as feat
 import util
 from lang.lindenmayer import LSys
+from lang.tree import Tree
 from ns import extract_features
 
 
@@ -65,12 +68,23 @@ def rank_lsys(lsys: LSys, systems: List[str]):
     plot_nearest_neighbors(images, images, embeddings, embeddings, k=len(systems))
 
 
+def generate_lsystem_pics_from_csv(lsys: LSys, csv_path: str, out_dir: str):
+    df = pd.read_csv(csv_path)
+    print(df)
+    systems = (df.loc[(df.chosen == True) & (df.step == 100)]
+               # .sort_values(by='score', ascending=False)[:100]
+               .program)
+
+    print(systems)
+    generate_lsystem_pics(lsys, systems, out_dir)
+
+
 def generate_lsystem_pics(lsys: LSys, systems: List[str], path: str):
     """
     Generate n images from the l-system and save them to path
     """
     os.makedirs(path, exist_ok=True)
-    for i, x in enumerate(systems):
+    for i, x in tqdm(enumerate(systems), total=len(systems)):
         t = lsys.parse(x)
         img = lsys.eval(t)
         Image.fromarray(img).save(f"{path}/system-{i:02d}.png")
@@ -106,36 +120,46 @@ def rank_pics(featurizer: feat.Featurizer, path: str, n_files=None):
                            k=len(imgs))
 
 
-def cluster_pics(featurizer: feat.Featurizer, path: str, n_files=None):
+def cluster_pics(featurizer: feat.Featurizer, path: str, n_files=None, title=None):
     imgs = read_pics(path, n_files=n_files)
     img_size = max(max(img.shape) for img in imgs)
     embeddings = embed_pics(featurizer, imgs)
     mds = manifold.MDS(n_components=2, random_state=0)
-    points = mds.fit_transform(embeddings) * img_size / 2
-    imgs = np.stack([util.add_border(img, thickness=1) for img in imgs])
-    util.plot_images_at_positions(imgs, points)
+    points = mds.fit_transform(embeddings)
+    imgs = np.stack(imgs)
+    ax = util.imscatter(imgs, points, zoom=0.5, figsize=(15, 15))
+    # ax = util.plot_images_at_positions(imgs, points)
+    ax.title.set_text(title)
+    # if title:
+    #     fig.suptitle(title, x=0.02, y=0.98, ha="left", va="top")
 
 
 if __name__ == "__main__":
-    dir = "/Users/djsl/Documents/research/prob-repl/out/test/images"
-    featurizer = feat.ResnetFeaturizer(
-        disable_last_layer=True,
-        softmax_outputs=False,
-        sigma=0,
-    )
+    root = "/Users/djsl/Documents/research/prob-repl"
+    dir = f"{root}/out/test/images"
     lsys = LSys(kind="deterministic",
-                featurizer=featurizer,
+                featurizer=feat.ResnetFeaturizer(
+                    disable_last_layer=True,
+                    softmax_outputs=False,
+                    sigma=0,
+                ),
                 step_length=3,
                 render_depth=3,
                 n_rows=256,
                 n_cols=256,
                 vary_color=True)
-
     # generate_lsystem_pics(lsys,
     #                       examples.lsystem_book_det_examples,
     #                       f"{dir}/lsystems/color-256")
-    # rank_lsys(lsys, examples.lsystem_book_det_examples)
-    # rank_pics(featurizer, f"{dir}/lsystems/color-256/*")
-    # rank_pics(featurizer, f"{dir}/natural/*")
-    cluster_pics(featurizer, f"{dir}/natural/*")
-    plt.show()
+    # generate_lsystem_pics_from_csv(lsys,
+    #                                csv_path=f"{root}/out/sweeps/2a5p4beb/lbiu7veh.csv",
+    #                                out_dir=f"{dir}/lsystems/generated-128")
+
+    for disable_last_layer, softmax_outputs in itertools.product([False, True,],
+                                                                 [False, True,]):
+        lsys.featurizer = feat.ResnetFeaturizer(disable_last_layer=disable_last_layer,
+                                                softmax_outputs=softmax_outputs)
+        print(lsys)
+        cluster_pics(lsys.featurizer, f"{dir}/lsystems/generated-128/system-1[0-9][0-9].png",
+                     title=f"cut_last={disable_last_layer}, softmax={softmax_outputs}")
+        plt.show()
