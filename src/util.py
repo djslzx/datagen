@@ -11,6 +11,35 @@ import sys
 from os import mkdir
 
 
+def add_border(image: np.ndarray, thickness=1) -> np.ndarray:
+    shape = (image.shape[0] + thickness * 2,
+             image.shape[1] + thickness * 2,
+             *image.shape[2:])
+    out = np.zeros(shape, dtype=image.dtype)
+    out[thickness:-thickness, thickness:-thickness] = image
+    return out
+
+
+def plot_images_at_positions(images: np.ndarray, positions: np.ndarray) -> plt.Axes:
+    ax = plt.gca()
+    # translate positions so that the min x and y positions are 0
+    positions[:, 0] -= positions[:, 0].min()
+    positions[:, 1] -= positions[:, 1].min()
+
+    # find the max x and y positions
+    i_xlim = positions[:,0].argmax()
+    xlim = images[i_xlim].shape[0] + positions[i_xlim, 0]
+    i_ylim = positions[:, 1].argmax()
+    ylim = images[i_ylim].shape[1] + positions[i_ylim, 1]
+    ax.set_xlim(0, xlim)
+    ax.set_ylim(0, ylim)
+
+    for image, pos in zip(images, positions):
+        tx, ty = pos
+        ax.imshow(image, extent=(tx, tx + image.shape[0], ty, ty + image.shape[1]))
+    return ax
+
+
 def flatten(nested_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
     Flatten a nested dictionary of string keys into a single-level dictionary where

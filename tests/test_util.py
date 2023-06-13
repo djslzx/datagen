@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 from util import *
 
@@ -142,3 +143,56 @@ def test_vec_approx_eq():
         for out in [vec_approx_eq(T.tensor(a), T.tensor(b), thresh),
                     vec_approx_eq(np.array(a), np.array(b), thresh),]:
             assert y == out, f"Expected ({a} == {b}, thresh={thresh}) == {y} but got {out}"
+
+
+def test_plot_images_at_positions():
+    n_images = 100
+    image_size = 20
+    images = np.stack([np.ones((image_size, image_size, 3)) * (((i * 7) % 100)/100)
+                       for i in range(n_images)])
+    positions = np.stack([np.array([i % 6, i // 6]) * image_size
+                          for i in range(n_images)])
+    plot_images_at_positions(images, positions)
+    plt.show()
+
+
+def test_add_border():
+    cases = [
+        (np.array([[1]]), 1,
+         np.array([[0, 0, 0],
+                   [0, 1, 0],
+                   [0, 0, 0]])),
+        (np.array([[1]]), 2,
+         np.array([[0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 1, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0]])),
+        (np.array([[1]]), 3,
+         np.array([[0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 1, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0]])),
+        (np.array([[1, 2, 3],
+                   [4, 5, 6]]),
+         1,
+         np.array([[0, 0, 0, 0, 0],
+                   [0, 1, 2, 3, 0],
+                   [0, 4, 5, 6, 0],
+                   [0, 0, 0, 0, 0]])),
+        (np.array([[1, 2, 3],
+                   [4, 5, 6]]),
+         2,
+         np.array([[0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 1, 2, 3, 0, 0],
+                   [0, 0, 4, 5, 6, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0]])),
+    ]
+    for x, c, y in cases:
+        out = add_border(x, c)
+        assert np.allclose(out, y), f"Expected {y} but got {out}"

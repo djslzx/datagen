@@ -6,10 +6,12 @@ import os
 from typing import List, Tuple
 import numpy as np
 import cv2 as cv
+import sklearn.manifold as manifold
+from matplotlib import pyplot as plt
 from sklearn.neighbors import NearestNeighbors
 from PIL import Image
 from glob import glob
-import Levenshtein as lev
+import Levenshtein as leven
 
 import examples
 import featurizers as feat
@@ -74,52 +76,66 @@ def generate_lsystem_pics(lsys: LSys, systems: List[str], path: str):
         Image.fromarray(img).save(f"{path}/system-{i:02d}.png")
 
 
-def rank_pics(featurizer: feat.Featurizer, path: str, n_files=None):
+def read_pics(path: str, n_files=None) -> List[np.ndarray]:
     imgs = []
     filenames = sorted(glob(path)[:n_files])
     assert filenames, f"Got empty glob for {path}"
-
     for filename in filenames:
         with Image.open(filename) as im:
             img = np.array(im.resize((256, 256)))[..., :3]
             imgs.append(img)
+    return imgs
 
+
+def embed_pics(featurizer: feat.Featurizer, images: List[np.ndarray]) -> np.ndarray:
     embeddings = []
-    for batch in util.batched(imgs, batch_size=16):
+    for batch in util.batched(images, batch_size=16):
         if len(batch) == 1:
             batch = [batch]
         e = featurizer.apply(batch)
         embeddings.extend(e)
+    return np.stack(embeddings)
 
+
+def rank_pics(featurizer: feat.Featurizer, path: str, n_files=None):
+    imgs = read_pics(path, n_files=n_files)
+    embeddings = embed_pics(featurizer, imgs)
     imgs = np.stack(imgs)
-    embeddings = np.stack(embeddings)
     plot_nearest_neighbors(targets=imgs, guesses=imgs,
                            e_targets=embeddings, e_guesses=embeddings,
                            k=len(imgs))
 
 
+def cluster_pics(featurizer: feat.Featurizer, path: str, n_files=None):
+    imgs = read_pics(path, n_files=n_files)
+    img_size = max(max(img.shape) for img in imgs)
+    embeddings = embed_pics(featurizer, imgs)
+    mds = manifold.MDS(n_components=2, random_state=0)
+    points = mds.fit_transform(embeddings) * img_size / 2
+    imgs = np.stack([util.add_border(img, thickness=1) for img in imgs])
+    util.plot_images_at_positions(imgs, points)
+
+
 if __name__ == "__main__":
     dir = "/Users/djsl/Documents/research/prob-repl/out/test/images"
+    featurizer = feat.ResnetFeaturizer(
+        disable_last_layer=True,
+        softmax_outputs=False,
+        sigma=0,
+    )
+    lsys = LSys(kind="deterministic",
+                featurizer=featurizer,
+                step_length=3,
+                render_depth=3,
+                n_rows=256,
+                n_cols=256,
+                vary_color=True)
 
     # generate_lsystem_pics(lsys,
     #                       examples.lsystem_book_det_examples,
-    #                       f"{dir}/lsystems/white-256")
-    # rank_pics(featurizer, f"{dir}/lsystems/white-256/*")
-
-    for disable_last, softmax in itertools.product([True, False], [True, False]):
-        print(disable_last, softmax)
-        featurizer = feat.ResnetFeaturizer(
-            disable_last_layer=disable_last,
-            softmax_outputs=softmax,
-            sigma=0,
-        )
-        lsys = LSys(kind="deterministic",
-                    featurizer=featurizer,
-                    step_length=3,
-                    render_depth=3,
-                    n_rows=256,
-                    n_cols=256,
-                    vary_color=True)
-        # rank_lsys(lsys, examples.lsystem_book_det_examples)
-        # rank_pics(featurizer, f"{dir}/lsystems/color-256/*")
-        rank_pics(featurizer, f"{dir}/natural/*")
+    #                       f"{dir}/lsystems/color-256")
+    # rank_lsys(lsys, examples.lsystem_book_det_examples)
+    # rank_pics(featurizer, f"{dir}/lsystems/color-256/*")
+    # rank_pics(featurizer, f"{dir}/natural/*")
+    cluster_pics(featurizer, f"{dir}/natural/*")
+    plt.show()
