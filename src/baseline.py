@@ -177,7 +177,7 @@ if __name__ == '__main__':
     L = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=3)
     for _ in range(3):
         imgs = [L.eval(random_lsystem(L, length=100)) for _ in range(100)]
-        util.plot(imgs, shape=(10, 10))
+        util.plot_image_grid(imgs, shape=(10, 10))
 
     # write_histograms("../out/plots/hists/distances_100k_n=100.dat", n_renders=100)
     # prune_table("../out/plots/hists/distances_100k.dat",

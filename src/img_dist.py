@@ -1,6 +1,7 @@
 """
 Distances on line images produced by turtle interpretation of l-systems
 """
+import itertools
 import os
 from typing import List, Tuple
 import numpy as np
@@ -47,7 +48,7 @@ def plot_nearest_neighbors(targets: np.ndarray, guesses: np.ndarray,
         images.append(target)
         images.extend(neighbors)
 
-    util.plot(images, shape=(n_targets, 1 + k))
+    util.plot_image_grid(images, shape=(n_targets, 1 + k))
 
 
 def eval_and_embed(lang: LSys, xs: List[str]) -> Tuple[np.ndarray, np.ndarray]:
@@ -57,28 +58,19 @@ def eval_and_embed(lang: LSys, xs: List[str]) -> Tuple[np.ndarray, np.ndarray]:
     return imgs, features
 
 
-def rank_lsys(featurizer: feat.Featurizer, systems: List[str]):
-    lang = LSys(kind="deterministic",
-                featurizer=featurizer,
-                step_length=3,
-                render_depth=3)
-    images, embeddings = eval_and_embed(lang, systems)
+def rank_lsys(lsys: LSys, systems: List[str]):
+    images, embeddings = eval_and_embed(lsys, systems)
     plot_nearest_neighbors(images, images, embeddings, embeddings, k=len(systems))
 
 
-def generate_lsystem_pics(featurizer: feat.Featurizer, systems: List[str], path: str, vary_color=True):
+def generate_lsystem_pics(lsys: LSys, systems: List[str], path: str):
     """
     Generate n images from the l-system and save them to path
     """
     os.makedirs(path, exist_ok=True)
-    lang = LSys(kind="deterministic",
-                featurizer=featurizer,
-                step_length=3,
-                render_depth=3,
-                vary_color=vary_color)
     for i, x in enumerate(systems):
-        t = lang.parse(x)
-        img = lang.eval(t)
+        t = lsys.parse(x)
+        img = lsys.eval(t)
         Image.fromarray(img).save(f"{path}/system-{i:02d}.png")
 
 
@@ -107,21 +99,27 @@ def rank_pics(featurizer: feat.Featurizer, path: str, n_files=None):
 
 
 if __name__ == "__main__":
-    dir = "/Users/djsl/Documents/research/prob-repl/tests/images"
-    featurizer = feat.ResnetFeaturizer(
-        disable_last_layer=True,
-        softmax_outputs=False,
-        sigma=0,
-    )
-    # rank_lsys(featurizer, examples.lsystem_book_det_examples)
-    # rank_pics(f"{dir}/natural/*", n_files=None)
-    generate_lsystem_pics(featurizer,
-                          examples.lsystem_book_det_examples,
-                          f"{dir}/lsystems/color",
-                          vary_color=True)
-    generate_lsystem_pics(featurizer,
-                          examples.lsystem_book_det_examples,
-                          f"{dir}/lsystems/white",
-                          vary_color=False)
-    rank_pics(featurizer, f"{dir}/lsystems/color/*")
-    rank_pics(featurizer, f"{dir}/lsystems/white/*")
+    dir = "/Users/djsl/Documents/research/prob-repl/out/test/images"
+
+    # generate_lsystem_pics(lsys,
+    #                       examples.lsystem_book_det_examples,
+    #                       f"{dir}/lsystems/white-256")
+    # rank_pics(featurizer, f"{dir}/lsystems/white-256/*")
+
+    for disable_last, softmax in itertools.product([True, False], [True, False]):
+        print(disable_last, softmax)
+        featurizer = feat.ResnetFeaturizer(
+            disable_last_layer=disable_last,
+            softmax_outputs=softmax,
+            sigma=0,
+        )
+        lsys = LSys(kind="deterministic",
+                    featurizer=featurizer,
+                    step_length=3,
+                    render_depth=3,
+                    n_rows=256,
+                    n_cols=256,
+                    vary_color=True)
+        # rank_lsys(lsys, examples.lsystem_book_det_examples)
+        # rank_pics(featurizer, f"{dir}/lsystems/color-256/*")
+        rank_pics(featurizer, f"{dir}/natural/*")

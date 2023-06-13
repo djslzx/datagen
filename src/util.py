@@ -106,12 +106,12 @@ def cut_ext(filename: str) -> str:
     return filename[:filename.rfind(".")]
 
 
-def plot(imgs: List[np.array],
-         shape: Optional[Tuple[int, int]] = None,
-         labels: Optional[List[str]] = None,
-         title="",
-         fontsize=6,
-         saveto=None):  # pragma: no cover
+def plot_image_grid(imgs: List[np.array],
+                    shape: Optional[Tuple[int, int]] = None,
+                    labels: Optional[List[str]] = None,
+                    title="",
+                    fontsize=6,
+                    saveto=None):  # pragma: no cover
     # infer reasonable shape if none given
     if shape is None:
         n = len(imgs)

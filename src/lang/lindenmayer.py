@@ -457,7 +457,7 @@ def compare_fitting(L: LSys, templates: List[str]):
     def sample_and_show(side_len: int):
         samples = [L.sample() for _ in range(side_len ** 2)]
         pp([L.to_str(x) for x in samples])
-        util.plot([L.eval(x) for x in samples], shape=(side_len, side_len))
+        util.plot_image_grid([L.eval(x) for x in samples], shape=(side_len, side_len))
 
     programs = [
         L.parse(f"{angle};{t}")
@@ -511,21 +511,21 @@ def compare_gaussian_blur(L: LSys, templates: List[str]):
     shape = (len(templates), len(LSys.ANGLES))
     labels = [L.to_str(p) for p in programs]
     M = [L.eval(p, {"aa": True, }) for p in programs]
-    util.plot(M, shape=shape, labels=labels, title="aa")
+    util.plot_image_grid(M, shape=shape, labels=labels, title="aa")
 
     # no anti-aliasing
     M_no_aa = [L.eval(p, {"aa": False}) for p in programs]
-    util.plot(M_no_aa, shape=shape, labels=labels, title="no aa")
+    util.plot_image_grid(M_no_aa, shape=shape, labels=labels, title="no aa")
 
     # test effect of gaussian blur
     ft = ResnetFeaturizer()
     preprocessed = ft.preprocess(einops.rearrange(T.stack([T.from_numpy(x) for x in M]),
                                         "n h w c -> n c h w"))
     preprocessed = einops.rearrange(preprocessed, "n c h w -> n h w c")
-    util.plot(preprocessed, title="resnet preprocessed", shape=shape)
+    util.plot_image_grid(preprocessed, title="resnet preprocessed", shape=shape)
     for i in range(3):
         filtered = [skimage.filters.gaussian(x, sigma=i, channel_axis=-1) for x in M]
-        util.plot(filtered, title=f"gaussian filter, sigma={i}", shape=shape)
+        util.plot_image_grid(filtered, title=f"gaussian filter, sigma={i}", shape=shape)
 
 
 if __name__ == "__main__":

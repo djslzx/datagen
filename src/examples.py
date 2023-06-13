@@ -200,4 +200,4 @@ if __name__ == "__main__":
     ]
     lsys = lindenmayer.LSys(step_length=3, render_depth=3, n_rows=128, n_cols=128, kind="deterministic")
     imgs = [lsys.eval(lsys.parse(s)) for s in lsystem_book_det_examples + generated]
-    util.plot(imgs)
+    util.plot_image_grid(imgs)

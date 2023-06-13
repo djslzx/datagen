@@ -62,11 +62,11 @@ def render_run(prefix: str, run_id: str, stride: int):
             shape = None
         else:
             shape = (10, 10)
-        util.plot(imgs,
-                  shape=shape,
-                  title=f"{run_id} step={step}",
-                  fontsize=3,
-                  saveto=f"{prefix}/{run_id}-step{step}.png")
+        util.plot_image_grid(imgs,
+                             shape=shape,
+                             title=f"{run_id} step={step}",
+                             fontsize=3,
+                             saveto=f"{prefix}/{run_id}-step{step}.png")
 
 
 def viz_closest(lang: LSys, prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
@@ -95,8 +95,8 @@ def viz_closest(lang: LSys, prefix: str, run_id: str, holdout: List[str], stride
             target = holdout_trees[i]
             neighbors = gen[indices[i]].tolist()
             images.extend([lang.eval(x) for x in [target] + neighbors])
-        util.plot(images, shape=(n_holdout, 1 + n_neighbors),
-                  saveto=f"{prefix}/{run_id}-knn-step{step}.png")
+        util.plot_image_grid(images, shape=(n_holdout, 1 + n_neighbors),
+                             saveto=f"{prefix}/{run_id}-knn-step{step}.png")
 
 
 def plot_avg_dist(lang: LSys, prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
