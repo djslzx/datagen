@@ -61,7 +61,7 @@ class LSystem:
 
     @staticmethod
     def draw(s: str, d: float, theta: float,
-             n_rows: int = 512, n_cols: int = 512, aa=True,
+             n_rows: int = 512, n_cols: int = 512, aa=True, include_alpha=True,
              vary_color=True, hue_start=0, hue_end=360, hue_step=0.5) -> np.ndarray:  # pragma: no cover
         """
         Draw the turtle interpretation of the string `s` onto a `n_rows` x `n_cols` array,
@@ -73,17 +73,17 @@ class LSystem:
         r, c = n_rows//2, n_cols//2  # parser_start at center of canvas
         heading = 90  # parser_start facing up (logo)
         stack = []
-        canvas = np.zeros((n_rows, n_cols, 3), dtype=np.uint8)
+        canvas = np.zeros((n_rows, n_cols, 4), dtype=np.uint8)
         hue_angle = 0
         for char in s:
             if char == 'F':
                 # choose hue based on recency
                 if vary_color:
                     hue = hue_start + (hue_angle % (hue_end - hue_start))
-                    rgb = np.array(colorsys.hsv_to_rgb(hue / 360, 0.6, 1))
+                    rgba = np.array(colorsys.hsv_to_rgb(hue / 360, 0.6, 1) + (1,))
                     hue_angle += hue_step
                 else:
-                    rgb = np.ones(3)
+                    rgba = np.ones(4)
 
                 r1 = r + int(d * sin(radians(heading)))
                 c1 = c + int(d * cos(radians(heading)))
@@ -94,12 +94,12 @@ class LSystem:
                         rs, cs, intensities = skimage.draw.line_aa(r, c, r1, c1)
                         mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
                         rs, cs, intensities = rs[mask], cs[mask], intensities[mask]
-                        canvas[rs, cs] = np.outer(intensities, rgb) * 255
+                        canvas[rs, cs] = np.outer(intensities, rgba) * 255
                     else:
                         rs, cs = skimage.draw.line(r, c, r1, c1)
                         mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
                         rs, cs = rs[mask], cs[mask]
-                        canvas[rs, cs] = rgb * 255
+                        canvas[rs, cs] = rgba * 255
                 r, c = r1, c1
             elif char == 'f':
                 r += int(d * sin(radians(heading)))
@@ -112,7 +112,10 @@ class LSystem:
                 stack.append((r, c, heading))
             elif char == ']':
                 r, c, heading = stack.pop()
-        return canvas
+        if not include_alpha:
+            return canvas[..., :3]
+        else:
+            return canvas
 
 
 class D0LSystem(LSystem):
