@@ -7,9 +7,9 @@ from typing import List, Tuple
 import numpy as np
 import cv2 as cv
 import pandas as pd
-import sklearn.manifold as manifold
-from matplotlib import pyplot as plt
+from sklearn import manifold, decomposition
 from sklearn.neighbors import NearestNeighbors
+from matplotlib import pyplot as plt
 from PIL import Image
 from glob import glob
 import Levenshtein as leven
@@ -47,7 +47,7 @@ def plot_nearest_neighbors(targets: np.ndarray, guesses: np.ndarray,
     # construct image list
     n_targets = len(targets)
     images = []
-    for i in range(n_targets):
+    for i in tqdm(range(n_targets)):
         target = targets[i]
         neighbors = guesses[indices[i]]
         images.append(target)
@@ -70,12 +70,10 @@ def rank_lsys(lsys: LSys, systems: List[str]):
 
 def generate_lsystem_pics_from_csv(lsys: LSys, csv_path: str, out_dir: str):
     df = pd.read_csv(csv_path)
-    print(df)
-    systems = (df.loc[(df.chosen == True) & (df.step == 100)]
-               # .sort_values(by='score', ascending=False)[:100]
+    systems = (df.loc[(df.chosen == True) &
+                      (df.step % 50 == 49)]
+               # .sort_values(by='score', ascending=False)[:n_lsystems]
                .program)
-
-    print(systems)
     generate_lsystem_pics(lsys, systems, out_dir)
 
 
@@ -90,13 +88,15 @@ def generate_lsystem_pics(lsys: LSys, systems: List[str], path: str):
         Image.fromarray(img).save(f"{path}/system-{i:02d}.png")
 
 
-def read_pics(path: str, n_files=None) -> List[np.ndarray]:
+def read_pics(path: str, n_files=None, cut_alpha=False) -> List[np.ndarray]:
     imgs = []
     filenames = sorted(glob(path)[:n_files])
     assert filenames, f"Got empty glob for {path}"
     for filename in filenames:
         with Image.open(filename) as im:
-            img = np.array(im.resize((256, 256)))[..., :3]
+            img = np.array(im.resize((256, 256)))
+            if cut_alpha:
+                img = img[..., :3]
             imgs.append(img)
     return imgs
 
@@ -106,60 +106,139 @@ def embed_pics(featurizer: feat.Featurizer, images: List[np.ndarray]) -> np.ndar
     for batch in util.batched(images, batch_size=16):
         if len(batch) == 1:
             batch = [batch]
+        batch = [img[..., :3] for img in batch]  # remove alpha channel
         e = featurizer.apply(batch)
         embeddings.extend(e)
     return np.stack(embeddings)
 
 
-def rank_pics(featurizer: feat.Featurizer, path: str, n_files=None):
+def rank_pics(featurizer: feat.Featurizer, k: int, path: str, n_files=None):
     imgs = read_pics(path, n_files=n_files)
     embeddings = embed_pics(featurizer, imgs)
     imgs = np.stack(imgs)
     plot_nearest_neighbors(targets=imgs, guesses=imgs,
                            e_targets=embeddings, e_guesses=embeddings,
-                           k=len(imgs))
+                           k=k)
 
 
-def cluster_pics(featurizer: feat.Featurizer, path: str, n_files=None, title=None):
+def rank_pics_targeted(featurizer: feat.Featurizer, k: int,
+                       target_path: str, guess_path: str, n_guesses=None):
+    guesses = read_pics(guess_path, n_files=n_guesses, cut_alpha=True)
+    guess_embeddings = embed_pics(featurizer, guesses)
+    guesses = np.stack(guesses)
+    targets = read_pics(target_path, cut_alpha=True)
+    target_embeddings = embed_pics(featurizer, targets)
+    targets = np.stack(targets)
+    plot_nearest_neighbors(targets=targets, guesses=guesses,
+                           e_targets=target_embeddings, e_guesses=guess_embeddings,
+                           k=k)
+
+def mds_pics(featurizer: feat.Featurizer, path: str, n_files=None, title=None):
     imgs = read_pics(path, n_files=n_files)
-    img_size = max(max(img.shape) for img in imgs)
     embeddings = embed_pics(featurizer, imgs)
     mds = manifold.MDS(n_components=2, random_state=0)
     points = mds.fit_transform(embeddings)
     imgs = np.stack(imgs)
-    ax = util.imscatter(imgs, points, zoom=0.5, figsize=(15, 15))
-    # ax = util.plot_images_at_positions(imgs, points)
+    ax = util.imscatter(imgs, points, zoom=0.4, figsize=(15, 15))
     ax.title.set_text(title)
-    # if title:
-    #     fig.suptitle(title, x=0.02, y=0.98, ha="left", va="top")
 
 
-if __name__ == "__main__":
-    root = "/Users/djsl/Documents/research/prob-repl"
-    dir = f"{root}/out/test/images"
+def tsne_pics(featurizer: feat.Featurizer,
+              perplexity_range: List[float],
+              path: str,
+              n_files=None,
+              save_dir=None,
+              alpha=0.5):
+    imgs = read_pics(path, n_files=n_files)
+    embeddings = embed_pics(featurizer, imgs); print(embeddings.shape)
+    embeddings = decomposition.PCA().fit_transform(embeddings); print(embeddings.shape)
+    for run in tqdm(range(10)):
+        for perplexity in perplexity_range:
+            tsne = manifold.TSNE(
+                n_components=2,
+                n_iter=5000,
+                perplexity=perplexity,
+                n_iter_without_progress=150,
+                n_jobs=2
+            )
+            points = tsne.fit_transform(embeddings)
+            imgs = np.stack(imgs)
+            ax = util.imscatter(imgs, points, zoom=0.4, alpha=alpha)
+            ax.title.set_text(f"perplexity={perplexity}, run={run}")
+
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+                plt.savefig(f"{save_dir}/perp{perplexity}_run{run}.png")
+                plt.close()
+            else:
+                plt.show()
+
+
+def measure_dataset_dist(target_path: str, guess_path: str,
+                         disable_last_layer, softmax_outputs, center, sigma, vary_color):
     lsys = LSys(kind="deterministic",
                 featurizer=feat.ResnetFeaturizer(
-                    disable_last_layer=True,
-                    softmax_outputs=False,
-                    sigma=0,
+                    disable_last_layer=disable_last_layer,
+                    softmax_outputs=softmax_outputs,
+                    center=center,
+                    sigma=sigma,
                 ),
                 step_length=3,
                 render_depth=3,
                 n_rows=256,
                 n_cols=256,
-                vary_color=True)
+                vary_color=vary_color)
+    # for run_id in [
+    #     "xgtuf1f7",
+    #     "lbiu7veh",
+    #     "jboe4u9c",
+    #     "69elsujn",
+    #     "i9vplkpx",
+    # ]:
+    #     csv_file = f"{root}/out/sweeps/2a5p4beb/{run_id}.csv"
+    #     out_dir = f"{dir}/lsystems/generated-color-256/{run_id}"
+    #     generate_lsystem_pics_from_csv(lsys,
+    #                                    csv_path=csv_file,
+    #                                    out_dir=out_dir)
+    rank_pics_targeted(lsys.featurizer, k=5, target_path=target_path, guess_path=guess_path)
+    plt.show()
+    # mds_pics(lsys.featurizer, path=target_path, title="target")
+    # plt.show()
+    # if target_path != guess_path:
+    #     mds_pics(lsys.featurizer, path=guess_path, title="guess")
+    #     plt.show()
+
+
+if __name__ == "__main__":
+    # set matplotlib to dark
+    plt.style.use('dark_background')
+    root = "/Users/djsl/Documents/research/prob-repl"
+    dir = f"{root}/out/test/images"
     # generate_lsystem_pics(lsys,
     #                       examples.lsystem_book_det_examples,
-    #                       f"{dir}/lsystems/color-256")
-    # generate_lsystem_pics_from_csv(lsys,
-    #                                csv_path=f"{root}/out/sweeps/2a5p4beb/lbiu7veh.csv",
-    #                                out_dir=f"{dir}/lsystems/generated-128")
+    #                       f"{dir}/lsystems/rgba-256")
+    # for disable_last_layer, softmax_outputs, center in itertools.product([False, True,],
+    #                                                                      [False, True,],
+    #                                                                      [False, True,]):
+    # measure_dataset_dist(target_path=f"{dir}/natural/*",
+    #                      guess_path=f"{dir}/natural/*",
+    #                      disable_last_layer=True,
+    #                      softmax_outputs=False,
+    #                      center=False,
+    #                      sigma=0,
+    #                      vary_color=True)
+    measure_dataset_dist(target_path=f"{dir}/lsystems/rgba-256/*.png",
+                         guess_path=f"{dir}/lsystems/generated-color-256/system-*.png",
+                         disable_last_layer=True,
+                         softmax_outputs=False,
+                         center=False,
+                         sigma=0,
+                         vary_color=True)
 
-    for disable_last_layer, softmax_outputs in itertools.product([False, True,],
-                                                                 [False, True,]):
-        lsys.featurizer = feat.ResnetFeaturizer(disable_last_layer=disable_last_layer,
-                                                softmax_outputs=softmax_outputs)
-        print(lsys)
-        cluster_pics(lsys.featurizer, f"{dir}/lsystems/generated-128/system-1[0-9][0-9].png",
-                     title=f"cut_last={disable_last_layer}, softmax={softmax_outputs}")
-        plt.show()
+    # rank_pics(lsys.featurizer, k=5, path=f"{dir}/lsystems/color-256/*.png")
+    # tsne_pics(lsys.featurizer,
+    #           perplexity_range=[2, 4, 6, 8],
+    #           path=f"{dir}/natural/*",
+    #           save_dir=f"{root}/out/tsne/natural/"
+    #                    f"cut_last={disable_last_layer}_softmax={softmax_outputs}_center={center}/")
+    # plt.show()

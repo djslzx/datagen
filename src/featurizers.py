@@ -1,7 +1,7 @@
 from typing import *
 import torch as T
 import numpy as np
-from torchvision.models import resnet50, ResNet50_Weights, quantization
+from torchvision.models import resnet50, ResNet50_Weights
 from transformers import AutoTokenizer, AutoModelForCausalLM  # language models
 from sentence_transformers import SentenceTransformer
 from sys import stderr
@@ -9,6 +9,8 @@ from scipy.spatial import distance as dist
 from einops import rearrange
 import Levenshtein
 import skimage
+
+import util
 
 
 class Featurizer:
@@ -53,15 +55,11 @@ class TextPredictor(Featurizer):
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, quantize=False, disable_last_layer=True, softmax_outputs=False, sigma=0):
-        self.quantize = quantize
-        if quantize:
-            weights = quantization.ResNet50_QuantizedWeights.DEFAULT
-            resnet = quantization.resnet50(weights=weights, quantize=True)
-        else:
-            weights = ResNet50_Weights.DEFAULT
-            resnet = resnet50(weights=weights)
+    def __init__(self, disable_last_layer=True, softmax_outputs=False, center=False, sigma=0):
+        weights = ResNet50_Weights.DEFAULT
+        resnet = resnet50(weights=weights)
 
+        self.center = center
         self.preprocess = weights.transforms()
         self.disable_last_layer = disable_last_layer
         if disable_last_layer:
@@ -82,6 +80,10 @@ class ResnetFeaturizer(Featurizer):
         return 2048 if self.disable_last_layer else 1000
 
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
+        # center
+        if self.center:
+            batch = [util.center_image(img) for img in batch]
+
         # gaussian filter
         if self.sigma > 0:
             batch = [skimage.filters.gaussian(img, sigma=self.sigma, channel_axis=-1) for img in batch]
