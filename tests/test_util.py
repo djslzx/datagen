@@ -145,14 +145,14 @@ def test_vec_approx_eq():
             assert y == out, f"Expected ({a} == {b}, thresh={thresh}) == {y} but got {out}"
 
 
-def test_plot_images_at_positions():
+def test_imscatter():
     n_images = 100
     image_size = 20
     images = np.stack([np.ones((image_size, image_size, 3)) * (((i * 7) % 100)/100)
                        for i in range(n_images)])
     positions = np.stack([np.array([i % 6, i // 6]) * image_size
                           for i in range(n_images)])
-    plot_images_at_positions(images, positions)
+    imscatter(images, positions)
     plt.show()
 
 
@@ -196,3 +196,48 @@ def test_add_border():
     for x, c, y in cases:
         out = add_border(x, c)
         assert np.allclose(out, y), f"Expected {y} but got {out}"
+
+
+def dist(a, b):
+    return abs(a - b)
+
+def bitmap_to_image(bitmap):
+    return bitmap[..., np.newaxis] * np.ones((1, 3))
+
+def test_center_image():
+    cases = [
+        np.random.rand(10, 10, 3),
+        add_border(np.random.rand(4, 4, 3), 3),
+        add_border(np.random.rand(4, 4, 3), 3)[:-3, :, :],
+        add_border(np.random.rand(4, 4, 3), 3)[2:, :-1, :],
+        add_border(np.random.rand(3, 3, 3), 3),
+        add_border(np.random.rand(3, 3, 3), 3)[:-2, :-2, :],
+        bitmap_to_image(np.array([[0, 0, 0, 0],
+                                  [0, 0, 0, 0],
+                                  [0, 0, 1, 1],
+                                  [0, 0, 1, 0]])),
+        bitmap_to_image(np.array([[0, 0, 0, 0, 0],
+                                  [0, 0, 0, 0, 0],
+                                  [0, 0, 1, 1, 1],
+                                  [0, 0, 1, 0, 0]])),
+    ]
+    images = []
+    for image in cases:
+        out = center_image(image)
+        x, y, _ = np.nonzero(out)
+        x_low_gap = dist(x.min(), 0)
+        x_high_gap = dist(x.max(), out.shape[0])
+        y_low_gap = dist(y.min(), 0)
+        y_high_gap = dist(y.max(), out.shape[1])
+        assert dist(x_low_gap, x_high_gap) <= 1, \
+            f"Expected x_low_gap to be close to x_high_gap " \
+            f"but got {x_low_gap} and {x_high_gap}"
+        assert dist(y_low_gap, y_high_gap) <= 1, \
+            f"Expected y_low_gap to be close to y_high_gap " \
+            f"but got {y_low_gap} and {y_high_gap}"
+        images.extend([image, out])
+
+    plot_image_grid(images,
+                    shape=(len(cases), 2),
+                    labels=["original", "centered"] * len(cases))
+    plt.show()

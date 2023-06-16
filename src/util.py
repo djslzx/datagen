@@ -12,6 +12,23 @@ from os import mkdir
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 
+def center_image(image: np.ndarray) -> np.ndarray:
+    # find the center of mass
+    x, y, _ = np.nonzero(image)
+    x_mid = (x.min() + x.max()) // 2
+    y_mid = (y.min() + y.max()) // 2
+
+    # translate the image so that the center of mass is at the center of the image
+    x_offset = (image.shape[0] - 1) // 2 - x_mid
+    y_offset = (image.shape[1] - 1) // 2 - y_mid
+
+    return np.roll(image, (x_offset, y_offset), axis=(0, 1))
+
+
+def bkg_black_to_white(image: np.ndarray) -> np.ndarray:
+    return np.where(image > 0, image, 255)
+
+
 def add_border(image: np.ndarray, thickness=1) -> np.ndarray:
     shape = (image.shape[0] + thickness * 2,
              image.shape[1] + thickness * 2,
@@ -39,12 +56,12 @@ def fig_images_at_positions(images: np.ndarray, positions: np.ndarray) -> plt.Fi
     return fig
 
 
-def imscatter(images: np.ndarray, positions: np.ndarray, zoom=1, figsize=(10, 10)):
+def imscatter(images: np.ndarray, positions: np.ndarray, zoom=1, figsize=(10, 10), alpha=0.5):
     plt.figure(figsize=figsize)
     ax = plt.gca()
     for image, position in zip(images, positions):
-        im = OffsetImage(image, zoom=zoom)
-        ab = AnnotationBbox(im,  position, xycoords='data', frameon=False)
+        im = OffsetImage(image, zoom=zoom, alpha=alpha)
+        ab = AnnotationBbox(im, position, xycoords='data', frameon=False)
         ax.add_artist(ab)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
