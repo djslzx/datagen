@@ -228,7 +228,7 @@ if __name__ == "__main__":
     #                      sigma=0,
     #                      vary_color=True)
     measure_dataset_dist(target_path=f"{dir}/lsystems/rgba-256/*.png",
-                         guess_path=f"{dir}/lsystems/generated-color-256/system-*.png",
+                         guess_path=f"{dir}/lsystems/generated-color-256/*/system-*.png",
                          disable_last_layer=True,
                          softmax_outputs=False,
                          center=False,

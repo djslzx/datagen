@@ -25,7 +25,7 @@ search:
   alpha: 1
   max_popn_size: 100
   samples_ratio: 10
-  keep_per_iter: 10  # archiving rate
+  keep_per_iter: 20  # archiving rate
 
   # length penalties
   length_cap: 200
@@ -47,3 +47,4 @@ render:
   render_depth: 3
   n_rows: 128
   n_cols: 128
+  vary_color: True
