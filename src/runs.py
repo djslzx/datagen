@@ -106,7 +106,8 @@ def plot_avg_dist(prefix: str, run_id: str, holdout: List[str], stride: int, n_n
 
     steps = df.step.unique()
     print(run_id)
-    for step in steps[::stride] + (steps[-1:] if (len(holdout) - 1) % stride == 0 else []):
+    include_last = (len(holdout) - 1) % stride == 0
+    for step in list(steps[::stride]) + (steps[-1:] if include_last else []):
         print(f"  step: {step}")
         gen = df.loc[(df.step <= step) & (df.chosen == True)].program
         gen = [lang.parse(x) for x in gen]
@@ -180,5 +181,5 @@ if __name__ == '__main__':
     for run_id in df.id.unique():
         # render_run("../out/sweeps/2a5p4beb/", run_id, stride=10)
         # viz_closest("../out/sweeps/2a5p4beb", run_id, holdout_data, stride=10, n_neighbors=10)
-        plot_avg_dist("../out/sweeps/2a5p4beb/", run_id, stride=50, n_neighbors=5, holdout=holdout_data)
+        plot_avg_dist(f"../out/ns/{name}/", run_id, stride=50, n_neighbors=5, holdout=holdout_data)
     # test_evals()
