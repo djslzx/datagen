@@ -56,7 +56,7 @@ parameters:
       iters:
         value: 200
       select:
-        value: [strict, weighted]
+        values: [strict, weighted]
       alpha:
         value: 1
       max_popn_size:
@@ -93,4 +93,4 @@ parameters:
       n_cols:
         value: 128
       vary_color:
-        value: [true, false]
+        values: [true, false]
