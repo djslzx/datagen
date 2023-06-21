@@ -5,12 +5,23 @@ metric:
   name: "avg sample holdout dist"
 parameters:
   train_data:
-    value:
-      - "20;F;F~F"
-      - "90;F;F~FF"
-      - "45;F[+F][-F]FF;F~FF"
-      - "60;F+F-F;F~F+FF"
-      - "60;F;F~F[+F][-F]F"
+    values:
+      - - "20;F;F~F"
+        - "90;F;F~FF"
+        - "45;F[+F][-F]FF;F~FF"
+        - "60;F+F-F;F~F+FF"
+        - "60;F;F~F[+F][-F]F"
+      - - "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"
+        - "90;-F;F~F+F-F-F+F"
+        - "90;F-F-F-F;F~FF-F-F-F-F-F+F"
+        - "90;F-F-F-F;F~FF-F-F-F-FF"
+        - "90;F-F-F-F;F~FF-F+F-F-FF"
+        - "90;F-F-F-F;F~FF-F--F-F"
+        - "90;F-F-F-F;F~F-FF--F-F"
+        - "90;F-F-F-F;F~F-F+F-F-F"
+        - "20;F;F~F[+F]F[-F]F"
+        - "20;F;F~F[+F]F[-F][F]"
+        - "20;F;F~FF-[-F+F+F]+[+F-F-F]"
   holdout_data:
     value:
       - "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F"
@@ -45,7 +56,7 @@ parameters:
       iters:
         value: 200
       select:
-        value: strict
+        value: [strict, weighted]
       alpha:
         value: 1
       max_popn_size:
@@ -57,14 +68,14 @@ parameters:
       length_cap:
         value: 200
       length_penalty_type:
-        values: [additive, inverse]
+        value: additive
       length_penalty_additive_coeff:
-        value: 1e-2
+        value: 0
 #        distribution: log_uniform_values
 #          min: 0.0001
 #          max: 0.1
       length_penalty_inverse_coeff:
-        value: 10
+        value: 50
       ablate_mutator:
         value: false
       archive_early:
@@ -81,3 +92,5 @@ parameters:
         value: 128
       n_cols:
         value: 128
+      vary_color:
+        value: [true, false]

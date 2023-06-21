@@ -1,4 +1,4 @@
-simplify: true
+simplify: false
 train_data:
   - "20;F;F~F"
   - "90;F;F~FF"
