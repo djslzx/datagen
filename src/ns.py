@@ -89,7 +89,8 @@ def hausdorff(X: np.ndarray, Y: np.ndarray) -> float:
 
 def log_best_and_worst(k: int, L: Language, samples: np.ndarray, scores: np.ndarray) -> Dict:
     def summarize(indices):
-        img = rearrange([L.eval(x) for x in samples[indices]], "b color row col -> row (b col) color")
+        img = rearrange([L.eval(x) for x in samples[indices]],
+                        "b h w c -> h (b w) c")
         caption = "Left to right: " + ", ".join(f"{L.to_str(x)} ({score:.4e})"
                                                 for x, score in zip(samples[indices], scores[indices]))
         return wandb.Image(img, caption=caption)
