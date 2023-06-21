@@ -3,33 +3,29 @@ ns without the evo
 """
 from math import ceil
 from pprint import pp
-from typing import List, Union, Callable, Collection, Dict, Any
+from typing import List, Callable, Collection, Dict
 import csv
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import directed_hausdorff
 from scipy.special import softmax
-from einops import rearrange, reduce
+from einops import rearrange
 import wandb
 import yaml
 from tqdm import tqdm
 
 from featurizers import ResnetFeaturizer
-from lang import Language, Tree, ParseError
-import point
-import lindenmayer
-import regexpr
-import examples
+from lang.tree import Language, Tree, ParseError
+from lang import lindenmayer, point
 import util
 
 Distance = Callable[[np.ndarray, np.ndarray], float]
 
-def extract_features(L: Language, S: Collection[Tree], n_samples: int, batch_size=4) -> np.ndarray:
+def extract_features(L: Language, S: Collection[Tree], n_samples=1, batch_size=4, load_bar=False) -> np.ndarray:
     # take samples from programs in S, then batch them and feed them through
     # the feature extractor for L
     def samples():
@@ -38,7 +34,9 @@ def extract_features(L: Language, S: Collection[Tree], n_samples: int, batch_siz
                 yield L.eval(x, env={})
     ys = []
     n_batches = ceil(len(S) * n_samples / batch_size)
-    for batch in tqdm(util.batched(samples(), batch_size=batch_size), total=n_batches):
+    batches = util.batched(samples(), batch_size=batch_size)
+    if load_bar: batches = tqdm(batches, total=n_batches)
+    for batch in batches:
         y = L.featurizer.apply(batch)
         if batch_size > 1 and len(batch) > 1:
             ys.extend(y)
@@ -91,7 +89,8 @@ def hausdorff(X: np.ndarray, Y: np.ndarray) -> float:
 
 def log_best_and_worst(k: int, L: Language, samples: np.ndarray, scores: np.ndarray) -> Dict:
     def summarize(indices):
-        img = rearrange([L.eval(x) for x in samples[indices]], "b color row col -> row (b col) color")
+        img = rearrange([L.eval(x) for x in samples[indices]],
+                        "b h w c -> h (b w) c")
         caption = "Left to right: " + ", ".join(f"{L.to_str(x)} ({score:.4e})"
                                                 for x, score in zip(samples[indices], scores[indices]))
         return wandb.Image(img, caption=caption)

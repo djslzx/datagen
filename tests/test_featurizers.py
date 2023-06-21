@@ -3,8 +3,8 @@ from sklearn.neighbors import NearestNeighbors
 from typing import *
 from os import listdir
 from featurizers import *
-from lindenmayer import S0LSystem
-from util import plot
+from lang.lindenmayer import S0LSystem
+from util import plot_image_grid
 
 N_ROWS = 128
 N_COLS = 128
@@ -42,7 +42,7 @@ def check_resnet_classifier(popn: List[Tuple[S0LSystem, float]], n_samples: int)
 
     # check resnet classes
     for i in range(n):
-        plot(imgs=images[i], shape=(1, n_samples), labels=labels[i])
+        plot_image_grid(imgs=images[i], shape=(1, n_samples), labels=labels[i])
 
 
 def check_resnet_with_images(dirpath: str):  # pragma: no cover
@@ -56,7 +56,7 @@ def check_resnet_with_images(dirpath: str):  # pragma: no cover
         print(f"  shape: {img.shape}")
         features = classifier.apply(img)
         labels = classifier.top_k_classes(features, 3)
-        plot(imgs=[img[0]], shape=(1, 1), labels=["\n".join(labels)])
+        plot_image_grid(imgs=[img[0]], shape=(1, 1), labels=["\n".join(labels)])
 
 
 def check_featurizer(featurizer: Featurizer, popn: List[Tuple[S0LSystem, float]], n_samples: int, n_neighbors: int):  # pragma: no cover
@@ -73,10 +73,10 @@ def check_featurizer(featurizer: Featurizer, popn: List[Tuple[S0LSystem, float]]
         neighbor_indices = indices[distances.argsort()]
         all_imgs = np.concatenate((images[i].reshape(1, n_samples, N_ROWS, N_COLS),
                                    images[neighbor_indices]), axis=0).reshape((-1, N_ROWS, N_COLS))
-        plot(title=str(featurizer),
-             imgs=all_imgs,
-             shape=(n_samples, n_neighbors + 1),
-             labels=[""] + [f"{x:.4e}" for x in np.repeat(distances, n_samples).tolist()])
+        plot_image_grid(title=str(featurizer),
+                        imgs=all_imgs,
+                        shape=(n_samples, n_neighbors + 1),
+                        labels=[""] + [f"{x:.4e}" for x in np.repeat(distances, n_samples).tolist()])
 
 
 if __name__ == '__main__':  # pragma: no cover
@@ -94,7 +94,7 @@ if __name__ == '__main__':  # pragma: no cover
             "F+F;F~FF",
         ]
     ]
-    # check_resnet_with_images("../resnet-test/screenshots")
+    # check_resnet_with_images("../resnet-tests/screenshots")
     check_resnet_classifier(popn=seed, n_samples=1)
     # check_featurizer(featurizer=ResnetFeaturizer(disable_last_layer=False, softmax_outputs=True),
     #                  popn=seed, n_samples=1, n_neighbors=len(seed))

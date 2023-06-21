@@ -9,14 +9,14 @@ import seaborn as sns
 import wandb
 from typing import List, Dict, Union
 
-from lang import Tree
+from lang.tree import Tree
+from lang.lindenmayer import LSys
 from featurizers import ResnetFeaturizer
-from lindenmayer import LSys
 from ns import extract_features
 import util
 
 
-def make_df(sweep_path: str):
+def make_df(sweep_path: str, filter_same=False):
     api = wandb.Api()
     sweep = api.sweep(sweep_path)
     runs = sweep.runs
@@ -31,6 +31,17 @@ def make_df(sweep_path: str):
             if not k.startswith('_') and not k.startswith("parameters")
         }))
         records.append(record)
+
+    if filter_same:
+        keep_keys = set()
+        for k, v in records[0].items():
+            if any(record[k] != v for record in records[1:]):
+                keep_keys.add(k)
+        records = [
+            {k: record[k] for k in keep_keys}
+            for record in records
+        ]
+
     return pd.DataFrame(records)
 
 
@@ -51,22 +62,15 @@ def render_run(prefix: str, run_id: str, stride: int):
             shape = None
         else:
             shape = (10, 10)
-        util.plot(imgs,
-                  shape=shape,
-                  title=f"{run_id} step={step}",
-                  fontsize=3,
-                  saveto=f"{prefix}/{run_id}-step{step}.png")
+        util.plot_image_grid(imgs,
+                             shape=shape,
+                             title=f"{run_id} step={step}",
+                             fontsize=3,
+                             saveto=f"{prefix}/{run_id}-step{step}.png")
 
-# todo:
-#  - produce multiple distances by filtering points into different subsets:
-#    - archive/samples/chosen/not chosen
-#  - measure redundancy: number of repeated feature vectors
-#    (should show a difference between additive/inverse length penalty)
-#  - check relative novelty between runs
-#  - viz how token probabilities change over time - max likelihood program?
-def viz_closest(prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
-    lang = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=4, render_depth=3)
-    def embed(s: Union[List[Tree], np.ndarray]): return extract_features(lang, s, n_samples=1)
+
+def viz_closest(lang: LSys, prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
+    def embed(s: Union[List[Tree], np.ndarray]): return extract_features(lang, s, n_samples=1, load_bar=True)
 
     df = pd.read_csv(f"{prefix}/{run_id}.csv")
     n_holdout = len(holdout)
@@ -91,13 +95,12 @@ def viz_closest(prefix: str, run_id: str, holdout: List[str], stride: int, n_nei
             target = holdout_trees[i]
             neighbors = gen[indices[i]].tolist()
             images.extend([lang.eval(x) for x in [target] + neighbors])
-        util.plot(images, shape=(n_holdout, 1 + n_neighbors),
-                  saveto=f"{prefix}/{run_id}-knn-step{step}.png")
+        util.plot_image_grid(images, shape=(n_holdout, 1 + n_neighbors),
+                             saveto=f"{prefix}/{run_id}-knn-step{step}.png")
 
 
-def plot_avg_dist(prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
-    lang = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=4, render_depth=3)
-    def embed(s: Union[List[Tree], np.ndarray]): return extract_features(lang, s, n_samples=1)
+def plot_avg_dist(lang: LSys, prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
+    def embed(s: Union[List[Tree], np.ndarray]): return extract_features(lang, s, n_samples=1, load_bar=True)
 
     df = pd.read_csv(f"{prefix}/{run_id}.csv")
     holdout_trees = [lang.parse(x) for x in holdout]
@@ -170,16 +173,35 @@ def test_evals():
     plot_avg_dist("../out/sweeps/mock", "small", holdout=holdout, stride=2, n_neighbors=1)
 
 
-if __name__ == '__main__':
-    name = "2a5p4beb"
-    # df = make_df(f"djsl/novelty/{name}")
-    # df.to_csv(f"{name}.csv")
+def get_holdout() -> List[str]:
     with open("configs/static-config.yaml") as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
-    holdout_data = config['holdout_data']
-    df = pd.read_csv(f"{name}.csv")
-    for run_id in df.id.unique():
-        # render_run("../out/sweeps/2a5p4beb/", run_id, stride=10)
-        # viz_closest("../out/sweeps/2a5p4beb", run_id, holdout_data, stride=10, n_neighbors=10)
-        plot_avg_dist(f"../out/ns/{name}/", run_id, stride=50, n_neighbors=5, holdout=holdout_data)
+    return config['holdout_data']
+
+
+if __name__ == '__main__':
+    name = "2a5p4beb"
+    df = make_df(f"djsl/novelty/{name}", filter_same=True)
+    df.to_csv(f"../out/summary/{name}.csv")
+    lang = LSys(kind="deterministic",
+                featurizer=ResnetFeaturizer(
+                    disable_last_layer=True,
+                    softmax_outputs=False,
+                    sigma=0),
+                step_length=4,
+                render_depth=3,
+                n_rows=256,
+                n_cols=256,
+                aa=True,
+                vary_color=True)
+    # df = pd.read_csv(f"{name}.csv")
+    path = f"../out/sweeps/{name}/"
+    run_id = "jboe4u9c"
+    viz_closest(lang, path, run_id, holdout=get_holdout(), stride=50, n_neighbors=10)
+
+    # for run_id in df.id.unique():
+        # render_run(path, run_id, stride=10)
+        # viz_closest(lang, path, run_id, holdout=get_holdout(), stride=50, n_neighbors=10)
+        # plot_avg_dist(lang, path, run_id, holdout=get_holdout(), stride=50, n_neighbors=5)
+>>>>>>> 7dee6e81bd64aa6709f616bcb32f554db67be1cb
     # test_evals()

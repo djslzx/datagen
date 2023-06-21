@@ -9,7 +9,65 @@ import matplotlib.pyplot as plt
 import time
 import sys
 from os import mkdir
-from einops import reduce
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+
+
+def center_image(image: np.ndarray) -> np.ndarray:
+    # find the center of mass
+    x, y, _ = np.nonzero(image)
+    x_mid = (x.min() + x.max()) // 2
+    y_mid = (y.min() + y.max()) // 2
+
+    # translate the image so that the center of mass is at the center of the image
+    x_offset = (image.shape[0] - 1) // 2 - x_mid
+    y_offset = (image.shape[1] - 1) // 2 - y_mid
+
+    return np.roll(image, (x_offset, y_offset), axis=(0, 1))
+
+
+def bkg_black_to_white(image: np.ndarray) -> np.ndarray:
+    return np.where(image > 0, image, 255)
+
+
+def add_border(image: np.ndarray, thickness=1) -> np.ndarray:
+    shape = (image.shape[0] + thickness * 2,
+             image.shape[1] + thickness * 2,
+             *image.shape[2:])
+    out = np.zeros(shape, dtype=image.dtype)
+    out[thickness:-thickness, thickness:-thickness] = image
+    return out
+
+
+def fig_images_at_positions(images: np.ndarray, positions: np.ndarray) -> plt.Figure:
+    # translate positions so that the min x and y positions are 0
+    positions[:, 0] -= positions[:, 0].min()
+    positions[:, 1] -= positions[:, 1].min()
+
+    # find the max x and y positions
+    i_xlim = positions[:,0].argmax()
+    i_ylim = positions[:, 1].argmax()
+    xlim = images[i_xlim].shape[0] + positions[i_xlim, 0]
+    ylim = images[i_ylim].shape[1] + positions[i_ylim, 1]
+
+    fig = plt.figure(figsize=(xlim/100, ylim/100))
+    for image, pos in zip(images, positions):
+        x, y = pos
+        fig.figimage(image, xo=x, yo=y, origin='upper')
+    return fig
+
+
+def imscatter(images: np.ndarray, positions: np.ndarray, zoom=1, figsize=(10, 10), alpha=0.5):
+    plt.figure(figsize=figsize)
+    ax = plt.gca()
+    for image, position in zip(images, positions):
+        im = OffsetImage(image, zoom=zoom, alpha=alpha)
+        ab = AnnotationBbox(im, position, xycoords='data', frameon=False)
+        ax.add_artist(ab)
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    ax.update_datalim(positions)
+    ax.autoscale()
+    return ax
 
 
 def flatten(nested_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -26,23 +84,6 @@ def flatten(nested_dict: Dict[str, Any]) -> Dict[str, Any]:
         else:
             out[k] = v
     return out
-
-
-def test_flatten():
-    cases = [
-        {}, {},
-        {"a": 1}, {"a": 1},
-        {"a": {"x": 1, "y": 2}}, {"a.x": 1, "a.y": 2},
-        {"a": {"x": 1, "y": 2}, "b": 3}, {"a.x": 1, "a.y": 2, "b": 3},
-        {"a": {"x": {"1": 1,
-                     "2": 2},
-               "y": 2},
-         "b": 3},
-        {"a.x.1": 1, "a.x.2": 2, "a.y": 2, "b": 3},
-    ]
-    for x, y in zip(cases[::2], cases[1::2]):
-        out = flatten(x)
-        assert y == out, f"Expected {y} but got {out}"
 
 
 class ParamTester:
@@ -75,19 +116,6 @@ def split_endpoints(lengths: List[int]) -> List[Tuple[int, int]]:
     return list(zip(splits[:-1], splits[1:]))
 
 
-def test_split_endpoints():
-    cases = [
-        [0], [(0, 0)],
-        [1], [(0, 1)],
-        [1, 1], [(0, 1), (1, 2)],
-        [1, 2, 1], [(0, 1), (1, 3), (3, 4)],
-        [1, 2, 1, 5, 10], [(0, 1), (1, 3), (3, 4), (4, 9), (9, 19)],
-    ]
-    for x, y in zip(cases[::2], cases[1::2]):
-        out = split_endpoints(x)
-        assert y == out, f"Expected {y} but got {out}"
-
-
 def pad_array(arr: np.ndarray, batch_size: int) -> np.ndarray:
     r = len(arr) % batch_size
     if r != 0:
@@ -107,43 +135,6 @@ def batched(iterable: Iterable, batch_size: int) -> Iterable[List]:
             b.append(x)
     if b:  # leftover elts
         yield b
-
-
-def test_batch():
-    cases = [
-        ([0, 1, 2, 3, 4, 5], 1), [[0], [1], [2], [3], [4], [5]],
-        ([0, 1, 2, 3, 4, 5], 2), [[0, 1], [2, 3], [4, 5]],
-        ([0, 1, 2, 3, 4, 5], 3), [[0, 1, 2], [3, 4, 5]],
-        ([0, 1, 2, 3, 4, 5], 4), [[0, 1, 2, 3], [4, 5]],
-        ([0, 1, 2, 3, 4, 5], 5), [[0, 1, 2, 3, 4], [5]],
-        ([0, 1, 2, 3, 4, 5], 6), [[0, 1, 2, 3, 4, 5]],
-        ([0, 1, 2, 3, 4, 5], 7), [[0, 1, 2, 3, 4, 5]],
-    ]
-    for args, ans in zip(cases[::2], cases[1::2]):
-        out = list(batched(*args))
-        assert out == ans, f"Expected {ans} but got {out}"
-
-
-def test_param_tester():
-    p = ParamTester({"a": [1, 2],
-                     "b": [0, 1, 2],
-                     "c": 0})
-    configs = [
-        {"a": 1, "b": 0, "c": 0},
-        {"a": 2, "b": 0, "c": 0},
-        {"a": 1, "b": 1, "c": 0},
-        {"a": 2, "b": 1, "c": 0},
-        {"a": 1, "b": 2, "c": 0},
-        {"a": 2, "b": 2, "c": 0},
-    ]
-    for i, config in enumerate(p):
-        assert configs[i] == config, f"Expected {configs[i]} on iter {i} but got {config}"
-
-    # single config
-    p = ParamTester({"a": 0, "b": 1, "c": [2]})
-    config = {"a": 0, "b": 1, "c": 2}
-    for out in p:
-        assert out == config, f"Expected {config} but got {out}"
 
 
 class Timing(object):
@@ -174,28 +165,12 @@ def cut_ext(filename: str) -> str:
     return filename[:filename.rfind(".")]
 
 
-def find_closing_bracket(s: str, brackets="[]") -> int:
-    assert brackets in {"[]", "()", "{}"}
-    c_open, c_close = brackets
-    assert s[0] != c_open, f"Expected string to skip open bracket, but received: {s}"
-    n_brackets = 0
-    for i, c in enumerate(s):
-        if c == c_open:
-            n_brackets += 1
-        elif c == c_close:
-            if n_brackets == 0:
-                return i
-            else:
-                n_brackets -= 1
-    raise ValueError(f"Mismatched brackets in {s}")
-
-
-def plot(imgs: List[np.array],
-         shape: Optional[Tuple[int, int]] = None,
-         labels: Optional[List[str]] = None,
-         title="",
-         fontsize=6,
-         saveto=None):  # pragma: no cover
+def plot_image_grid(imgs: List[np.array],
+                    shape: Optional[Tuple[int, int]] = None,
+                    labels: Optional[List[str]] = None,
+                    title="",
+                    fontsize=6,
+                    saveto=None):  # pragma: no cover
     # infer reasonable shape if none given
     if shape is None:
         n = len(imgs)
@@ -206,14 +181,10 @@ def plot(imgs: List[np.array],
     assert len(imgs) <= shape[0] * shape[1], f"Received {len(imgs)} with shape {shape}"
     assert labels is None or len(imgs) == len(labels), f"Received {len(imgs)} images and {len(labels)} labels"
 
-    # convert image to floats if needed
-    if isinstance(imgs[0], np.ndarray) and imgs[0].dtype != float:
-        imgs = [img.astype(float) for img in imgs]
-
     fig, ax = plt.subplots(*shape, figsize=(1.28 * shape[1] + 0.5,
                                             1.28 * shape[0] + 0.5))
     if shape == (1, 1):
-        ax.imshow(imgs[0][0])
+        ax.imshow(imgs[0])
         if labels is not None:
             ax.set_title(labels[0], pad=3, fontsize=fontsize)
     else:
@@ -226,7 +197,7 @@ def plot(imgs: List[np.array],
         axes: List[plt.Axes] = ax.flat
         for i, img in enumerate(imgs):
             axis = axes[i]
-            axis.imshow(img[0])  # remove color dim
+            axis.imshow(img)
             if labels is not None:
                 axis.set_title(labels[i], pad=3, fontsize=fontsize)
 
@@ -241,11 +212,6 @@ def plot(imgs: List[np.array],
     else:
         plt.show()
     plt.close()
-
-
-def stack_repeat(array: np.ndarray, k) -> np.ndarray:
-    """Stacks `k` copies of `array`"""
-    return np.repeat(array[None, ...], k, axis=0)
 
 
 def split_list(s: List[str], t: str) -> List[List[str]]:

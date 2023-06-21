@@ -75,8 +75,6 @@ pub fn simplify(s: &str) -> String {
             "(symbols ?x nil)" => "(symbol ?x)"),
         rw!("collapse-nil-symbol";
             "(symbol nil)" => "nil"),
-        rw!("collapse-nil-axiom";
-            "(lsystem ?x nil ?y)" => "nil"),
         rw!("collapse-nil-rhs";
             "(arrow ?x nil)" => "nil"),
         rw!("collapse-nil-rule";
@@ -87,6 +85,8 @@ pub fn simplify(s: &str) -> String {
             "(rules ?x nil)" => "(rule ?x)"),
         rw!("collapse-nil-all-rules";
             "(lsystem ?x ?y nil)" => "nil"),
+        rw!("collapse-nil-axiom";
+            "(lsystem ?x nil ?y)" => "nil"),
 
         // retracing: X[X] => X
         rw!("retracing";

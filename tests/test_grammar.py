@@ -1,6 +1,7 @@
+from featurizers import ResnetFeaturizer
 from grammar import *
-import lang
-from lindenmayer import LSys
+from lang import tree
+from lang.lindenmayer import LSys
 
 nat_components = {
     "add": ["Int", "Int", "Int"],
@@ -90,7 +91,7 @@ def test_from_bigram_counts_add():
     int -> add, int -> one
     """
     s = ('add', ('add', '1', '1'), '1')
-    counts = lang.bigram_scan(s)
+    counts = lang.bigram_scan(lang.Tree.from_tuple(s))
     assert counts == {('add', 0, 'add'): 1,
                       ('add', 0, '1'): 1,
                       ('add', 1, '1'): 2}
@@ -102,11 +103,11 @@ def test_from_bigram_counts_add():
 
 
 def test_fit_lsys():
-    # doesn't actually test anything aside from checking that the pieces fit together
+    # doesn't actually tests anything aside from checking that the pieces fit together
     corpus = [
-        "F;F~F",
+        "20;F;F~F",
     ]
-    lsys = LSys(90, 3, 3, 128, 128)
+    lsys = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=3)
     parsed_corpus = [lsys.parse(x) for x in corpus]
     lsys.fit(parsed_corpus, alpha=1)
-    print(lsys.model)
+    # print(lsys.model)

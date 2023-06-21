@@ -5,27 +5,24 @@ Randomly sample programs from a uniform PCFG over L-systems
 from __future__ import annotations
 
 import random
-from typing import List, Set, Dict, Tuple, Callable, Optional, Any
+from typing import List, Callable, Optional, Any, Dict
 import multiprocessing as mp
 import lark.exceptions
 import numpy as np
 from scipy.spatial import distance
 from sklearn import manifold
 import itertools as it
-from matplotlib import pyplot as plt
-import seaborn as sns
 import pandas as pd
 from tqdm import tqdm
 import pickle
 import sys
 
 from featurizers import ResnetFeaturizer
-from lang import Language, Tree
-from lindenmayer import LSys, NilError
-from regexpr import Regex
+from lang.tree import Language, Tree
+from lang.lindenmayer import LSys, NilError
+from lang.regexpr import Regex
 import examples
 import util
-from view import read_outfile
 
 LEN_CAP = 100
 
@@ -97,19 +94,8 @@ def generate_regexs():
             f.write(x + "\n")
 
 
-def read_file(lang: Language, filename: str) -> List[Tree]:
-    ts = []
-    for i, (s, _) in enumerate(read_outfile(filename)):
-        if not s: continue
-        try:
-            t = lang.parse(s)
-            ts.append(t)
-        except lark.exceptions.UnexpectedToken as e:
-            print(f"WARNING: Failed on {filename}:{i}: {s}", file=sys.stderr)
-    return ts
-
-
-def write_histograms(filename: str, n_renders: int):
+def write_histograms(trees: Dict[str, List], filename: str, n_renders: int):
+    # fixme: this is broken, but kept for documentation purposes
     """
     For each pair of training datasets, plot pairwise distances in feature space between instances
     in the datasets.
@@ -122,10 +108,6 @@ def write_histograms(filename: str, n_renders: int):
         "test": "../datasets/regex/num.txt",
     }
     lang = Regex()
-    trees = {
-        name: read_file(lang, filename)
-        for name, filename in datasets.items()
-    }
     features = {}
     for name, ts in trees.items():
         print(f"Computing features for {name}", file=sys.stderr)
@@ -195,7 +177,7 @@ if __name__ == '__main__':
     L = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=3)
     for _ in range(3):
         imgs = [L.eval(random_lsystem(L, length=100)) for _ in range(100)]
-        util.plot(imgs, shape=(10, 10))
+        util.plot_image_grid(imgs, shape=(10, 10))
 
     # write_histograms("../out/plots/hists/distances_100k_n=100.dat", n_renders=100)
     # prune_table("../out/plots/hists/distances_100k.dat",

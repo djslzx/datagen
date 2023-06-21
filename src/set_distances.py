@@ -2,7 +2,6 @@
 Experiments with different distance metrics for probabilistic programs
 """
 from typing import List, Callable
-
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -14,8 +13,7 @@ from scipy.spatial.distance import minkowski, directed_hausdorff
 from einops import rearrange
 
 from featurizers import TextClassifier
-from lang import Language, Tree
-from regexpr import Regex
+from lang.regexpr import Regex
 
 def embed(xs: List[str]) -> np.ndarray:
     C = TextClassifier()

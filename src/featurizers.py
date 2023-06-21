@@ -1,14 +1,16 @@
 from typing import *
 import torch as T
 import numpy as np
-from torchvision.models import resnet50, ResNet50_Weights, quantization
+from torchvision.models import resnet50, ResNet50_Weights
 from transformers import AutoTokenizer, AutoModelForCausalLM  # language models
 from sentence_transformers import SentenceTransformer
 from sys import stderr
 from scipy.spatial import distance as dist
 from einops import rearrange
 import Levenshtein
-from scipy.ndimage import gaussian_filter
+import skimage
+
+import util
 
 
 class Featurizer:
@@ -53,15 +55,11 @@ class TextPredictor(Featurizer):
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, quantize=False, disable_last_layer=False, softmax_outputs=True, sigma=0):
-        self.quantize = quantize
-        if quantize:
-            weights = quantization.ResNet50_QuantizedWeights.DEFAULT
-            resnet = quantization.resnet50(weights=weights, quantize=True)
-        else:
-            weights = ResNet50_Weights.DEFAULT
-            resnet = resnet50(weights=weights)
+    def __init__(self, disable_last_layer=True, softmax_outputs=False, center=False, sigma=0):
+        weights = ResNet50_Weights.DEFAULT
+        resnet = resnet50(weights=weights)
 
+        self.center = center
         self.preprocess = weights.transforms()
         self.disable_last_layer = disable_last_layer
         if disable_last_layer:
@@ -82,11 +80,20 @@ class ResnetFeaturizer(Featurizer):
         return 2048 if self.disable_last_layer else 1000
 
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
+        # center
+        if self.center:
+            batch = [util.center_image(img) for img in batch]
+
+        # gaussian filter
         if self.sigma > 0:
-            batch = [gaussian_filter(img, sigma=self.sigma) for img in batch]
-        batch = np.stack(batch)
-        assert isinstance(batch, np.ndarray), f"Expected ndarray, but got {type(batch)}"
-        assert len(batch.shape) == 4, f"Expected shape [b, c, w, h] but got {batch.shape}"
+            batch = [skimage.filters.gaussian(img, sigma=self.sigma, channel_axis=-1) for img in batch]
+            batch = np.stack(batch) * 255  # compensate for gaussian blur output in [0, 1]
+            batch = batch.astype(np.uint8)
+        elif isinstance(batch, List):
+            batch = np.stack(batch)
+
+        assert len(batch.shape) == 4, f"Expected shape [b h w c] but got {batch.shape}"
+        assert batch.shape[-1] in {3, 4}, f"Expected 3 or 4 channels but got {batch.shape[-1]} in shape {batch.shape}"
 
         # resnet only plays nice with uint8 matrices
         if batch.dtype != np.uint8:
@@ -94,11 +101,14 @@ class ResnetFeaturizer(Featurizer):
             batch = batch.astype(np.uint8)
 
         # run resnet
-        batch = self.preprocess(T.from_numpy(batch))
+        batch = T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w"))  # remove alpha channel, reshape
+        batch = self.preprocess(batch)
         features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
 
+        # softmax
         if self.softmax_outputs:
             features = features.softmax(-1)
+
         return features.detach().numpy()
 
     def top_k_classes(self, features: np.ndarray, k: int) -> List[str]:

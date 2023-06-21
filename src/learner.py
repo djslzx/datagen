@@ -14,11 +14,10 @@ import time
 from sys import stderr
 
 import util
-from lang import Language, Tree, ParseError
-from lindenmayer import LSys
-from regexpr import Regex
+from lang.tree import Language, Tree, ParseError
+from lang.lindenmayer import LSys
+from lang.regexpr import Regex
 from grammar import LearnedGrammar, ConvFeatureExtractor, SBertFeatureExtractor, FeatureExtractor
-from examples import lsystem_book_F_examples
 
 
 class LangDataset(Tdata.Dataset):

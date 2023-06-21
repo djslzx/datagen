@@ -1,4 +1,4 @@
-simplify: true
+simplify: false
 train_data:
   - "20;F;F~F"
   - "90;F;F~FF"
@@ -25,17 +25,17 @@ search:
   alpha: 1
   max_popn_size: 100
   samples_ratio: 10
-  keep_per_iter: 10  # archiving rate
+  keep_per_iter: 20  # archiving rate
 
   # length penalties
   length_cap: 200
   length_penalty_type: additive
-  length_penalty_inverse_coeff: 1
+  length_penalty_inverse_coeff: 50
   length_penalty_additive_coeff: 0
 
   # heuristics
   ablate_mutator: false
-  archive_early: true
+  archive_early: false
 
 featurizer:
   disable_last_layer: true
@@ -47,3 +47,4 @@ render:
   render_depth: 3
   n_rows: 128
   n_cols: 128
+  vary_color: True

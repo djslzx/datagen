@@ -11,9 +11,8 @@ from einops import rearrange, reduce
 from sys import stderr
 import wandb
 
-from lang import Language, Tree, ParseError
-from lindenmayer import LSys
-from regexpr import Regex
+from lang.tree import Language, Tree, ParseError
+from lang.lindenmayer import LSys
 from util import Timing, ParamTester, try_mkdir, pad_array
 
 # Hyper-parameters

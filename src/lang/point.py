@@ -8,7 +8,7 @@ import scipy.stats as stats
 
 from grammar import Grammar
 from featurizers import Featurizer
-from lang import Language, Tree
+from lang.tree import Language, Tree
 import util
 
 class RealPoint(Language):
