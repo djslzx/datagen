@@ -203,5 +203,4 @@ if __name__ == '__main__':
         # render_run(path, run_id, stride=10)
         # viz_closest(lang, path, run_id, holdout=get_holdout(), stride=50, n_neighbors=10)
         # plot_avg_dist(lang, path, run_id, holdout=get_holdout(), stride=50, n_neighbors=5)
->>>>>>> 7dee6e81bd64aa6709f616bcb32f554db67be1cb
     # test_evals()
