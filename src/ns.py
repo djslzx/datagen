@@ -66,6 +66,8 @@ def select_indices(kind: str, dists: np.ndarray, n: int):
         return np.argsort(-dists)[:n]  # sort descending
     elif kind == "weighted":
         return np.random.choice(len(dists), n, replace=False, p=softmax(dists))
+    else:
+        raise ValueError(f"Unknown selection kind: {kind}")
 
 def make_dist(d: Distance, k: int) -> Distance:
     """

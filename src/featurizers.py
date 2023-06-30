@@ -55,7 +55,7 @@ class TextPredictor(Featurizer):
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, disable_last_layer=True, softmax_outputs=False, center=False, sigma=0):
+    def __init__(self, disable_last_layer=True, softmax_outputs=False, center=False, sigma=0.):
         weights = ResNet50_Weights.DEFAULT
         resnet = resnet50(weights=weights)
 
@@ -85,7 +85,7 @@ class ResnetFeaturizer(Featurizer):
             batch = [util.center_image(img) for img in batch]
 
         # gaussian filter
-        if self.sigma > 0:
+        if self.sigma > 0.:
             batch = [filters.gaussian(img, sigma=self.sigma, channel_axis=-1) for img in batch]
             batch = np.stack(batch) * 255  # compensate for gaussian blur output in [0, 1]
             batch = batch.astype(np.uint8)
