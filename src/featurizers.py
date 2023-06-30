@@ -8,7 +8,7 @@ from sys import stderr
 from scipy.spatial import distance as dist
 from einops import rearrange
 import Levenshtein
-import skimage
+from skimage import filters
 
 import util
 
@@ -86,7 +86,7 @@ class ResnetFeaturizer(Featurizer):
 
         # gaussian filter
         if self.sigma > 0:
-            batch = [skimage.filters.gaussian(img, sigma=self.sigma, channel_axis=-1) for img in batch]
+            batch = [filters.gaussian(img, sigma=self.sigma, channel_axis=-1) for img in batch]
             batch = np.stack(batch) * 255  # compensate for gaussian blur output in [0, 1]
             batch = batch.astype(np.uint8)
         elif isinstance(batch, List):
