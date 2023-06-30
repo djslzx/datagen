@@ -4,7 +4,7 @@ from pprint import pp
 from typing import Dict, List, Iterator, Tuple, Any
 from math import sin, cos, radians
 import numpy as np
-import skimage
+from skimage import filters, draw
 import itertools as it
 from sys import stderr, maxsize
 import colorsys
@@ -91,12 +91,12 @@ class LSystem:
                 if ((0 <= r1 < n_rows and 0 <= c1 < n_cols) or
                     (0 <= r < n_rows and 0 <= c < n_cols)):
                     if aa:
-                        rs, cs, intensities = skimage.draw.line_aa(r, c, r1, c1)
+                        rs, cs, intensities = draw.line_aa(r, c, r1, c1)
                         mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
                         rs, cs, intensities = rs[mask], cs[mask], intensities[mask]
                         canvas[rs, cs] = np.outer(intensities, rgba) * 255
                     else:
-                        rs, cs = skimage.draw.line(r, c, r1, c1)
+                        rs, cs = draw.line(r, c, r1, c1)
                         mask = (0 <= rs) & (rs < n_rows) & (0 <= cs) & (cs < n_cols)  # mask out out-of-bounds indices
                         rs, cs = rs[mask], cs[mask]
                         canvas[rs, cs] = rgba * 255
@@ -527,7 +527,7 @@ def compare_gaussian_blur(L: LSys, templates: List[str]):
     preprocessed = einops.rearrange(preprocessed, "n c h w -> n h w c")
     util.plot_image_grid(preprocessed, title="resnet preprocessed", shape=shape)
     for i in range(3):
-        filtered = [skimage.filters.gaussian(x, sigma=i, channel_axis=-1) for x in M]
+        filtered = [filters.gaussian(x, sigma=i, channel_axis=-1) for x in M]
         util.plot_image_grid(filtered, title=f"gaussian filter, sigma={i}", shape=shape)
 
 
