@@ -6,7 +6,7 @@ import numpy as np
 from sys import stderr
 
 from lang.tree import Language, Tree, Grammar
-from featurizers import TextClassifier
+from featurizers import SentenceFeaturizer
 from examples import regex_handcoded_examples
 
 
@@ -87,7 +87,7 @@ class Regex(Language):
                          parser_start="e",
                          root_type="Regex",
                          model=Grammar.from_components(Regex.types, gram=gram),
-                         featurizer=TextClassifier())
+                         featurizer=SentenceFeaturizer())
         self.eval_weights = eval_weights if eval_weights is not None else Regex.uniform_weights()
 
     def none(self) -> Any:

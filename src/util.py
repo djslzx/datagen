@@ -12,6 +12,12 @@ from os import mkdir
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 
+def plot_labeled_points(x, y, labels: List, **kwargs):
+    plt.scatter(x, y, **kwargs)
+    for i, label in enumerate(labels):
+        plt.annotate(label, (x[i], y[i]))
+
+
 def center_image(image: np.ndarray) -> np.ndarray:
     # find the center of mass
     x, y, _ = np.nonzero(image)

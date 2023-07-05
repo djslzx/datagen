@@ -12,11 +12,11 @@ from Levenshtein import distance as levenshtein
 from scipy.spatial.distance import minkowski, directed_hausdorff
 from einops import rearrange
 
-from featurizers import TextClassifier
+from featurizers import SentenceFeaturizer
 from lang.regexpr import Regex
 
 def embed(xs: List[str]) -> np.ndarray:
-    C = TextClassifier()
+    C = SentenceFeaturizer()
     return C.apply(xs)
 
 def sort_by_instance_distances(corpus: List[str]):

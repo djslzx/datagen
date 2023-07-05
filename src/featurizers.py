@@ -1,8 +1,10 @@
 from typing import *
+import matplotlib.pyplot as plt
 import torch as T
 import numpy as np
+from sklearn import manifold
 from torchvision.models import resnet50, ResNet50_Weights
-from transformers import AutoTokenizer, AutoModelForCausalLM  # language models
+from transformers import AutoTokenizer, AutoModelForCausalLM, CodeGenModel  # language models
 from sentence_transformers import SentenceTransformer
 from sys import stderr
 from scipy.spatial import distance as dist
@@ -24,7 +26,7 @@ class Featurizer:
         raise NotImplementedError
 
 
-class TextClassifier(Featurizer):
+class SentenceFeaturizer(Featurizer):
 
     def __init__(self):
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -39,7 +41,27 @@ class TextClassifier(Featurizer):
         return 384
 
 
-class TextPredictor(Featurizer):
+class CodeGen(Featurizer):
+
+    def __init__(self):
+        checkpoint = "Salesforce/codegen-2B-mono"
+        self.tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.model = CodeGenModel.from_pretrained(checkpoint)
+        self.model.eval()
+
+    def apply(self, batch: List[str]) -> np.ndarray:
+        inputs = self.tokenizer(batch, return_tensors="pt", padding=True)
+        outputs = self.model(**inputs)
+        return outputs.last_hidden_state.detach().numpy()
+
+
+class StarCoder(Featurizer):
+    # todo
+    pass
+
+
+class PolyCoder(Featurizer):
 
     def __init__(self):
         self.tokenizer = AutoTokenizer.from_pretrained("NinedayWang/PolyCoder-2.7B")
@@ -165,8 +187,8 @@ class DummyFeaturizer(Featurizer):
         return 2
 
 
-if __name__ == "__main__":
-    C = TextClassifier()
+def check_embeddings():
+    C = SentenceFeaturizer()
     corpus = [
         "$100",
         "$10,000",
@@ -201,3 +223,16 @@ if __name__ == "__main__":
             f_leven.write(f"{a}:\n")
             for _, b in leven_sort:
                 f_leven.write(f"  {b}\n")
+
+
+if __name__ == "__main__":
+    cg = CodeGen()
+    inputs = ["def fizz():", "def fibonacci():", "def f():"]
+    embeddings = cg.apply(inputs)
+    print(embeddings.shape)
+
+    embeddings = rearrange(embeddings, "b n h -> b (n h)")
+    mds = manifold.MDS(n_components=2, random_state=0)
+    points = mds.fit_transform(embeddings)
+    util.plot_labeled_points(points[:, 0], points[:, 1], inputs)
+    plt.show()
