@@ -61,11 +61,11 @@ def evol_instruct_step(input: str, evol_methods: List[str]) -> dict:
 
 
 # generate a small dataset using Evol-Instruct + novelty pressure
-def nov_instruct(iters: int,
-                 seed_dataset: List[str],
-                 evol_methods: List[str],
-                 samples_per_datum: int,
-                 archive_per_iter: int) -> Generator[List[dict], None, None]:
+def novel_instruct(iters: int,
+                   seed_dataset: List[str],
+                   evol_methods: List[str],
+                   samples_per_datum: int,
+                   archive_per_iter: int) -> Generator[List[dict], None, None]:
 
     def take_samples(in_data: List[str]):
         # flat generator over samples from evol-instruct
@@ -121,10 +121,10 @@ if __name__ == "__main__":
     #         print(msg)
     #         f.write(json.dumps(msg, indent=4) + "\n")
     with open("../datasets/code_alpaca_tiny_nov.jsonl", "w") as f:
-        for msg in nov_instruct(iters=2,
-                                seed_dataset=str_data,
-                                evol_methods=EVOL_METHODS,
-                                samples_per_datum=2,
-                                archive_per_iter=5):
+        for msg in novel_instruct(iters=2,
+                                  seed_dataset=str_data,
+                                  evol_methods=EVOL_METHODS,
+                                  samples_per_datum=2,
+                                  archive_per_iter=5):
             print(msg)
             f.write(json.dumps(msg, indent=4))
