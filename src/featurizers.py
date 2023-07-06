@@ -43,8 +43,9 @@ class SentenceFeaturizer(Featurizer):
 
 class CodeGen(Featurizer):
 
-    def __init__(self):
-        checkpoint = "Salesforce/codegen-2B-mono"
+    def __init__(self, size: str):
+        assert size in {"350M", "2B", "6B", "16B"}, f"Invalid size {size}"
+        checkpoint = f"Salesforce/codegen-{size}-mono"
         self.tokenizer = AutoTokenizer.from_pretrained(checkpoint)
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model = CodeGenModel.from_pretrained(checkpoint)
