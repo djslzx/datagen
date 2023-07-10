@@ -1,3 +1,4 @@
+import json
 from typing import *
 import matplotlib.pyplot as plt
 import torch as T
@@ -13,6 +14,10 @@ import Levenshtein
 from skimage import filters
 
 import util
+
+# set default device to cuda if available
+if T.cuda.is_available():
+    T.set_default_device('cuda')
 
 
 class Featurizer:
@@ -54,12 +59,23 @@ class CodeGen(Featurizer):
     def apply(self, batch: List[str]) -> np.ndarray:
         inputs = self.tokenizer(batch, return_tensors="pt", padding=True)
         outputs = self.model(**inputs)
-        return outputs.last_hidden_state.detach().numpy()
+        # extract the last layer hidden state for the last token
+        return outputs.last_hidden_state[:, -1].detach().numpy()
 
 
 class StarCoder(Featurizer):
-    # todo
-    pass
+
+    def __init__(self):
+        checkpoint = "bigcode/starcoder"
+        self.tokenizer = AutoTokenizer.from_pretrained(checkpoint)
+        # self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.model = AutoModelForCausalLM.from_pretrained(checkpoint)
+        self.model.eval()
+
+    def apply(self, batch: List[str]) -> np.ndarray:
+        inputs = self.tokenizer(batch, return_tensors="pt", padding=True)
+        outputs = self.model(**inputs)
+        return outputs.last_hidden_state[:, -1].detach().numpy()
 
 
 class PolyCoder(Featurizer):
@@ -227,13 +243,21 @@ def check_embeddings():
 
 
 if __name__ == "__main__":
-    cg = CodeGen()
-    inputs = ["def fizz():", "def fibonacci():", "def f():"]
-    embeddings = cg.apply(inputs)
+    ft = CodeGen(size="350M")
+    # ft = StarCoder()
+
+    # load jsonl file from "../datasets/HumanEval.jsonl"
+    inputs = []
+    for line in open("../datasets/HumanEval.jsonl", "r").readlines()[:10]:
+        d = json.loads(line)
+        s = d["prompt"] + d["canonical_solution"]
+        print(s)
+        inputs.append(s)
+
+    embeddings = ft.apply(inputs)
     print(embeddings.shape)
 
-    embeddings = rearrange(embeddings, "b n h -> b (n h)")
     mds = manifold.MDS(n_components=2, random_state=0)
     points = mds.fit_transform(embeddings)
-    util.plot_labeled_points(points[:, 0], points[:, 1], inputs)
+    util.plot_labeled_points(points[:, 0], points[:, 1], list(range(len(inputs))))
     plt.show()
