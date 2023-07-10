@@ -148,3 +148,11 @@ datasets/*
 profiles/*
 out/*
 /eggy/target/wheels/
+.DS_Store
+api_keys.txt
+.idea/
+*.ckpt
+src/wandb
+src/datasets
+.vscode
+src/.langchain.db
