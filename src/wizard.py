@@ -46,8 +46,9 @@ def evol_instruct_step(chat: ChatOpenAI, input: str, evol_methods: List[str]) ->
     system_prompt = SystemMessagePromptTemplate.from_template(
         "Please increase the difficulty of the given programming test question a bit. "
         "You can increase the difficulty using, but not limited to, the following methods: {evol_method}"
-        "Respond with the modified programming test question. You should not reference the original question. "
-        "Keep the original format of instruction, input, and output."
+        "Please respond with a new programming test question that can be understood independently "
+        "without any reference to the original question. "
+        "Maintain the original format of instruction, input, and output."
     )
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
@@ -153,12 +154,12 @@ if __name__ == "__main__":
     chat = ChatOpenAI(temperature=0.9)
     evol_instruct(
         chat,
-        iters=3,
+        iters=2,
         seed_dataset=data,
         evol_methods=EVOL_METHODS,
-        log_file="../datasets/evol_instruct_5x3.jsonl"
+        log_file="../datasets/evol_instruct_5x2.jsonl"
     )
-    util.pp_jsonl("../datasets/evol_instruct_5x3.jsonl")
+    util.pp_jsonl("../datasets/evol_instruct_5x2.jsonl")
 
     # with open("../datasets/code_alpaca_tiny_nov.jsonl", "w") as f:
     #     for msg in novel_instruct(iters=2,
