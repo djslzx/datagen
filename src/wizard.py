@@ -2,7 +2,7 @@ import os
 import random
 import sys
 
-from typing import List, Generator
+from typing import List, Generator, Union
 import numpy as np
 import json
 from tqdm import tqdm
@@ -91,17 +91,18 @@ def evol_instruct(chat: ChatOpenAI,
 
 
 # generate a small dataset using Evol-Instruct + novelty pressure
-def novel_instruct(iters: int,
+def novel_instruct(chat: ChatOpenAI,
+                   iters: int,
                    seed_dataset: List[str],
                    evol_methods: List[str],
                    samples_per_datum: int,
                    archive_per_iter: int) -> Generator[List[dict], None, None]:
 
-    def take_samples(in_data: List[str]):
+    def take_samples(in_data: Union[List[str], np.ndarray]):
         # flat generator over samples from evol-instruct
         for x in in_data:
             for _ in range(samples_per_datum):
-                yield evol_instruct_step(x, evol_methods)
+                yield evol_instruct_step(chat, x, evol_methods)
 
     def update_archive(A, E_A, S, E_S):
         # take a random selection of samples and add them to the archive
@@ -151,7 +152,7 @@ def novel_instruct(iters: int,
 
 if __name__ == "__main__":
     data = [util.dict_to_text(x) for x in json.load(open("../datasets/code_alpaca_tiny.json", "r"))]
-    chat = ChatOpenAI(temperature=0.9)
+    chat = ChatOpenAI(temperature=0.9, client=None)
     evol_instruct(
         chat,
         iters=2,
