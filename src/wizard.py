@@ -1,19 +1,35 @@
 import os
 import random
+import sys
 
-import openai
+from typing import List, Generator
 import numpy as np
 import json
-from typing import List, Generator, Union
-
+from tqdm import tqdm
 from einops import rearrange
 from sklearn.neighbors import NearestNeighbors
 from sklearn.random_projection import SparseRandomProjection
 
+import langchain
+from langchain import LLMChain
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts.chat import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+)
+from langchain.callbacks import get_openai_callback  # track token usage
+from langchain.cache import SQLiteCache
+
 import featurizers as feat
+import util
+
+# setup langchain cache
+langchain.llm_cache = SQLiteCache(database_path=".langchain.db")
 
 # fetch api key from env
 API_KEY = os.getenv("OPENAI_API_KEY")
+
 
 # Evol-Instruct mutation methods
 EVOL_METHODS = [
@@ -24,40 +40,53 @@ EVOL_METHODS = [
     "Propose higher time or space complexity requirements, but please refrain from doing so frequently.",
 ]
 
-CODE_DATASET = json.load(open("../datasets/code_alpaca_tiny.json", "r"))
 
-
-def to_str(json_item: dict) -> str:
-    return f"instruction: {json_item['instruction']}\n" \
-           f"input: {json_item['input']}\n" \
-           f"output: {json_item['output']}" \
-
-
-def make_system_prompt(method: str) -> str:
-    return f"Please increase the difficulty of the given programming test question a bit. " \
-           f"You can increase the difficulty using, but not limited to, the following methods: " \
-           f"{method}"
-
-
-def prompt_chatgpt(mutation_method: str, datum: str) -> str:
-    completion = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": make_system_prompt(mutation_method)},
-            {"role": "user", "content": datum},
-        ],
+def evol_instruct_step(chat: ChatOpenAI, input: str, evol_methods: List[str]) -> dict:
+    evol_method = random.choice(evol_methods)
+    system_prompt = SystemMessagePromptTemplate.from_template(
+        "Please increase the difficulty of the given programming test question a bit. "
+        "You can increase the difficulty using, but not limited to, the following methods: {evol_method}"
+        "Respond with the modified programming test question. You should not reference the original question. "
+        "Keep the original format of instruction, input, and output."
     )
-    return completion.choices[0].message["content"]
+    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
+    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
 
-
-# generate a small dataset using Evol-Instruct from the WizardLM paper
-def evol_instruct_step(input: str, evol_methods: List[str]) -> dict:
-    mutation_method = random.choice(evol_methods)
+    chain = LLMChain(llm=chat, prompt=prompt)
+    output = chain.run(evol_method=evol_method, input=input)
     return {
         "input": input,
-        "mutation_method": mutation_method,
-        "output": prompt_chatgpt(mutation_method, input),
+        "evol_method": evol_method,
+        "output": output,
     }
+
+
+# generate a dataset using Evol-Instruct from the WizardLM paper
+def evol_instruct(chat: ChatOpenAI,
+                  iters: int,
+                  seed_dataset: List[str],
+                  evol_methods: List[str],
+                  log_file: str):
+    dataset = seed_dataset
+    with get_openai_callback() as cb, open(log_file, "w") as f:
+        # To take advantage of caching, we run each example `iters` times.
+        # This doesn't affect the result b/c each example is mutated independently of the others.
+
+        for i, x in enumerate(dataset, start=1):
+            prompt = x
+            completions = []
+            for _ in tqdm(range(iters)):
+                completion = evol_instruct_step(chat, prompt, evol_methods)
+                prompt = completion["output"]
+                completions.append({"evol_method": completion["evol_method"],
+                                    "output": prompt})
+
+            # update log file
+            json.dump({"input": x, "completions": completions}, f)
+            f.write("\n")
+
+            print(f"Completed evolution of instruction {i} of {len(dataset)}", file=sys.stderr)
+            print(cb)
 
 
 # generate a small dataset using Evol-Instruct + novelty pressure
@@ -103,28 +132,40 @@ def novel_instruct(iters: int,
         e_samples = embed(s_samples.tolist())
         dists, _ = knn.kneighbors(e_samples)
         dists = np.mean(dists, axis=1)
-        i_selected = np.argsort(-dists)[:len(popn)]
+        ranks = np.argsort(-dists)
+        i_selected = ranks[:len(popn)]
 
         update_archive(archive, e_archive, s_samples, e_samples)
         popn = s_samples[i_selected]
         e_popn = e_samples[i_selected]
 
         # log generation
-        yield samples[i_selected].tolist()
+        inverted_ranks = util.invert_array(ranks)
+        yield [sample.update({"iteration": i,
+                              "score": dists[j],
+                              "rank": inverted_ranks[j]})
+               for j, sample in enumerate(samples)]
 
 
 
 if __name__ == "__main__":
-    str_data = [to_str(datum) for datum in CODE_DATASET]
-    # with open("../datasets/code_alpaca_tiny_evol.jsonl", "w") as f:
-    #     for msg in evol_instruct_step(str_data, EVOL_METHODS):
-    #         print(msg)
-    #         f.write(json.dumps(msg, indent=4) + "\n")
-    with open("../datasets/code_alpaca_tiny_nov.jsonl", "w") as f:
-        for msg in novel_instruct(iters=2,
-                                  seed_dataset=str_data,
-                                  evol_methods=EVOL_METHODS,
-                                  samples_per_datum=2,
-                                  archive_per_iter=5):
-            print(msg)
-            f.write(json.dumps(msg, indent=4))
+    data = [util.dict_to_text(x) for x in json.load(open("../datasets/code_alpaca_tiny.json", "r"))]
+    chat = ChatOpenAI(temperature=0.9)
+    evol_instruct(
+        chat,
+        iters=3,
+        seed_dataset=data,
+        evol_methods=EVOL_METHODS,
+        log_file="../datasets/evol_instruct_5x3.jsonl"
+    )
+    util.pp_jsonl("../datasets/evol_instruct_5x3.jsonl")
+
+    # with open("../datasets/code_alpaca_tiny_nov.jsonl", "w") as f:
+    #     for msg in novel_instruct(iters=2,
+    #                               seed_dataset=str_data,
+    #                               evol_methods=EVOL_METHODS,
+    #                               samples_per_datum=2,
+    #                               archive_per_iter=5):
+    #         s = json.dumps(msg, indent=4)
+    #         print(s, file=sys.stderr)
+    #         f.write(s + "\n")
