@@ -2,6 +2,19 @@ import numpy as np
 import pytest
 from util import *
 
+
+def test_invert_array():
+    cases = [
+        np.array([0, 1, 2, 3, 4, 5]), np.array([0, 1, 2, 3, 4, 5]),
+        np.array([1, 2, 0]), np.array([2, 0, 1]),
+        np.array([1, 2, 0, 3]), np.array([2, 0, 1, 3]),
+        np.array([1, 4, 3, 0, 2]), np.array([3, 0, 4, 2, 1]),
+    ]
+    for x, y in zip(cases[::2], cases[1::2]):
+        out = invert_array(x)
+        assert np.all(y == out), f"Expected {y} but got {out}"
+
+
 def test_flatten():
     cases = [
         {}, {},
