@@ -242,22 +242,66 @@ def check_embeddings():
                 f_leven.write(f"  {b}\n")
 
 
-if __name__ == "__main__":
-    ft = CodeGen(size="350M")
-    # ft = StarCoder()
+def _vet_featurizer_on_humaneval(ft: Featurizer, embed_keys=None, label_key=None):
+    name = ft.__class__.__name__
+    if not embed_keys:
+        embed_keys = ["prompt", "canonical_solution"]
+    if not label_key:
+        label_key = "entry_point"
 
     # load jsonl file from "../datasets/HumanEval.jsonl"
     inputs = []
-    for line in open("../datasets/HumanEval.jsonl", "r").readlines()[:10]:
+    labels = []
+    for line in open("../datasets/HumanEval.jsonl", "r").readlines():
         d = json.loads(line)
-        s = d["prompt"] + d["canonical_solution"]
-        print(s)
-        inputs.append(s)
+        inputs.append("\n".join([d[k] for k in embed_keys]))
+        labels.append(d[label_key])
 
     embeddings = ft.apply(inputs)
     print(embeddings.shape)
 
     mds = manifold.MDS(n_components=2, random_state=0)
     points = mds.fit_transform(embeddings)
-    util.plot_labeled_points(points[:, 0], points[:, 1], list(range(len(inputs))))
+    util.plot_labeled_points(
+        points[:, 0],
+        points[:, 1],
+        labels=labels,
+        fontsize=5,
+        title=f"MDS on {name}, embed w/ {embed_keys}, label={label_key}"
+    )
+    plt.savefig(f"../out/mds{name}_emb={embed_keys}_lab={label_key}.png")
     plt.show()
+
+    # tsne
+    for perplexity in [2, 5, 30, 50, 100]:
+        tsne = manifold.TSNE(
+            n_components=2,
+            n_iter=5000,
+            perplexity=perplexity,
+            n_iter_without_progress=150,
+            n_jobs=2,
+        )
+        points = tsne.fit_transform(embeddings)
+        util.plot_labeled_points(
+            points[:, 0],
+            points[:, 1],
+            labels=labels,
+            fontsize=5,
+            title=f"t-SNE on {name}, embed w/ {embed_keys}, label={label_key}, perplexity={perplexity}",
+        )
+        plt.savefig(f"../out/tsne_{name}_emb={embed_keys}_lab={label_key}_perp={perplexity}.png")
+        plt.show()
+
+
+if __name__ == "__main__":
+    ft = SentenceFeaturizer()
+    _vet_featurizer_on_humaneval(
+        ft,
+        embed_keys=["prompt", "canonical_solution"],
+        label_key="entry_point",
+    )
+    _vet_featurizer_on_humaneval(
+        ft,
+        embed_keys=["prompt"],
+        label_key="entry_point",
+    )
