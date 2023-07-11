@@ -48,7 +48,6 @@ def evol_instruct_step(chat: ChatOpenAI, input: str, evol_methods: List[str]) ->
         "You can increase the difficulty using, but not limited to, the following methods: {evol_method}"
         "Please respond with a new programming test question that can be understood independently "
         "without any reference to the original question. "
-        "Maintain the original format of instruction, input, and output."
     )
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
@@ -151,12 +150,12 @@ def novel_instruct(chat: ChatOpenAI,
 
 
 if __name__ == "__main__":
-    data = [util.dict_to_text(x) for x in json.load(open("../datasets/code_alpaca_tiny.json", "r"))]
+    instructions = [x["instruction"] for x in json.load(open("../datasets/code_alpaca_tiny.json", "r"))]
     chat = ChatOpenAI(temperature=0.9, client=None)
     evol_instruct(
         chat,
         iters=2,
-        seed_dataset=data,
+        seed_dataset=instructions,
         evol_methods=EVOL_METHODS,
         log_file="../datasets/evol_instruct_5x2.jsonl"
     )
