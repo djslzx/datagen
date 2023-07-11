@@ -14,7 +14,8 @@ import sys
 from os import mkdir
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from func_timeout import func_timeout, FunctionTimedOut
-import openai
+import openai.error
+from adjustText import adjust_text
 
 
 def pp_jsonl(filename: str, skip=1):
@@ -56,10 +57,22 @@ def invert_array(x: np.ndarray) -> np.ndarray:
     return y
 
 
-def plot_labeled_points(x, y, labels: List, **kwargs):
-    plt.scatter(x, y, **kwargs)
+def plot_labeled_points(x, y, labels: List, title=None, **kwargs):
+    plt.figure(figsize=(10, 10))
+    ax = plt.gca()
+    ax.scatter(x, y)
+    text_labels = []
     for i, label in enumerate(labels):
-        plt.annotate(label, (x[i], y[i]))
+        text_labels.append(ax.text(x[i], y[i], label, **kwargs))
+    adjust_text(text_labels,
+                force_text=0.05,
+                arrowprops=dict(arrowstyle="-", color='0.6', alpha=0.5))
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    ax.autoscale()
+    if title:
+        plt.title(title)
+    return ax
 
 
 def center_image(image: np.ndarray) -> np.ndarray:
@@ -215,7 +228,7 @@ def cut_ext(filename: str) -> str:
     return filename[:filename.rfind(".")]
 
 
-def plot_image_grid(imgs: List[np.array],
+def plot_image_grid(imgs: List[np.ndarray],
                     shape: Optional[Tuple[int, int]] = None,
                     labels: Optional[List[str]] = None,
                     title="",
