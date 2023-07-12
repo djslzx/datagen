@@ -91,6 +91,7 @@ def evol_instruct(chat: ChatOpenAI,
 
 # generate a small dataset using Evol-Instruct + novelty pressure
 def novel_instruct(chat: ChatOpenAI,
+                   fe: feat.Featurizer,
                    iters: int,
                    seed_dataset: List[str],
                    evol_methods: List[str],
@@ -109,12 +110,9 @@ def novel_instruct(chat: ChatOpenAI,
         A.extend(S[I_A])
         E_A.extend(E_S[I_A])
 
-    cg = feat.CodeGen(size="350M")
-
     def embed(v: List[str]) -> np.ndarray:
-        # embed a vector using the CodeGen featurizer
-        embeddings = rearrange(cg.apply(v), "b n d -> b (n d)")
-        embeddings = SparseRandomProjection(n_components=2000).fit_transform(embeddings)
+        embeddings = fe.apply(v)
+        # embeddings = SparseRandomProjection(n_components="auto").fit_transform(embeddings)
         return embeddings
 
     knn = NearestNeighbors(metric="minkowski")
