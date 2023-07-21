@@ -1,7 +1,6 @@
 import os
 import random
 import sys
-
 from typing import List, Generator, Union
 import numpy as np
 import json
@@ -41,8 +40,7 @@ EVOL_METHODS = [
 ]
 
 
-def evol_instruct_step(chat: ChatOpenAI, input: str, evol_methods: List[str]) -> dict:
-    evol_method = random.choice(evol_methods)
+def evol_instruct_step(chat: ChatOpenAI, input: str, evol_method: str) -> dict:
     system_prompt = SystemMessagePromptTemplate.from_template(
         "Please increase the difficulty of the given programming test question a bit. "
         "You can increase the difficulty using, but not limited to, the following methods: {evol_method}"
@@ -51,7 +49,6 @@ def evol_instruct_step(chat: ChatOpenAI, input: str, evol_methods: List[str]) ->
     )
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
-
     chain = LLMChain(llm=chat, prompt=prompt)
     output = chain.run(evol_method=evol_method, input=input)
     return {
@@ -76,7 +73,8 @@ def evol_instruct(chat: ChatOpenAI,
             prompt = x
             completions = []
             for _ in tqdm(range(iters)):
-                completion = evol_instruct_step(chat, prompt, evol_methods)
+                evol_method = random.choice(evol_methods)
+                completion = evol_instruct_step(chat, prompt, evol_method)
                 prompt = completion["output"]
                 completions.append({"evol_method": completion["evol_method"],
                                     "output": prompt})
@@ -102,7 +100,8 @@ def novel_instruct(chat: ChatOpenAI,
         # flat generator over samples from evol-instruct
         for x in in_data:
             for _ in range(samples_per_datum):
-                yield evol_instruct_step(chat, x, evol_methods)
+                evol_method = random.choice(evol_methods)
+                yield evol_instruct_step(chat, x, evol_method)
 
     def update_archive(A, E_A, S, E_S):
         # take a random selection of samples and add them to the archive
@@ -121,50 +120,57 @@ def novel_instruct(chat: ChatOpenAI,
     archive = []
     e_archive = []
 
-    for i in range(iters):
-        # take samples using evol-instruct
-        samples = np.array(list(take_samples(popn)), dtype=object)
-        s_samples = np.array([d["output"] for d in samples], dtype=object)
+    with get_openai_callback() as cb:  # expose cost information
+        for i in range(iters):
+            # take samples using evol-instruct
+            samples = np.array(list(take_samples(popn)), dtype=object)
+            s_samples = np.array([d["output"] for d in samples], dtype=object)
 
-        # use novelty pressure to select best samples
-        knn.fit(np.concatenate([e_popn, e_archive], axis=0) if archive else e_popn)
-        e_samples = embed(s_samples.tolist())
-        dists, _ = knn.kneighbors(e_samples)
-        dists = np.mean(dists, axis=1)
-        ranks = np.argsort(-dists)
-        i_selected = ranks[:len(popn)]
+            # use novelty pressure to select best samples
+            knn.fit(np.concatenate([e_popn, e_archive], axis=0) if archive else e_popn)
+            e_samples = embed(s_samples.tolist())
+            dists, _ = knn.kneighbors(e_samples)
+            dists = np.mean(dists, axis=1)
+            ranks = np.argsort(-dists)
+            i_selected = ranks[:len(popn)]
 
-        update_archive(archive, e_archive, s_samples, e_samples)
-        popn = s_samples[i_selected]
-        e_popn = e_samples[i_selected]
+            update_archive(archive, e_archive, s_samples, e_samples)
+            popn = s_samples[i_selected]
+            e_popn = e_samples[i_selected]
 
-        # log generation
-        inverted_ranks = util.invert_array(ranks)
-        yield [sample.update({"iteration": i,
-                              "score": dists[j],
-                              "rank": inverted_ranks[j]})
-               for j, sample in enumerate(samples)]
+            # log generation
+            inverted_ranks = util.invert_array(ranks)
+            print(cb, file=sys.stderr)
+            yield [{"iteration": i,
+                    "score": float(dists[j]),
+                    "rank": int(inverted_ranks[j]),
+                    "evol_method": sample["evol_method"],
+                    "input": sample["input"],
+                    "output": sample["output"]
+                   }
+                   for j, sample in enumerate(samples)]
 
 
 
 if __name__ == "__main__":
-    instructions = [x["instruction"] for x in json.load(open("../datasets/code_alpaca_tiny.json", "r"))]
+    instructions = [x["instruction"] for x in json.load(open("../datasets/code_alpaca_tiny.json", "r"))[:10]]
     chat = ChatOpenAI(temperature=0.9, client=None)
-    evol_instruct(
-        chat,
-        iters=2,
-        seed_dataset=instructions,
-        evol_methods=EVOL_METHODS,
-        log_file="../datasets/evol_instruct_5x2.jsonl"
-    )
-    util.pp_jsonl("../datasets/evol_instruct_5x2.jsonl")
+    # evol_instruct(
+    #     chat,
+    #     iters=2,
+    #     seed_dataset=instructions,
+    #     evol_methods=EVOL_METHODS,
+    #     log_file="../datasets/evol_instruct_5x2.jsonl"
+    # )
+    # util.pp_jsonl("../datasets/evol_instruct_5x2.jsonl")
 
-    # with open("../datasets/code_alpaca_tiny_nov.jsonl", "w") as f:
-    #     for msg in novel_instruct(iters=2,
-    #                               seed_dataset=str_data,
-    #                               evol_methods=EVOL_METHODS,
-    #                               samples_per_datum=2,
-    #                               archive_per_iter=5):
-    #         s = json.dumps(msg, indent=4)
-    #         print(s, file=sys.stderr)
-    #         f.write(s + "\n")
+    fe = feat.SentenceFeaturizer()
+    with open("../datasets/code_alpaca_tiny_nov.jsonl", "w") as f:
+        for msg in novel_instruct(chat, fe,
+                                  iters=2,
+                                  seed_dataset=instructions,
+                                  evol_methods=EVOL_METHODS,
+                                  samples_per_datum=2,
+                                  archive_per_iter=5):
+            s = json.dumps(msg, indent=4)
+            f.write(s + "\n")
