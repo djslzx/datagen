@@ -51,7 +51,7 @@ EVOL_METHOD_NAMES = {
     "Propose higher time or space complexity requirements, but please refrain from doing so frequently.": "complexity",
 }
 
-def evol_instruct_step(chat: ChatOpenAI, input: str, evol_method: str) -> dict:
+def evol_instruct_step(chat: ChatOpenAI, instruction: str, evol_method: str) -> dict:
     system_prompt = SystemMessagePromptTemplate.from_template(
         "Please increase the difficulty of the given programming test question a bit. "
         "You can increase the difficulty using, but not limited to, the following methods: {evol_method}"
@@ -61,9 +61,9 @@ def evol_instruct_step(chat: ChatOpenAI, input: str, evol_method: str) -> dict:
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
-    output = chain.run(evol_method=evol_method, input=input)
+    output = chain.run(evol_method=evol_method, input=instruction)
     return {
-        "input": input,
+        "input": instruction,
         "evol_method": evol_method,
         "output": output,
     }
@@ -104,22 +104,14 @@ def novel_instruct(chat: ChatOpenAI,
                    iters: int,
                    seed_dataset: List[str],
                    evol_methods: List[str],
-                   samples_per_datum: int,
+                   max_popn_size: int,
                    archive_per_iter: int) -> Generator[List[dict], None, None]:
 
     def take_samples(in_data: Union[List[str], np.ndarray]):
         # flat generator over samples from evol-instruct
-        seen = set(in_data)
         for x in tqdm(in_data, total=len(in_data)):
-            for _ in range(samples_per_datum):
-                while True:
-                    evol_method = random.choice(evol_methods)
-                    sample = evol_instruct_step(chat, x, evol_method)
-                    if sample["output"] not in seen:
-                        break
-                    else:
-                        print("Repeated sample", file=sys.stderr)
-                seen.add(sample["output"])
+            for evol_method in evol_methods:
+                sample = evol_instruct_step(chat, x, evol_method)
                 yield sample
 
     def embed(v: List[str]) -> np.ndarray:
@@ -146,7 +138,7 @@ def novel_instruct(chat: ChatOpenAI,
             dists, _ = knn.kneighbors(e_samples)
             dists = np.mean(dists, axis=1)
             ranks = np.argsort(-dists)
-            i_selected = ranks[:len(popn)]
+            i_selected = ranks[:max_popn_size]
 
             # update archive: take a random selection of samples and add them to the archive
             i_archived = np.random.choice(len(s_samples), size=archive_per_iter, replace=False)
@@ -201,7 +193,8 @@ def graph_lineage(filename: str, chosen_only=False):
         G.add_edge(parent, child, method=method)
 
         # update pos
-        pos[child] = (i, rank)
+        if child not in pos:  # account for duplicate parent/child nodes
+            pos[child] = (i, rank)
         if parent not in pos:
             pos[parent] = (i-1, rank)
 
@@ -220,7 +213,7 @@ def graph_lineage(filename: str, chosen_only=False):
     plt.show()
 
 
-def run_search(iters: int, seed_dataset: str, samples_per_datum: int, archive_per_iter: int, output_file: str):
+def run_search(iters: int, seed_dataset: str, archive_per_iter: int, max_popn_size: int, output_file: str):
     instructions = [x["instruction"] for x in json.load(open(seed_dataset, "r"))]
     chat = ChatOpenAI(temperature=0.9, client=None)
     wandb.init(project="wizard")
@@ -230,7 +223,7 @@ def run_search(iters: int, seed_dataset: str, samples_per_datum: int, archive_pe
                                   iters=iters,
                                   seed_dataset=instructions,
                                   evol_methods=EVOL_METHODS,
-                                  samples_per_datum=samples_per_datum,
+                                  max_popn_size=max_popn_size,
                                   archive_per_iter=archive_per_iter):
             for entry in log:
                 s = json.dumps(entry, indent=None)
@@ -239,10 +232,10 @@ def run_search(iters: int, seed_dataset: str, samples_per_datum: int, archive_pe
 
 if __name__ == "__main__":
     # run_search(
-    #     iters=5,
-    #     seed_dataset="../datasets/code_alpaca_tiny.json",
-    #     samples_per_datum=4,
+    #     iters=3,
     #     archive_per_iter=5,
-    #     output_file="../datasets/code_alpaca_tiny_nov.jsonl"
+    #     max_popn_size=10,
+    #     seed_dataset="../datasets/code_alpaca_tiny.json",
+    #     output_file="../datasets/code_alpaca_tiny_nov_10xAll.jsonl"
     # )
-    graph_lineage("../datasets/code_alpaca_tiny_nov.jsonl")
+    graph_lineage("../datasets/code_alpaca_tiny_nov_10xAll.jsonl", chosen_only=True)
