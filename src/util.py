@@ -18,6 +18,11 @@ import openai.error
 from adjustText import adjust_text
 
 
+def load_jsonl(filename: str):
+    with open(filename, "r") as f:
+        return [json.loads(line) for line in f.readlines()]
+
+
 def pp_jsonl(filename: str, skip=1):
     with open(filename, "r") as f:
         for line in f.readlines()[::skip]:

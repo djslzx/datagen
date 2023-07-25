@@ -33,3 +33,5 @@ typing_extensions==4.5.0
 func_timeout
 huggingface_hub
 adjustText
+networkx
+palettable
