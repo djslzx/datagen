@@ -6,7 +6,9 @@ from typing import List, Generator, Union
 import numpy as np
 import json
 
+import pandas as pd
 from matplotlib import pyplot as plt
+import seaborn as sns
 from tqdm import tqdm
 from einops import rearrange
 from sklearn.neighbors import NearestNeighbors
@@ -205,7 +207,7 @@ def build_lineage_graph(wizard_edges: List[dict]) -> nx.DiGraph:
     return G
 
 
-def draw_lineage_graph(G: nx.DiGraph, chosen_only=False, ancestors_only=False, scale_rank=True):
+def draw_lineage_graph(G: nx.DiGraph, chosen_only=False, ancestors_only=False, scale_rank=False):
     if chosen_only:
         G = G.subgraph([n for n, data in G.nodes(data=True) if data["chosen"]])
 
@@ -258,6 +260,42 @@ def draw_lineage_graph(G: nx.DiGraph, chosen_only=False, ancestors_only=False, s
     plt.show()
 
 
+# for a given prompt, what is the average rank of `mutate(prompt, method i)`?
+def rank_distro(G: nx.DiGraph, rank_cap: int):
+    # for each node, track the ranks of its out-neighbors by edge type
+    rank_map = {}  # map edge type to list of observed ranks
+    for _, v, data in G.edges(data=True):
+        method = data["method"]
+        rank = G.nodes[v]["rank"]
+        if rank < rank_cap:
+            rank_map[method] = rank_map.get(method, []) + [rank]
+
+    # build a histogram of ranks for each edge type
+    plt.hist(rank_map.values(), bins=20, label=list(rank_map.keys()))
+    # for method, ranks in rank_map.items():
+    #     plt.hist(ranks, label=method, alpha=0.5)
+    plt.legend(loc='lower center')
+    plt.show()
+
+
+def avg_rank_by_iter(G: nx.DiGraph):
+    rows = []
+    for _ ,v, data in G.edges(data=True):
+        vdata = G.nodes[v]
+        method = data["method"]
+        it = vdata["iteration"]
+        rank = vdata["rank"]
+        if it > 1:
+            rows.append((method, it, -rank))
+
+    df = pd.DataFrame(rows, columns=["method", "iter", "rank"])
+    sns.relplot(
+        data=df, x="iter", y="rank", col="method",
+        kind="line", errorbar="sd",
+    )
+    plt.show()
+
+
 def run_search(iters: int, seed_dataset: str, archive_per_iter: int, max_popn_size: int, output_file: str):
     instructions = [x["instruction"] for x in json.load(open(seed_dataset, "r"))]
     chat = ChatOpenAI(temperature=0.9, client=None)
@@ -275,6 +313,18 @@ def run_search(iters: int, seed_dataset: str, archive_per_iter: int, max_popn_si
                 f.write(s+"\n")
 
 
+def mutate_prompt(chat: ChatOpenAI, text: str, k: int) -> List[str]:
+    system_prompt = SystemMessagePromptTemplate.from_template(
+        "Produce {k} different ways of stating the following text. "
+        "Preserve the fulling meaning of the original text, but use different words. "
+        "Do not add or remove information from the text."
+    )
+    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
+    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
+    chain = LLMChain(llm=chat, prompt=prompt)
+    return chain.run(k=k, input=text)
+
+
 if __name__ == "__main__":
     # run_search(
     #     iters=3,
@@ -284,18 +334,16 @@ if __name__ == "__main__":
     #     output_file="../datasets/code_alpaca_tiny_nov_10xAll.jsonl"
     # )
 
-    dataset = util.load_jsonl("../datasets/code_alpaca_tiny_nov_10xAll.jsonl")
-    # dataset = util.load_jsonl("../datasets/code_alpaca_100_nov_100xAll.jsonl")
+    # dataset = util.load_jsonl("../datasets/code_alpaca_tiny_nov_10xAll.jsonl")
+    dataset = util.load_jsonl("../datasets/code_alpaca_100_nov_100xAll.jsonl")
     G = build_lineage_graph(dataset)
-    draw_lineage_graph(G, scale_rank=False)
-    draw_lineage_graph(G)
-    draw_lineage_graph(G, chosen_only=True)
-    draw_lineage_graph(G, ancestors_only=True)
+    # draw_lineage_graph(G, chosen_only=True)
+    # rank_distro(G, rank_cap=500)
+    avg_rank_by_iter(G)
 
-    # texts = set()
-    # for d in dataset:
-    #     if d["iteration"] == 0:
-    #         text = d["sample"]["input"]
-    #         if text not in texts:
-    #             print("-", text)
-    #             texts.add(text)
+    # count up number of nodes in each iteration
+    counts = {}
+    for _, i in G.nodes.data(data="iteration"):
+        counts[i] = counts.get(i, 0) + 1
+    print(counts)
+
