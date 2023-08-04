@@ -18,7 +18,7 @@ import openai.error
 from adjustText import adjust_text
 
 
-def load_jsonl(filename: str):
+def load_jsonl(filename: str) -> List[dict]:
     with open(filename, "r") as f:
         return [json.loads(line) for line in f.readlines()]
 
