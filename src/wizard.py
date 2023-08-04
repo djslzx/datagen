@@ -2,6 +2,7 @@ import copy
 import os
 import random
 import sys
+from math import ceil
 from typing import List, Generator, Union
 import numpy as np
 import json
@@ -9,6 +10,7 @@ import json
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
+from sklearn.manifold import MDS
 from tqdm import tqdm
 from einops import rearrange
 from sklearn.neighbors import NearestNeighbors
@@ -198,7 +200,8 @@ def build_lineage_graph(wizard_edges: List[dict]) -> nx.DiGraph:
         archived = edge["archived?"]
         method = EVOL_METHOD_NAMES[edge["sample"]["evol_method"]]
 
-        # represent nodes as tuples so that different nodes can have the same text
+        # represent nodes as tuples so that nodes in different iterations can have the same text
+        # (we assume that the text of a node is unique within an iteration)
         parent = (i, parent_text)
         child = (i+1, child_text)
         # G.add_node(parent, text=parent_text, iteration=i)
@@ -207,7 +210,20 @@ def build_lineage_graph(wizard_edges: List[dict]) -> nx.DiGraph:
     return G
 
 
-def draw_lineage_graph(G: nx.DiGraph, chosen_only=False, ancestors_only=False, scale_rank=False):
+def draw_lineage_graph(G: nx.DiGraph,
+                       chosen_only=False,
+                       ancestors_only=False,
+                       scale_rank=False,
+                       position=None,
+                       embeddings=None,
+                       by_iteration=False,
+                       nodesize=100,
+                       figsize=(10, 10)):
+    if position is None:
+        position = "iteration"
+    else:
+        assert position in {"iteration", "embedding"}
+
     if chosen_only:
         G = G.subgraph([n for n, data in G.nodes(data=True) if data["chosen"]])
 
@@ -222,42 +238,78 @@ def draw_lineage_graph(G: nx.DiGraph, chosen_only=False, ancestors_only=False, s
 
     # colors
     colors = palettable.matplotlib.get_map("Viridis_5").mpl_colors
-    archive_color = colors[-1]
-    non_archive_color = colors[0]
+    highlight_color = colors[-1]
+    base_color = colors[0]
 
     # color nodes by archive status
-    node_colors = [archive_color if data["archived"] else non_archive_color
+    node_colors = [highlight_color if data["archived"] else base_color
                    for _, data in G.nodes(data=True)]
 
     # color edges by evol method
     method_index = {n: i for i, n in enumerate(EVOL_METHOD_NAMES.values())}
     edge_colors = [colors[method_index[method]] for _, _, method in G.edges.data("method")]
 
-    # extract node positions
-    max_rank_by_iter = {}
-    for _, d in G.nodes(data=True):
-        max_rank_by_iter[d["iteration"]] = max(max_rank_by_iter.get(d["iteration"], 0),
-                                               d["rank"])
-    max_rank = max(max_rank_by_iter.values())
+    print("Computing positions...")
+    if position == "iteration":
+        # extract node positions
+        max_rank_by_iter = {}
+        for _, d in G.nodes(data=True):
+            max_rank_by_iter[d["iteration"]] = max(max_rank_by_iter.get(d["iteration"], 0),
+                                                   d["rank"])
+        max_rank = max(max_rank_by_iter.values())
 
-    # arrange nodes by iteration/rank; scale rank if desired
-    def scaling_factor(i):
-        return max_rank / max_rank_by_iter[i] if scale_rank else 1
-    pos = {n : (data["iteration"],
-                -data["rank"] * scaling_factor(data["iteration"]))
-           for n, data in G.nodes(data=True)}
+        # arrange nodes by iteration/rank; scale rank if desired
+        def scaling_factor(i):
+            return max_rank / max_rank_by_iter[i] if scale_rank else 1
 
-    fig = plt.figure(figsize=(10, 10))
-    nx.draw(
-        G,
-        pos=pos,
-        with_labels=False,
-        edge_color=edge_colors,
-        node_color=node_colors,
-        node_size=100,
-    )
-    # fig.set_facecolor('#212121')
-    plt.show()
+        pos = {n : (data["iteration"],
+                    -data["rank"] * scaling_factor(data["iteration"]))
+               for n, data in G.nodes(data=True)}
+    elif position == "embedding":
+        assert embeddings is not None, "embeddings must be provided if position is 'embedding'"
+        # project to 2D with MDS
+        mds = MDS(n_components=2, random_state=0)
+        projection = mds.fit_transform(embeddings)
+        pos = {
+            n: (x, y)
+            for (n, _), (x, y) in zip(G.nodes, projection)
+        }
+    else:
+        raise ValueError(f"invalid position {position}")
+
+    if by_iteration:
+        def gen_subgraph(graph, iteration):
+            return graph.subgraph([n for n, data in graph.nodes(data=True)
+                                 if data["iteration"] <= iteration])
+
+        for i in range(max(i for _, i in G.nodes.data(data="iteration")) + 1):
+            sg = gen_subgraph(G, i)
+            sp = {n: pos[n] for n in sg.nodes}
+            ec = [colors[method_index[method]] for _, _, method in sg.edges.data("method")]
+            # color nodes by whether they are new
+            nc = [highlight_color if data["iteration"] == i else base_color
+                  for _, data in sg.nodes(data=True)]
+            plt.figure(figsize=figsize)
+            nx.draw(
+                sg,
+                pos=sp,
+                with_labels=False,
+                edge_color=ec,
+                node_color=nc,
+                node_size=nodesize,
+            )
+            plt.show()
+    else:
+        plt.figure(figsize=figsize)
+        nx.draw(
+            G,
+            pos=pos,
+            with_labels=False,
+            edge_color=edge_colors,
+            node_color=node_colors,
+            node_size=nodesize,
+        )
+        plt.show()
 
 
 # for a given prompt, what is the average rank of `mutate(prompt, method i)`?
@@ -325,6 +377,19 @@ def mutate_prompt(chat: ChatOpenAI, text: str, k: int) -> List[str]:
     return chain.run(k=k, input=text)
 
 
+def embed_and_save(G: nx.Graph, filename: str):
+    # use sentence transformer to generate embeddings
+    ft = feat.SentenceFeaturizer()
+    nodes = list(G.nodes(data=True))
+    embeddings = []
+    for batch in tqdm(util.batched(nodes, batch_size=128), total=ceil(len(nodes) / 128)):
+        texts = [data["text"] for _, data in batch]
+        embeddings.extend(ft.apply(texts))
+    embeddings = np.array(embeddings)
+    np.save(filename, embeddings)
+    return embeddings
+
+
 if __name__ == "__main__":
     # run_search(
     #     iters=3,
@@ -337,7 +402,13 @@ if __name__ == "__main__":
     # dataset = util.load_jsonl("../datasets/code_alpaca_tiny_nov_10xAll.jsonl")
     dataset = util.load_jsonl("../datasets/code_alpaca_100_nov_100xAll.jsonl")
     G = build_lineage_graph(dataset)
-    # draw_lineage_graph(G, chosen_only=True)
+
+    # save embeddings to file
+    # embeddings = embed_and_save(G, "../datasets/code_alpaca_100_nov_100xAll-embeddings.npy")
+    embeddings = np.load("../datasets/code_alpaca_100_nov_100xAll-embeddings.npy")
+
+    # G = G.subgraph([n for n, data in G.nodes(data=True) if data["iteration"] < 4])
+    draw_lineage_graph(G, position="embedding", by_iteration=True, figsize=(10, 10), nodesize=10)
     # rank_distro(G, rank_cap=500)
     avg_rank_by_iter(G)
 
@@ -346,4 +417,3 @@ if __name__ == "__main__":
     for _, i in G.nodes.data(data="iteration"):
         counts[i] = counts.get(i, 0) + 1
     print(counts)
-
