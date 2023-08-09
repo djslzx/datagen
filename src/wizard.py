@@ -10,6 +10,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
 from matplotlib.lines import Line2D
+from sklearn import preprocessing, random_projection
+from sklearn.decomposition import PCA
 from sklearn.manifold import MDS
 from tqdm import tqdm
 from einops import rearrange
@@ -137,6 +139,8 @@ def novel_instruct(chat: ChatOpenAI,
     def embed(v: List[str]) -> np.ndarray:
         embeddings = fe.apply(v)
         # embeddings = SparseRandomProjection(n_components="auto").fit_transform(embeddings)
+        scaler = preprocessing.StandardScaler().fit(embeddings)  # scale embeddings
+        embeddings = scaler.transform(embeddings)
         return embeddings
 
     knn = NearestNeighbors(metric="minkowski")
@@ -255,7 +259,7 @@ def draw_lineage_graph(G: nx.DiGraph,
     if position is None:
         position = "iteration"
     else:
-        assert position in {"iteration", "embedding"}
+        assert position in {"iteration", "embedding", "spring-embedding"}
 
     if chosen_only:
         G = G.subgraph([n for n, data in G.nodes(data=True) if data["chosen"]])
@@ -273,7 +277,7 @@ def draw_lineage_graph(G: nx.DiGraph,
     colors = palettable.matplotlib.get_map("Viridis_5").mpl_colors
     base_color = colors[0]
     highlight_color = colors[-1]
-    method_index = {n: i for i, n in enumerate(EVOL_METHOD_NAMES.values())}
+    recent_color = colors[2]
 
     if position == "iteration":
         # extract node positions
@@ -290,26 +294,39 @@ def draw_lineage_graph(G: nx.DiGraph,
         pos = {n : (data["iteration"],
                     -data["rank"] * scaling_factor(data["iteration"]))
                for n, data in G.nodes(data=True)}
-    elif position == "embedding":
+    elif position == "embedding" or position == "spring-embedding":
         assert embeddings is not None, "embeddings must be provided if position is 'embedding'"
-        # project to 2D with MDS
+        scaler = preprocessing.StandardScaler().fit(embeddings)  # scale embeddings
+        embeddings = scaler.transform(embeddings)
         mds = MDS(n_components=2, random_state=0)
         projection = mds.fit_transform(embeddings)
         pos = {n: (x, y) for n, (x, y) in zip(G.nodes, projection)}
+        if position == "spring-embedding":
+            pos = nx.spring_layout(G, pos=pos, iterations=1000)
     else:
         raise ValueError(f"invalid position {position}")
 
-    def draw_graph(graph):
+    def draw_graph(graph, i):
+        def color_node(node_data):
+            if node_data["chosen"]:
+                return highlight_color
+            elif i and node_data["iteration"] == i:
+                return recent_color
+            else:
+                return base_color
+
         p = {n: pos[n] for n in graph.nodes}
         plt.figure(figsize=figsize)
         nx.draw(
             graph,
             pos=p,
             with_labels=False,
-            edge_color=[colors[method_index[method]] for _, _, method in graph.edges.data("method")],
-            node_color=[base_color if not data["chosen"] else highlight_color
-                        for _, data in graph.nodes(data=True)],
+            width=0.2,
+            edge_color=base_color,
+            # edge_color=[colors[method_index[method]] for _, _, method in graph.edges.data("method")],
+            node_color=[color_node(data) for _, data in graph.nodes(data=True)],
             node_size=nodesize,
+            alpha=0.5,
         )
         nx.draw_networkx_labels(
             graph,
@@ -332,9 +349,9 @@ def draw_lineage_graph(G: nx.DiGraph,
             return graph.subgraph([n for n, data in graph.nodes(data=True)
                                  if data["iteration"] <= iteration])
         for i in range(max(i for _, i in G.nodes.data(data="iteration")) + 1):
-            draw_graph(gen_subgraph(G, i))
+            draw_graph(gen_subgraph(G, i), i)
     else:
-        draw_graph(G)
+        draw_graph(G, None)
 
 
 # for a given prompt, what is the average rank of `mutate(prompt, method i)`?
@@ -438,45 +455,29 @@ if __name__ == "__main__":
     #     archive_per_iter=5,
     #     max_popn_size=10,
     #     seed_dataset="../datasets/code_alpaca_tiny.json",
-    #     output_file="../datasets/code_alpaca_tiny_nov_10xAll.jsonl"
+    #     output_file="../datasets/code_alpaca_tiny_nov_2D.jsonl"
     # )
-
     # name_problems_from_file("../datasets/code_alpaca_tiny_nov_10xAll.jsonl",
     #                         "../datasets/code_alpaca_tiny_nov_10xAll-named.jsonl")
-    dataset = util.load_jsonl("../datasets/code_alpaca_tiny_nov_10xAll-named.jsonl")
     # dataset = util.load_jsonl("../datasets/code_alpaca_100_nov_100xAll.jsonl")
+    dataset = util.load_jsonl("../datasets/code_alpaca_tiny_nov_10xAll-named.jsonl")
+    print(len(dataset))
+
     G = build_lineage_graph(dataset)
 
     # save embeddings to file
-    # embeddings = embed_and_save(G, "../datasets/code_alpaca_100_nov_100xAll-embeddings.npy")
+    embeddings = embed_and_save(G, key="text", filename="../datasets/code_alpaca_tiny_nov_10xAll-named-embeddings.npy")
     # embeddings = np.load("../datasets/code_alpaca_100_nov_100xAll-embeddings.npy")
-    # embeddings = embed_and_save(G, "../datasets/code_alpaca_tiny_nov_10xAll-embeddings.npy")
 
     # G = G.subgraph([n for n, data in G.nodes(data=True) if data["iteration"] < 4])
-    # draw_lineage_graph(G, by_iteration=True)
-    # draw_lineage_graph(G, by_iteration=True, embeddings=embeddings, position="embedding", nodesize=10)
     draw_lineage_graph(
         G,
         by_iteration=True,
-        embeddings=embed_and_save(G, "/tmp/bleh.npy", key="text"),
-        position="embedding",
-        nodesize=10
+        embeddings=embeddings,
+        position="spring-embedding",
+        nodesize=5,
+        figsize=(10, 10)
     )
-    # draw_lineage_graph(
-    #     G,
-    #     by_iteration=True,
-    #     embeddings=embed_and_save(G, "/tmp/bleh.npy", key="text"),
-    #     position="embedding",
-    #     nodesize=10
-    # )
 
-    # draw_lineage_graph(
-    #     G,
-    #     position="embedding",
-    #     embeddings=embeddings,
-    #     by_iteration=True,
-    #     figsize=(10, 10),
-    #     nodesize=10
-    # )
     # rank_distro(G, rank_cap=500)
     # avg_rank_by_iter(G)
