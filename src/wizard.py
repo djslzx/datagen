@@ -2,6 +2,7 @@ import copy
 import os
 import random
 import sys
+from datetime import datetime
 from math import ceil
 from typing import List, Generator, Union
 import numpy as np
@@ -11,12 +12,9 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 from matplotlib.lines import Line2D
 from sklearn import preprocessing, random_projection
-from sklearn.decomposition import PCA
 from sklearn.manifold import MDS
 from tqdm import tqdm
-from einops import rearrange
 from sklearn.neighbors import NearestNeighbors
-from sklearn.random_projection import SparseRandomProjection
 import palettable
 import networkx as nx
 import wandb
@@ -39,7 +37,6 @@ langchain.llm_cache = SQLiteCache(database_path=".langchain.db")
 
 # fetch api key from env
 API_KEY = os.getenv("OPENAI_API_KEY")
-
 
 # Evol-Instruct mutation methods
 EVOL_METHODS = [
@@ -128,7 +125,6 @@ def novel_instruct(chat: ChatOpenAI,
                    evol_methods: List[str],
                    max_popn_size: int,
                    archive_per_iter: int) -> Generator[List[dict], None, None]:
-
     def take_samples(in_data: Union[List[str], np.ndarray]):
         # flat generator over samples from evol-instruct
         for x in tqdm(in_data, total=len(in_data)):
@@ -137,11 +133,12 @@ def novel_instruct(chat: ChatOpenAI,
                 yield sample
 
     def embed(v: List[str]) -> np.ndarray:
-        embeddings = fe.apply(v)
+        em = fe.apply(v)
         # embeddings = SparseRandomProjection(n_components="auto").fit_transform(embeddings)
-        scaler = preprocessing.StandardScaler().fit(embeddings)  # scale embeddings
-        embeddings = scaler.transform(embeddings)
-        return embeddings
+        # scale embeddings
+        scaler = preprocessing.StandardScaler()
+        em = scaler.fit_transform(em)
+        return em
 
     knn = NearestNeighbors(metric="minkowski")
     popn = seed_dataset
@@ -194,17 +191,20 @@ def novel_instruct(chat: ChatOpenAI,
                     "rank": int(inverted_ranks[j]),
                     "chosen?": bool(j in i_selected),
                     "archived?": bool(j in i_archived),
-                   }
+                    }
                    for j, sample in enumerate(samples)]
 
 
-def build_lineage_graph(wizard_edges: List[dict]) -> nx.DiGraph:
+def build_lineage_graph(wizard_edges: List[dict], chat: ChatOpenAI = None, add_origin=False) -> nx.DiGraph:
     G = nx.DiGraph()
     # add first generation parents first
+    if add_origin:
+        G.add_node("ORIGIN", name="ORIGIN", text="ORIGIN", iteration=-1, rank=0, chosen=False, archived=False)
     for edge in wizard_edges:
         if edge["iteration"] == 0:
             parent_text = edge["sample"]["input"]
-            parent_name = edge["sample"].get("input name", "")
+            parent_name = edge["sample"].get("input name",
+                                             name_programming_problem(chat, parent_text) if chat else "")
             rank = edge["rank"]
             parent = (0, parent_text)
             if parent in G.nodes:
@@ -217,6 +217,8 @@ def build_lineage_graph(wizard_edges: List[dict]) -> nx.DiGraph:
                 rank=rank,
                 chosen=True,
                 archived=False)
+            if add_origin:
+                G.add_edge("ORIGIN", parent, method="Code alpaca")
 
     # add the rest of the nodes
     for edge in wizard_edges:
@@ -232,7 +234,7 @@ def build_lineage_graph(wizard_edges: List[dict]) -> nx.DiGraph:
         # represent nodes as tuples so that nodes in different iterations can have the same text
         # (we assume that the text of a node is unique within an iteration)
         parent = (i, parent_text)
-        child = (i+1, child_text)
+        child = (i + 1, child_text)
         G.add_edge(parent, child, method=method)
         G.add_node(
             child,
@@ -254,12 +256,15 @@ def draw_lineage_graph(G: nx.DiGraph,
                        position=None,
                        embeddings=None,
                        by_iteration=False,
+                       with_labels=True,
+                       with_edges=True,
+                       save_dir=None,
                        nodesize=100,
                        figsize=(10, 10)):
+    timestamp = str(datetime.now().timestamp())
+
     if position is None:
         position = "iteration"
-    else:
-        assert position in {"iteration", "embedding", "spring-embedding"}
 
     if chosen_only:
         G = G.subgraph([n for n, data in G.nodes(data=True) if data["chosen"]])
@@ -291,63 +296,95 @@ def draw_lineage_graph(G: nx.DiGraph,
         def scaling_factor(i):
             return max_rank / max_rank_by_iter[i] if scale_rank else 1
 
-        pos = {n : (data["iteration"],
-                    -data["rank"] * scaling_factor(data["iteration"]))
+        pos = {n: (data["iteration"],
+                   -data["rank"] * scaling_factor(data["iteration"]))
                for n, data in G.nodes(data=True)}
     elif position == "embedding" or position == "spring-embedding":
         assert embeddings is not None, "embeddings must be provided if position is 'embedding'"
-        scaler = preprocessing.StandardScaler().fit(embeddings)  # scale embeddings
-        embeddings = scaler.transform(embeddings)
+        scaler = preprocessing.StandardScaler()  # scale embeddings
+        embeddings = scaler.fit_transform(embeddings)
         mds = MDS(n_components=2, random_state=0)
         projection = mds.fit_transform(embeddings)
         pos = {n: (x, y) for n, (x, y) in zip(G.nodes, projection)}
         if position == "spring-embedding":
             pos = nx.spring_layout(G, pos=pos, iterations=1000)
+    elif position == "spring":
+        pos = nx.spring_layout(G, iterations=1000)
+    elif isinstance(position, tuple) and position[0] == "graphviz":
+        _, prog = position
+        pos = nx.nx_agraph.graphviz_layout(G, prog=prog)
     else:
-        raise ValueError(f"invalid position {position}")
+        raise ValueError(f"Invalid position option {position}")
 
     def draw_graph(graph, i):
         def color_node(node_data):
             if node_data["chosen"]:
-                return highlight_color
+                return base_color
             elif i and node_data["iteration"] == i:
                 return recent_color
             else:
-                return base_color
+                return "white"
 
         p = {n: pos[n] for n in graph.nodes}
         plt.figure(figsize=figsize)
-        nx.draw(
+        nx.draw_networkx_nodes(
             graph,
             pos=p,
-            with_labels=False,
-            width=0.2,
-            edge_color=base_color,
+            # with_labels=False,
+            # width=0.2,
+            # edge_color="grey",
             # edge_color=[colors[method_index[method]] for _, _, method in graph.edges.data("method")],
             node_color=[color_node(data) for _, data in graph.nodes(data=True)],
             node_size=nodesize,
             alpha=0.5,
         )
-        nx.draw_networkx_labels(
-            graph,
-            pos={n: (x + 0.02, y) for n, (x, y) in p.items()},
-            labels={n: data["name"] for n, data in graph.nodes(data=True)},
-            font_size=6,
-            horizontalalignment="left",
-            verticalalignment="top",
-            clip_on=False,
-        )
-        custom_lines = [
-            Line2D([0], [0], color=color, lw=4, label=method)
-            for method, color in zip(EVOL_METHOD_NAMES.values(), colors)
+        # draw only edges from most recent iteration
+        if with_edges and i:
+            nx.draw_networkx_edges(
+                graph,
+                pos=p,
+                edgelist=[(u, v) for u, v, data in graph.edges(data=True)
+                          if graph.nodes[v]["iteration"] == i],
+                width=0.2,
+                edge_color="grey",
+            )
+        if with_labels:
+            nx.draw_networkx_labels(
+                graph,
+                pos={n: (x + 0.02, y) for n, (x, y) in p.items()},
+                labels={n: data["name"] for n, data in graph.nodes(data=True)},
+                font_size=6,
+                horizontalalignment="left",
+                verticalalignment="top",
+                clip_on=False,
+            )
+        # make legend
+        legend_handles = [
+            Line2D([0], [0], marker='o', markerfacecolor=recent_color, color='w', label='recent'),
+            Line2D([0], [0], marker='o', markerfacecolor=base_color, color='w', label='prior'),
         ]
-        plt.legend(handles=custom_lines, loc="lower left")
-        plt.show()
+        if with_edges:
+            legend_handles += [
+                Line2D([0], [0], color=color, lw=4, label=method)
+                for method, color in zip(EVOL_METHOD_NAMES.values(), colors)
+            ]
+        plt.legend(handles=legend_handles, loc="lower left")
+        plt.axis("off")
+        plt.tight_layout()
+
+        if save_dir is not None:
+            # make a subdirectory for this lineage using iso timestamp
+            lineage_dir = os.path.join(save_dir, timestamp)
+            os.makedirs(lineage_dir, exist_ok=True)
+            plt.savefig(os.path.join(lineage_dir, f"lineage_{i:03d}.png"))
+        else:
+            plt.show()
 
     if by_iteration:
         def gen_subgraph(graph, iteration):
             return graph.subgraph([n for n, data in graph.nodes(data=True)
-                                 if data["iteration"] <= iteration])
+                                   if data["iteration"] <= iteration])
+
         for i in range(max(i for _, i in G.nodes.data(data="iteration")) + 1):
             draw_graph(gen_subgraph(G, i), i)
     else:
@@ -374,7 +411,7 @@ def rank_distro(G: nx.DiGraph, rank_cap: int):
 
 def avg_rank_by_iter(G: nx.DiGraph):
     rows = []
-    for _ ,v, data in G.edges(data=True):
+    for _, v, data in G.edges(data=True):
         vdata = G.nodes[v]
         method = data["method"]
         it = vdata["iteration"]
@@ -404,7 +441,7 @@ def run_search(iters: int, seed_dataset: str, archive_per_iter: int, max_popn_si
                                   archive_per_iter=archive_per_iter):
             for entry in log:
                 s = json.dumps(entry, indent=None)
-                f.write(s+"\n")
+                f.write(s + "\n")
 
 
 def mutate_prompt(chat: ChatOpenAI, text: str, k: int) -> List[str]:
@@ -451,33 +488,35 @@ def name_problems_from_file(in_filename: str, out_filename: str):
 
 if __name__ == "__main__":
     # run_search(
-    #     iters=3,
+    #     iters=20,
     #     archive_per_iter=5,
     #     max_popn_size=10,
     #     seed_dataset="../datasets/code_alpaca_tiny.json",
-    #     output_file="../datasets/code_alpaca_tiny_nov_2D.jsonl"
+    #     output_file="../datasets/code_alpaca_tiny_nov_10x20_1.jsonl"
     # )
-    # name_problems_from_file("../datasets/code_alpaca_tiny_nov_10xAll.jsonl",
-    #                         "../datasets/code_alpaca_tiny_nov_10xAll-named.jsonl")
-    # dataset = util.load_jsonl("../datasets/code_alpaca_100_nov_100xAll.jsonl")
-    dataset = util.load_jsonl("../datasets/code_alpaca_tiny_nov_10xAll-named.jsonl")
+    dataset = util.load_jsonl("../datasets/code_alpaca_100_nov_100xAll.jsonl")
+    # dataset = util.load_jsonl("../datasets/code_alpaca_tiny_nov_10x20_1.jsonl")
     print(len(dataset))
-
-    G = build_lineage_graph(dataset)
+    G = build_lineage_graph(dataset, chat=ChatOpenAI(temperature=0.9, client=None))
+    G = G.subgraph([n for n, data in G.nodes(data=True) if 1 < data["iteration"] < 4])
+    print(G)
 
     # save embeddings to file
-    embeddings = embed_and_save(G, key="text", filename="../datasets/code_alpaca_tiny_nov_10xAll-named-embeddings.npy")
-    # embeddings = np.load("../datasets/code_alpaca_100_nov_100xAll-embeddings.npy")
+    # embeddings = embed_and_save(G, key="text", filename="../datasets/code_alpaca_tiny_nov_10x20_1-embeddings.npy")
+    embeddings = np.load("../datasets/code_alpaca_100_nov_100xAll-embeddings.npy")
 
-    # G = G.subgraph([n for n, data in G.nodes(data=True) if data["iteration"] < 4])
     draw_lineage_graph(
         G,
         by_iteration=True,
+        position="embedding",  # ("graphviz", "sfdp"),
         embeddings=embeddings,
-        position="spring-embedding",
+        with_labels=False,
+        with_edges=False,
         nodesize=5,
-        figsize=(10, 10)
+        figsize=(12, 12),
+        save_dir="../reports/images/lineage_graphs/big/",
     )
 
-    # rank_distro(G, rank_cap=500)
+    # # ranking of edge types (evol methods)
+    # rank_distro(G, rank_cap=10)
     # avg_rank_by_iter(G)
