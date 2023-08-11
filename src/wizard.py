@@ -55,6 +55,10 @@ EVOL_METHOD_NAMES = {
 }
 
 
+def evol_method_name(method: str) -> str:
+    return EVOL_METHOD_NAMES[method]
+
+
 def name_programming_problem(chat: ChatOpenAI, text: str) -> str:
     system_prompt = SystemMessagePromptTemplate.from_template(
         "Come up with a name for the following programming problem.  "
@@ -229,7 +233,7 @@ def build_lineage_graph(wizard_edges: List[dict], chat: ChatOpenAI = None, add_o
         rank = edge["rank"]
         chosen = edge["chosen?"]
         archived = edge["archived?"]
-        method = EVOL_METHOD_NAMES[edge["sample"]["evol_method"]]
+        method = evol_method_name(edge["sample"]["evol_method"])
 
         # represent nodes as tuples so that nodes in different iterations can have the same text
         # (we assume that the text of a node is unique within an iteration)
@@ -281,7 +285,6 @@ def draw_lineage_graph(G: nx.DiGraph,
     # colors
     colors = palettable.matplotlib.get_map("Viridis_5").mpl_colors
     base_color = colors[0]
-    highlight_color = colors[-1]
     recent_color = colors[2]
 
     if position == "iteration":
@@ -320,7 +323,7 @@ def draw_lineage_graph(G: nx.DiGraph,
         def color_node(node_data):
             if node_data["chosen"]:
                 return base_color
-            elif i and node_data["iteration"] == i:
+            elif i is not None and node_data["iteration"] == i:
                 return recent_color
             else:
                 return "white"
@@ -330,10 +333,6 @@ def draw_lineage_graph(G: nx.DiGraph,
         nx.draw_networkx_nodes(
             graph,
             pos=p,
-            # with_labels=False,
-            # width=0.2,
-            # edge_color="grey",
-            # edge_color=[colors[method_index[method]] for _, _, method in graph.edges.data("method")],
             node_color=[color_node(data) for _, data in graph.nodes(data=True)],
             node_size=nodesize,
             alpha=0.5,
@@ -376,7 +375,10 @@ def draw_lineage_graph(G: nx.DiGraph,
             # make a subdirectory for this lineage using iso timestamp
             lineage_dir = os.path.join(save_dir, timestamp)
             os.makedirs(lineage_dir, exist_ok=True)
-            plt.savefig(os.path.join(lineage_dir, f"lineage_{i:03d}.png"))
+            if i is not None:
+                plt.savefig(os.path.join(lineage_dir, f"lineage_{i:03d}.png"))
+            else:
+                plt.savefig(os.path.join(lineage_dir, f"lineage.png"))
         else:
             plt.show()
 
@@ -494,11 +496,11 @@ if __name__ == "__main__":
     #     seed_dataset="../datasets/code_alpaca_tiny.json",
     #     output_file="../datasets/code_alpaca_tiny_nov_10x20_1.jsonl"
     # )
-    dataset = util.load_jsonl("../datasets/code_alpaca_100_nov_100xAll.jsonl")
-    # dataset = util.load_jsonl("../datasets/code_alpaca_tiny_nov_10x20_1.jsonl")
+    # dataset = util.load_jsonl("../datasets/code_alpaca_100_nov_100xAll.jsonl")
+    dataset = util.load_jsonl("../datasets/code_alpaca_tiny_nov_10x20_1.jsonl")
     print(len(dataset))
     G = build_lineage_graph(dataset, chat=ChatOpenAI(temperature=0.9, client=None))
-    G = G.subgraph([n for n, data in G.nodes(data=True) if 1 < data["iteration"] < 4])
+    # G = G.subgraph([n for n, data in G.nodes(data=True) if 1 < data["iteration"] < 4])
     print(G)
 
     # save embeddings to file
@@ -510,11 +512,11 @@ if __name__ == "__main__":
         by_iteration=True,
         position="embedding",  # ("graphviz", "sfdp"),
         embeddings=embeddings,
-        with_labels=False,
-        with_edges=False,
+        with_labels=True,
+        with_edges=True,
         nodesize=5,
         figsize=(12, 12),
-        save_dir="../reports/images/lineage_graphs/big/",
+        save_dir="../reports/images/lineage_graphs/",
     )
 
     # # ranking of edge types (evol methods)
