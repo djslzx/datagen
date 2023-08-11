@@ -118,31 +118,89 @@ def draw_lineage_graph(G: gt.Graph, pos: gt.PropertyMap = None, outfile: str = N
     )
 
 
-def load_df(filename: str) -> pd.DataFrame:
+def load_json_as_df(filename: str) -> pd.DataFrame:
     data = util.load_jsonl(filename)
     data = pd.json_normalize(data)
     return pd.DataFrame(data)
 
 
-if __name__ == "__main__":
-    # chat = ChatOpenAI(temperature=0.9)
-    # df = load_df("../datasets/code_alpaca_100_nov_100xAll.jsonl")
-    df = load_df("../datasets/code_alpaca_tiny_nov_10x20_1.jsonl")
-    print(df)
-    G = build_lineage_graph(df, chat=None)
-    # root = add_root_to_sources_(G)
-    # print(G)
+def parent_embed_dist(df: pd.DataFrame, embeddings: np.ndarray) -> pd.DataFrame:
+    """analyze semantic distances between parents and children"""
+    # prepend rows for starting dataset
+    orig_rows = pd.DataFrame([
+        {
+            "iteration": 0,
+            "score": None,
+            "rank": None,
+            "chosen?": True,
+            "archived?": False,
+            "sample.input": None,
+            "sample.evol_method": None,
+            "sample.output": x,
+        }
+        for x in df[df["iteration"] == 0]["sample.input"].unique()
+    ])
+    df["iteration"] += 1
+    df = pd.concat([orig_rows, df], ignore_index=True)
 
+    # add embedding as column of df
+    df["sample.output.embedding"] = pd.Series([v for v in embeddings], dtype=object)
+    assert type(df["sample.output.embedding"].iloc[0]) == np.ndarray
+
+    # set a row's sample input index by looking for the first row whose sample output is the same as the current row's sample input
+    # unless the row is a starting dataset row, in which case the sample input index is the row's index
+    df["sample.input.index"] = df.apply(
+        lambda row: row.name if row["iteration"] == 0 else df[df["sample.output"] == row["sample.input"]].index[0],
+        axis=1
+    )
+    # pull the embedding of the sample input from the input's row
+    df["sample.input.embedding"] = df.apply(
+        lambda row: df["sample.output.embedding"].iloc[row["sample.input.index"]],
+        axis=1
+    )
+    # take distance between input and output embeddings
+    df["parent-child dist"] = df.apply(
+        lambda row: np.linalg.norm(row["sample.input.embedding"] - row["sample.output.embedding"]),
+        axis=1
+    )
+
+    df["sample.evol_method"] = df["sample.evol_method"].apply(lambda x: wizard.EVOL_METHOD_NAMES[x] if x else None)
+
+    # drop embedding columns
+    df = df.drop(columns=["sample.output.embedding", "sample.input.embedding"])
+
+    return df
+
+
+if __name__ == "__main__":
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.min_rows", 50)
+
+    # chat = ChatOpenAI(temperature=0.9)
+    # df = load_json_as_df("../datasets/code_alpaca_100_nov_100xAll.jsonl")
     embeddings = np.load("../datasets/code_alpaca_tiny_nov_10x20_1-embeddings.npy")
-    # embeddings = np.load("../datasets/code_alpaca_100_nov_100xAll-embeddings.npy")
-    print(len(embeddings))
+    df = load_json_as_df("../datasets/code_alpaca_tiny_nov_10x20_1.jsonl")
+    df = parent_embed_dist(df, embeddings)
+    print(df)
+
+    sns.relplot(df, x="iteration", y="parent-child dist", hue="sample.evol_method", kind="line")
+    plt.show()
+
+
+    # G = build_lineage_graph(df, chat=None)
+    # # root = add_root_to_sources_(G)
+    # # print(G)
+    #
+    # embeddings = np.load("../datasets/code_alpaca_tiny_nov_10x20_1-embeddings.npy")
+    # # embeddings = np.load("../datasets/code_alpaca_100_nov_100xAll-embeddings.npy")
+    # print(len(embeddings))
 
     # vG = gt.GraphView(G,
     #                   vfilt=lambda v: G.vp.iteration[v] < 4,
     #                   efilt=lambda e: G.vp.iteration[e.target()] < 4)
-    draw_lineage_graph(
-        G,
-        pos=genealogy_layout(G),
-        outfile="lineage_graph_big"
-    )
+    # draw_lineage_graph(
+    #     G,
+    #     pos=genealogy_layout(G),
+    #     outfile="lineage_graph_big"
+    # )
     # draw_lineage_graph(vG, pos=gt.radial_tree_layout(vG, root=root))
