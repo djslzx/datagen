@@ -11,7 +11,7 @@ lark     # parser
 maturin  # build rust
 
 # egraphs-good
-# ./eggy/target/wheels/eggy-0.1.0-cp37-abi3-macosx_11_0_arm64.whl
+./eggy/target/wheels/eggy-0.1.0-cp37-abi3-macosx_11_0_arm64.whl
 # ./eggy/target/wheels/eggy-0.1.0-cp37-abi3-linux_x86_64.whl
 
 # pretrained LLMs + deps
@@ -25,6 +25,7 @@ transformers
 datasets
 sentence-transformers
 
+openai
 wandb
 opencv-python
 langchain
@@ -35,3 +36,8 @@ huggingface_hub
 adjustText
 networkx
 palettable
+nltk
+py-readability-metrics
+pygraphviz
+# graph_tool  # install using brew
+tabulate
