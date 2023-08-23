@@ -18,6 +18,19 @@ import openai.error
 from adjustText import adjust_text
 
 
+class IdGen:
+    """
+    A simple ID generator
+    """
+
+    def __init__(self):
+        self.id = 0
+
+    def next(self):
+        self.id += 1
+        return self.id
+
+
 def load_jsonl(filename: str) -> List[dict]:
     with open(filename, "r") as f:
         return [json.loads(line) for line in f.readlines()]
@@ -112,12 +125,12 @@ def fig_images_at_positions(images: np.ndarray, positions: np.ndarray) -> plt.Fi
     positions[:, 1] -= positions[:, 1].min()
 
     # find the max x and y positions
-    i_xlim = positions[:,0].argmax()
+    i_xlim = positions[:, 0].argmax()
     i_ylim = positions[:, 1].argmax()
     xlim = images[i_xlim].shape[0] + positions[i_xlim, 0]
     ylim = images[i_ylim].shape[1] + positions[i_ylim, 1]
 
-    fig = plt.figure(figsize=(xlim/100, ylim/100))
+    fig = plt.figure(figsize=(xlim / 100, ylim / 100))
     for image, pos in zip(images, positions):
         x, y = pos
         fig.figimage(image, xo=x, yo=y, origin='upper')
@@ -164,6 +177,7 @@ class ParamTester:
     we want to test first) and the order of values given for each
     parameter.
     """
+
     def __init__(self, params: Dict[str, List[Any] | Any]):
         self.params = {
             k: vs if isinstance(vs, list) else [vs]
@@ -210,6 +224,7 @@ class Timing(object):
     Use Timing blocks to time blocks of code.
     Adapted from DreamCoder.
     """
+
     def __init__(self, msg: str, file=sys.stdout, suppress_start=False):
         self.msg = msg
         self.file = file
@@ -287,7 +302,7 @@ def split_list(s: List[str], t: str) -> List[List[str]]:
     while True:
         try:
             i = s.index(t)
-            r, s = s[:i], s[i+1:]
+            r, s = s[:i], s[i + 1:]
             if r:
                 out.append(r)
         except ValueError:
@@ -326,7 +341,7 @@ def remove_at_pos(s: Iterable, indices: Iterable[int]) -> str:
 
 def unique(vec: List) -> Tuple[bool, Optional[Tuple]]:
     for i in range(len(vec)):
-        for j in range(i+1, len(vec)):
+        for j in range(i + 1, len(vec)):
             a, b = vec[i], vec[j]
             if a == b:
                 return False, (a, b)
