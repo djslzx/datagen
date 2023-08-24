@@ -1,11 +1,15 @@
 import copy
+import datetime
 import os
 import random
 import sys
 from math import ceil
+from pprint import pp
 from typing import List, Generator, Union, Tuple
 import numpy as np
 import json
+
+import pandas as pd
 from sklearn import preprocessing, random_projection
 from sklearn.manifold import MDS
 from tqdm import tqdm
@@ -49,7 +53,7 @@ def mutator_name(method_text: str) -> str:
     return "unknown"
 
 
-def name_programming_problem(chat: ChatOpenAI, text: str) -> str:
+def propose_name(chat: ChatOpenAI, text: str) -> str:
     system_prompt = SystemMessagePromptTemplate.from_template(
         "Come up with a name for the following programming problem.  "
         "The name should contain no more than 5 words.  "
@@ -62,28 +66,31 @@ def name_programming_problem(chat: ChatOpenAI, text: str) -> str:
     return chain.run(input=text)
 
 
-def mutate_problem(chat: ChatOpenAI, problem: str, mutator: str) -> Tuple[str, str]:
+def mutate_problem(chat: ChatOpenAI, problem: str, mutator: str) -> str:
     """Use the LLM to mutate the given programming problem"""
     system_prompt = SystemMessagePromptTemplate.from_template(
         "Please increase the difficulty of the given programming test question a bit. "
         "You can increase the difficulty using, but not limited to, the following methods: {mutator}"
         "Your response should consist of a new programming test question that is entirely self-contained: "
-        "it should be solvable without reference to the original question. "
-        "The new programming test question should be solvable without a network connection or any system libraries. "
+        "it should be solvable without "
+        "(a) knowing the original question, "
+        "(b) having a network connection, or"
+        "(c) using any system calls. "
         "Output only the new programming question, with no additional text."
     )
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     output = chain.run(mutator=mutator, input=problem)
-    name = name_programming_problem(chat, output)
-    return name, output
+    return output
 
 
 def propose_solution(chat: ChatOpenAI, problem: str) -> str:
     """Prompt the LLM to solve a programming problem"""
     system_prompt = SystemMessagePromptTemplate.from_template(
-        "Please write a solution in Python to the following programming test question."
+        "Please write a solution in Python to the following programming test question. "
+        "Your solution should only use the Python standard library. "
+        "Do not explain your solution or include any comments. "
     )
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
@@ -101,7 +108,11 @@ def propose_checker(chat: ChatOpenAI, problem: str) -> str:
     system_prompt = SystemMessagePromptTemplate.from_template(
         "Given a programming problem p, a checker for p is a function f that takes in a proposed solution function g "
         "and returns True if and only if g is a correct solution to the problem. "
-        "Please write a checker in Python for the following programming test question. "
+        "A simple example of a checker is a function that tests g against a set of input-output pairs. "
+        "In cases where generating these input-output pairs is more difficult, a checker may instead sample outputs from g"
+        "and verify that they satisfy the problem's constraints."
+        "Please write a deterministic checker in Python for the following programming problem. "
+        "Do not include a solution to the programming problem in your response."
     )
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
@@ -118,21 +129,29 @@ def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutator
         for i, text in tqdm(enumerate(dataset, start=1), total=len(dataset), desc="Chain", position=0):
             # Evolve each initial datapoint independently of the others
             parent_id = idgen.next()
-            for gen in tqdm(range(iters), desc="Generation", position=1, leave=False):
+            yield {
+                "id": parent_id,
+                "iter": 0,
+                "parent": None,
+                "mutator": None,
+                "name": propose_name(chat, text),
+                "text": text,
+                "solution": propose_solution(chat, text),
+                "checker": propose_checker(chat, text),
+            }
+            for gen in tqdm(range(1, iters + 1), desc="Generation", position=1, leave=False):
                 mutator = random.choice(mutators)
-                name, text = mutate_problem(chat, text, mutator)
-                soln = propose_solution(chat, text)
-                checker = propose_checker(chat, text)
+                text = mutate_problem(chat, text, mutator)
                 child_id = idgen.next()
                 yield {
                     "id": child_id,
                     "iter": gen,
                     "parent": parent_id,
                     "mutator": mutator_name(mutator),
-                    "name": name,
                     "text": text,
-                    "solution": soln,
-                    "checker": checker,
+                    "name": propose_name(chat, text),
+                    "solution": propose_solution(chat, text),
+                    "checker": propose_checker(chat, text),
                 }
                 parent_id = child_id
 
@@ -254,50 +273,51 @@ def mutate_prompt(chat: ChatOpenAI, text: str, k: int) -> List[str]:
     return chain.run(k=k, input=text)
 
 
-def embed_and_save(G: nx.Graph, filename: str, key="text"):
+def embed(texts: List[str], saveto=None):
     # use sentence transformer to generate embeddings
     ft = feat.SentenceFeaturizer()
-    nodes = list(G.nodes(data=True))
     embeddings = []
-    for batch in tqdm(util.batched(nodes, batch_size=128), total=ceil(len(nodes) / 128)):
-        texts = [data[key] for _, data in batch]
-        embeddings.extend(ft.apply(texts))
+    for batch in tqdm(util.batched(texts, batch_size=128), total=ceil(len(texts) / 128)):
+        embeddings.extend(ft.apply(batch))
     embeddings = np.array(embeddings)
-    np.save(filename, embeddings)
+    if saveto:
+        np.save(saveto, embeddings)
     return embeddings
 
 
-def name_problems_from_file(in_filename: str, out_filename: str):
-    chat = ChatOpenAI(temperature=0.9, client=None)
-    in_data = util.load_jsonl(in_filename)
-    with get_openai_callback() as cb, open(out_filename, "w") as f:
-        for d in in_data:
-            named_d = d.copy()
-            if d["iteration"] == 0:
-                input_name = name_programming_problem(chat, d["sample"]["input"])
-                print(f"Named {d['sample']['input']} as {input_name}", file=sys.stderr)
-                named_d["sample"]["input name"] = input_name
-            output_name = name_programming_problem(chat, d["sample"]["output"])
-            print(f"Named {d['sample']['output']} as {output_name}", file=sys.stderr)
-            named_d["sample"]["output name"] = output_name
-            f.write(json.dumps(named_d) + "\n")
-        print(cb, file=sys.stderr)
-
-
-if __name__ == "__main__":
+def run_evol_instruct(outfile: str, iters: int, seed_dataset: List[str]):
     wandb.init(project="wizard")
     chat = ChatOpenAI(temperature=0.9, client=None)
-    with open("../datasets/evolinstruct-singlethread.jsonl", "w") as f:
+    with open(outfile, "w") as f:
         for entry in evol_instruct(
                 chat=chat,
-                iters=5,
-                seed_dataset=[
-                    "Create an array of length 5 which contains all even numbers between 1 and 10.",
-                ],
+                iters=iters,
+                seed_dataset=seed_dataset,
                 mutators=list(MUTATORS.values()),
         ):
             json.dump(entry, f)
             f.write("\n")
+            print(entry["name"])
+
+
+if __name__ == "__main__":
+    # timestamp = datetime.datetime.now().isoformat()
+    # iters = 100
+    # run_evol_instruct(
+    #     outfile=f"../datasets/evol-instruct-single-{iters}-{timestamp}.jsonl",
+    #     iters=iters,
+    #     seed_dataset=[
+    #         "Write a function `evens` that takes two integers `start` and `end` as arguments "
+    #         "and returns an array that contains all even numbers between `start` and `end`, inclusive."
+    #     ],
+    # )
+    data = util.load_jsonl(f"../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.jsonl")
+    embeddings = embed([data["text"] for data in data], saveto="../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.npy")
+
+    df = pd.DataFrame(data)
+    # show all cols
+    pd.set_option('display.max_columns', None)
+    print(df)
 
 # run_search(
 #     iters=20,
