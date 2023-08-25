@@ -5,7 +5,7 @@ import random
 import sys
 from math import ceil
 from pprint import pp
-from typing import List, Generator, Union, Tuple
+from typing import List, Generator, Union, Tuple, Optional
 import numpy as np
 import json
 
@@ -85,12 +85,35 @@ def mutate_problem(chat: ChatOpenAI, problem: str, mutator: str) -> str:
     return output
 
 
+def filter_problem(chat: ChatOpenAI, problem: str) -> Optional[bool]:
+    """Use the LLM to filter out programming problems that are not self-contained"""
+    system_prompt = SystemMessagePromptTemplate.from_template(
+        "Please determine whether the following programming test question is valid. "
+        "A programming test question is valid if it is entirely self-contained, i.e., "
+        "it is solvable without "
+        "(a) referencing an 'original question', "
+        "(b) having a network connection, or"
+        "(c) using any system calls. "
+        "Output only True or False, with no additional text."
+    )
+    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
+    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
+    chain = LLMChain(llm=chat, prompt=prompt)
+    output = chain.run(input=problem)
+    if output == "True":
+        return True
+    elif output == "False":
+        return False
+    else:
+        return None
+
+
 def propose_solution(chat: ChatOpenAI, problem: str) -> str:
     """Prompt the LLM to solve a programming problem"""
     system_prompt = SystemMessagePromptTemplate.from_template(
         "Please write a solution in Python to the following programming test question. "
         "Your solution should only use the Python standard library. "
-        "Do not explain your solution or include any comments. "
+        "Output only the solution, with no additional text or comments. "
     )
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
@@ -112,7 +135,8 @@ def propose_checker(chat: ChatOpenAI, problem: str) -> str:
         "In cases where generating these input-output pairs is more difficult, a checker may instead sample outputs from g"
         "and verify that they satisfy the problem's constraints."
         "Please write a deterministic checker in Python for the following programming problem. "
-        "Do not include a solution to the programming problem in your response."
+        "Do not include a solution to the programming problem in your response. "
+        "Output only the checker, with no additional text. "
     )
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
@@ -311,13 +335,18 @@ if __name__ == "__main__":
     #         "and returns an array that contains all even numbers between `start` and `end`, inclusive."
     #     ],
     # )
-    data = util.load_jsonl(f"../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.jsonl")
-    embeddings = embed([data["text"] for data in data], saveto="../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.npy")
+    data = util.load_jsonl("../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.jsonl")
+    embeddings = embed([data["text"] for data in data],
+                       saveto="../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.npy")
 
+    chat = ChatOpenAI(temperature=0.9, client=None)
     df = pd.DataFrame(data)
+    df["valid"] = df["text"].apply(lambda x: filter_problem(chat, x))
+
     # show all cols
     pd.set_option('display.max_columns', None)
     print(df)
+    df.to_csv("../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.csv")
 
 # run_search(
 #     iters=20,
