@@ -150,44 +150,54 @@ def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutator
     dataset = seed_dataset
     idgen = util.IdGen()
     with get_openai_callback() as cb:
+        log_table = wandb.Table(columns=["root name", "iter", "parent name", "name", "text"])
         for i, text in tqdm(enumerate(dataset, start=1), total=len(dataset), desc="Chain", position=0):
             # Evolve each initial datapoint independently of the others
-            parent_id = idgen.next()
+            root_id = idgen.next()
+            root_name = propose_name(chat, text)
             yield {
-                "id": parent_id,
+                "id": root_id,
                 "iter": 0,
-                "parent": None,
+                "root": root_id,
+                "parent": root_id,
                 "mutator": None,
-                "name": propose_name(chat, text),
+                "name": root_name,
                 "text": text,
                 "solution": propose_solution(chat, text),
                 "checker": propose_checker(chat, text),
             }
+            parent_id = root_id
+            parent_name = root_name
             for gen in tqdm(range(1, iters + 1), desc="Generation", position=1, leave=False):
                 mutator = random.choice(mutators)
                 text = mutate_problem(chat, text, mutator)
-                child_id = idgen.next()
+                name = propose_name(chat, text)
+                id = idgen.next()
                 yield {
-                    "id": child_id,
+                    "id": id,
                     "iter": gen,
+                    "root": root_id,
                     "parent": parent_id,
                     "mutator": mutator_name(mutator),
                     "text": text,
-                    "name": propose_name(chat, text),
+                    "name": name,
                     "solution": propose_solution(chat, text),
                     "checker": propose_checker(chat, text),
                 }
-                parent_id = child_id
-
-            wandb.log({
-                "iter": i,
-                "token usage": {
-                    "total cost": cb.total_cost,
-                    "total tokens": cb.total_tokens,
-                    "prompt tokens": cb.prompt_tokens,
-                    "completion tokens": cb.completion_tokens,
-                },
-            })
+                log_table.add_data(root_name, gen, parent_name, name, text)
+                wandb.log({
+                    "iter": i,
+                    "root": root_id,
+                    "names": copy.copy(log_table),
+                    "token usage": {
+                        "total cost": cb.total_cost,
+                        "total tokens": cb.total_tokens,
+                        "prompt tokens": cb.prompt_tokens,
+                        "completion tokens": cb.completion_tokens,
+                    },
+                })
+                parent_id = id
+                parent_name = name
 
 
 # generate a small dataset using Evol-Instruct + novelty pressure
@@ -321,37 +331,34 @@ def run_evol_instruct(outfile: str, iters: int, seed_dataset: List[str]):
         ):
             json.dump(entry, f)
             f.write("\n")
-            print(entry["name"])
 
 
 if __name__ == "__main__":
-    # timestamp = datetime.datetime.now().isoformat()
-    # iters = 100
-    # run_evol_instruct(
-    #     outfile=f"../datasets/evol-instruct-single-{iters}-{timestamp}.jsonl",
-    #     iters=iters,
-    #     seed_dataset=[
-    #         "Write a function `evens` that takes two integers `start` and `end` as arguments "
-    #         "and returns an array that contains all even numbers between `start` and `end`, inclusive."
-    #     ],
+    seed_dataset = [x["instruction"] for x in json.load(open("../datasets/code_alpaca_tiny.json", "r"))]
+    timestamp = datetime.datetime.now().isoformat()
+    iters = 2
+    run_evol_instruct(
+        outfile=f"../datasets/evol-instruct-{iters}-{timestamp}.jsonl",
+        iters=iters,
+        seed_dataset=seed_dataset,
+    )
+    # data = util.load_jsonl("../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.jsonl")
+    # embeddings = embed([data["text"] for data in data],
+    #                    saveto="../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.npy")
+    #
+    # chat = ChatOpenAI(temperature=0.9, client=None)
+    # df = pd.DataFrame(data)
+    # df["valid"] = df["text"].apply(lambda x: filter_problem(chat, x))
+
+    # # show all cols
+    # pd.set_option('display.max_columns', None)
+    # print(df)
+    # df.to_csv("../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.csv")
+
+    # run_search(
+    #     iters=20,
+    #     archive_per_iter=5,
+    #     max_popn_size=10,
+    #     seed_dataset="../datasets/code_alpaca_tiny.json",
+    #     output_file="../datasets/code_alpaca_tiny_nov_10x20_1.jsonl"
     # )
-    data = util.load_jsonl("../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.jsonl")
-    embeddings = embed([data["text"] for data in data],
-                       saveto="../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.npy")
-
-    chat = ChatOpenAI(temperature=0.9, client=None)
-    df = pd.DataFrame(data)
-    df["valid"] = df["text"].apply(lambda x: filter_problem(chat, x))
-
-    # show all cols
-    pd.set_option('display.max_columns', None)
-    print(df)
-    df.to_csv("../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.csv")
-
-# run_search(
-#     iters=20,
-#     archive_per_iter=5,
-#     max_popn_size=10,
-#     seed_dataset="../datasets/code_alpaca_tiny.json",
-#     output_file="../datasets/code_alpaca_tiny_nov_10x20_1.jsonl"
-# )
