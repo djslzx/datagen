@@ -33,7 +33,15 @@ class IdGen:
 
 def load_jsonl(filename: str) -> List[dict]:
     with open(filename, "r") as f:
-        return [json.loads(line) for line in f.readlines()]
+        out = []
+        for line in f.readlines():
+            try:
+                d = json.loads(line)
+            except json.decoder.JSONDecodeError as e:
+                print(f"Failed to decode {line}")
+                raise e
+            out.append(d)
+    return out
 
 
 def pp_jsonl(filename: str, skip=1):
@@ -68,6 +76,10 @@ def dict_to_text(d: dict) -> str:
 
 
 def invert_array(x: np.ndarray) -> np.ndarray:
+    """
+    Treating the array `x` as a function mapping indices to values,
+    return the inverse function as an array
+    """
     assert x.dtype == int
     assert np.array_equal(np.sort(x), np.arange(len(x)))
     y = np.zeros_like(x)
