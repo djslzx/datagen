@@ -124,26 +124,53 @@ def load_json_as_df(filename: str) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def parent_embed_dist(df: pd.DataFrame, embeddings: np.ndarray) -> pd.DataFrame:
+def embed_dist(df: pd.DataFrame, embeddings: np.ndarray) -> pd.DataFrame:
     """analyze semantic distances between parents and children"""
     df.set_index("id", inplace=True)
     df["parent"].fillna(df.index.to_series(), inplace=True)
     df["parent"] = df["parent"].astype(np.int32)
+
+    # add root column
+    roots = []
+    for id, row in df.iterrows():
+        if row.iter == 0:
+            root_id = id
+        roots.append(root_id)
+    df["root"] = roots
+
+    df["mutator"].fillna("self", inplace=True)
     df["embedding"] = pd.Series([v for v in embeddings], dtype=object)
     assert type(df["embedding"].iloc[0]) == np.ndarray
-
-    # change type of score to numpy float32
-    if "score" in df.columns:
-        df["score"] = df["score"].astype(np.float32)
-
-    df["parent embedding"] = df.apply(lambda row: df.loc[row["parent"]]["embedding"], axis=1)
     df["parent name"] = df.apply(lambda row: df.loc[row["parent"]]["name"], axis=1)
+    df["parent embedding"] = df.apply(lambda row: df.loc[row["parent"]]["embedding"], axis=1)
+    df["root embedding"] = df.apply(lambda row: df.loc[row["root"]]["embedding"], axis=1)
     df["pc dist"] = df.apply(lambda row: np.linalg.norm(row["embedding"] - row["parent embedding"]), axis=1)
-
-    df = df[df["iter"] > 0]
-    df = df.drop(columns=["embedding", "parent embedding"])
-
+    df["rc dist"] = df.apply(lambda row: np.linalg.norm(row["embedding"] - row["root embedding"]), axis=1)
     return df
+
+
+def avg_distance(df: pd.DataFrame, n_samples: int):
+    """
+    Plot average embedding distance by generation;
+    use a random sample for each generation to reduce computation time.
+    """
+    # select a row with `n_samples` entries for each generation
+    sample = df.groupby("iter").sample(n_samples)
+
+    # compute average embedding distance within each group
+    sample["avg dist"] = sample.groupby("iter").apply(
+        lambda x: np.mean([np.linalg.norm(x.iloc[i]["embedding"] -
+                                          x.iloc[j]["embedding"])
+                           for i in range(n_samples)
+                           for j in range(i + 1, n_samples)])
+    )
+    sample["avg pc dist"] = sample.groupby("iter")["pc dist"].mean()
+    sample = sample.melt(var_name='cols', value_name='value', value_vars=["avg dist", "avg pc dist"])
+
+    sns.lineplot(data=sample, x="iter", y="value", hue="cols")
+    plt.title(f"Average embedding distance by generation ({n_samples} samples)")
+    plt.gcf().set_size_inches(12, 6)
+    plt.show()
 
 
 def plot_by_generation(df: pd.DataFrame, y: str):
@@ -160,22 +187,46 @@ if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.min_rows", 50)
 
-    data = util.load_jsonl(f"../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.jsonl")
-    # embeddings = wizard.embed([data["text"] for data in data], saveto="../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.npy")
-    embeddings = np.load("../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.npy")
-
+    file = "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098"
+    data = util.load_jsonl(f"{file}.jsonl")
+    # # embeddings = wizard.embed([data["text"] for data in data], saveto=f"{file}.npy")
+    embeddings = np.load(f"../datasets/{file}.npy")
     df = pd.DataFrame(data)
-    df = parent_embed_dist(df, embeddings)
-    df = df[df["iter"] > 0]
+    df = embed_dist(df, embeddings)
+    df.to_csv(f"{file}.csv")
+    # df = pd.read_csv(f"{file}.csv")
+    # avg_distance(df, 100)
 
-    # pc dist by mutator
-    dists_by_mut = df.groupby("mutator")["pc dist"]
-    print(dists_by_mut.describe())
-    # plot using sns boxplot
-    sns.catplot(data=df, x="mutator", y="pc dist")
-    # increase fig size
-    plt.gcf().set_size_inches(12, 6)
-    plt.show()
+    # # check how many roots are represented at each iteration
+    # roots_by_iter = df.groupby("iter")["root"].nunique()
+    # print(roots_by_iter.describe())
+    #
+    # # average pc dist by generation
+    # dists_by_gen = df.groupby("iter")["pc dist"]
+    # print(dists_by_gen.describe())
+    #
+    # # avg rc dist by gen
+    # sns.lineplot(data=df, x="iter", y="rc dist")
+    # plt.gcf().set_size_inches(12, 6)
+    # plt.show()
+    #
+    # sns.lineplot(data=df, x="iter", y="rc dist", hue="mutator")
+    # plt.gcf().set_size_inches(12, 6)
+    # plt.show()
+    #
+    # plot pc dist by mutator
+    # sns.catplot(data=df, x="mutator", y="pc dist", kind='violin')
+    # plt.gcf().set_size_inches(12, 6)
+    # plt.show()
+
+    # plot proportion of 0-distance pairs by mutator
+    df["same"] = df["pc dist"] == 0
+    sns.catplot(data=df, x="mutator", y="same", kind='bar')
+
+    # # plot pc dist over time for each chain
+    # sns.lineplot(data=df, x="iter", y="pc dist")
+    # plt.gcf().set_size_inches(12, 6)
+    # plt.show()
 
     # input-output pair with greatest parent-child dist in each generation
     # max_pc = df.loc[df.groupby("iteration")["parent-child dist"].idxmax()]
