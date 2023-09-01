@@ -5,7 +5,7 @@ import random
 import sys
 from math import ceil
 from pprint import pp
-from typing import List, Generator, Union, Tuple, Optional
+from typing import List, Generator, Union, Tuple, Optional, Iterator
 import numpy as np
 import json
 
@@ -145,13 +145,12 @@ def propose_checker(chat: ChatOpenAI, problem: str) -> str:
 
 
 # generate a dataset using Evol-Instruct from the WizardLM paper
-def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutators: List[str]) -> Generator[
-    dict, None, None]:
+def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutators: List[str]) -> Iterator[dict]:
     dataset = seed_dataset
     idgen = util.IdGen()
     with get_openai_callback() as cb:
         log_table = wandb.Table(columns=["root name", "iter", "parent name", "name", "text"])
-        for i, text in tqdm(enumerate(dataset, start=1), total=len(dataset), desc="Chain", position=0):
+        for i, text in enumerate(dataset, start=1):
             # Evolve each initial datapoint independently of the others
             root_id = idgen.next()
             root_name = propose_name(chat, text)
@@ -168,7 +167,7 @@ def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutator
             }
             parent_id = root_id
             parent_name = root_name
-            for gen in tqdm(range(1, iters + 1), desc="Generation", position=1, leave=False):
+            for gen in range(1, iters + 1):
                 mutator = random.choice(mutators)
                 text = mutate_problem(chat, text, mutator)
                 name = propose_name(chat, text)
@@ -200,64 +199,100 @@ def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutator
                 parent_name = name
 
 
+def embed(ft: feat.Featurizer, texts: Union[List[str], np.ndarray], batch_size=128, saveto=None) -> np.ndarray:
+    # use sentence transformer to generate embeddings
+    embeddings = []
+    for batch in util.batched(texts, batch_size=batch_size):
+        embeddings.extend(ft.apply(batch))
+    embeddings = np.array(embeddings)
+    scaler = preprocessing.StandardScaler()
+    embeddings = scaler.fit_transform(embeddings)
+    if saveto:
+        np.save(file=saveto, arr=embeddings)
+    return embeddings
+
+
 # generate a small dataset using Evol-Instruct + novelty pressure
 def novel_instruct(chat: ChatOpenAI,
-                   fe: feat.Featurizer,
+                   ft: feat.Featurizer,
                    iters: int,
                    seed_dataset: List[str],
                    mutators: List[str],
                    max_popn_size: int,
-                   archive_per_iter: int) -> Generator[List[dict], None, None]:
-    def take_samples(in_data: Union[List[str], np.ndarray]):
-        # flat generator over samples from evol-instruct
-        for x in tqdm(in_data, total=len(in_data)):
-            for mutator in mutators:
-                sample = mutate_problem(chat, x, mutator)
-                yield sample
-
-    def embed(v: List[str]) -> np.ndarray:
-        em = fe.apply(v)
-        # embeddings = SparseRandomProjection(n_components="auto").fit_transform(embeddings)
-        # scale embeddings
-        scaler = preprocessing.StandardScaler()
-        em = scaler.fit_transform(em)
-        return em
-
+                   archive_per_iter: int) -> Iterator[List[dict]]:
+    idgen = util.IdGen()
     knn = NearestNeighbors(metric="minkowski")
-    popn = seed_dataset
-    e_popn = embed(popn)
+    e_popn = embed(ft, seed_dataset)
+    popn = []
+    for text in seed_dataset:
+        root_id = idgen.next()
+        root = {
+            "id": root_id,
+            "iter": 0,
+            "root": root_id,
+            "parent": root_id,
+            "mutator": None,
+            "name": propose_name(chat, text),
+            "text": text,
+            # "solution": propose_solution(chat, text),
+            # "checker": propose_checker(chat, text),
+            "score": None,
+            "rank": None,
+            "chosen?": True,
+            "archived?": False,
+        }
+        popn.append(root)
+        yield root
     archive = []
     e_archive = []
 
+    def take_sample(x: dict, m: str) -> dict:
+        text = mutate_problem(chat, x["text"], m)
+        return {
+            "id": idgen.next(),
+            "iter": i,
+            "root": x["root"],
+            "parent": x["id"],
+            "mutator": mutator_name(m),
+            "name": propose_name(chat, text),
+            "text": text,
+            # "solution": propose_solution(chat, text),
+            # "checker": propose_checker(chat, text),
+            "score": None,
+            "rank": None,
+            "chosen?": None,
+            "archived?": None,
+        }
+
     log_table = wandb.Table(columns=["top-1", "top-2", "top-3", "bot-1", "bot-2", "bot-3"])
     with get_openai_callback() as cb:  # expose cost information
-        for i in range(iters):
+        for i in range(1, iters + 1):
             # take samples using evol-instruct
-            samples = np.array(list(take_samples(popn)), dtype=object)
-            s_samples = np.array([d["output"] for d in samples], dtype=object)
+            samples = np.array([take_sample(x, m)
+                                for x in popn
+                                for m in mutators], dtype=object)
 
             # use novelty pressure to select best samples
             knn.fit(np.concatenate([e_popn, e_archive], axis=0) if archive else e_popn)
-            e_samples = embed(s_samples.tolist())
+            e_samples = embed(ft, [s["text"] for s in samples])
             dists, _ = knn.kneighbors(e_samples)
             dists = np.mean(dists, axis=1)
             ranks = np.argsort(-dists)
             i_selected = ranks[:max_popn_size]
 
             # update archive: take a random selection of samples and add them to the archive
-            i_archived = np.random.choice(len(s_samples), size=archive_per_iter, replace=False)
-            archive.extend(s_samples[i_archived])
+            i_archived = np.random.choice(len(samples), size=archive_per_iter, replace=False)
+            archive.extend(samples[i_archived])
             e_archive.extend(e_samples[i_archived])
 
             # update popn, embeddings
-            popn = s_samples[i_selected]
+            popn = samples[i_selected]
             e_popn = e_samples[i_selected]
 
             # log everything
-            print(cb, file=sys.stderr)
             inverted_ranks = util.invert_array(ranks)
-            log_table.add_data(*(samples[ranks[:3]].tolist() +
-                                 samples[ranks[-3:][::-1]].tolist()))
+            log_table.add_data(*([s["name"] for s in samples[ranks[:3]]] +
+                                 [s["name"] for s in samples[ranks[-3:][::-1]]]))  # best and worst 3
             wandb.log({
                 "scores": wandb.Histogram(dists),
                 "examples": copy.copy(log_table),
@@ -268,31 +303,16 @@ def novel_instruct(chat: ChatOpenAI,
                     "completion tokens": cb.completion_tokens,
                 },
             })
-            yield [{"iteration": i,
-                    "sample": sample,
+
+            # update samples with score, rank, chosen?, archived?, then output samples
+            for j, d in enumerate(samples):
+                d.update({
                     "score": float(dists[j]),
                     "rank": int(inverted_ranks[j]),
                     "chosen?": bool(j in i_selected),
                     "archived?": bool(j in i_archived),
-                    }
-                   for j, sample in enumerate(samples)]
-
-
-def run_search(iters: int, seed_dataset: str, archive_per_iter: int, max_popn_size: int, output_file: str):
-    instructions = [x["instruction"] for x in json.load(open(seed_dataset, "r"))]
-    chat = ChatOpenAI(temperature=0.9, client=None)
-    wandb.init(project="wizard")
-    fe = feat.SentenceFeaturizer()
-    with open(output_file, "w") as f:
-        for log in novel_instruct(chat, fe,
-                                  iters=iters,
-                                  seed_dataset=instructions,
-                                  mutators=MUTATORS,
-                                  max_popn_size=max_popn_size,
-                                  archive_per_iter=archive_per_iter):
-            for entry in log:
-                s = json.dumps(entry, indent=None)
-                f.write(s + "\n")
+                })
+                yield d
 
 
 def mutate_prompt(chat: ChatOpenAI, text: str, k: int) -> List[str]:
@@ -307,58 +327,50 @@ def mutate_prompt(chat: ChatOpenAI, text: str, k: int) -> List[str]:
     return chain.run(k=k, input=text)
 
 
-def embed(texts: List[str], saveto=None):
-    # use sentence transformer to generate embeddings
-    ft = feat.SentenceFeaturizer()
-    embeddings = []
-    for batch in tqdm(util.batched(texts, batch_size=128), total=ceil(len(texts) / 128)):
-        embeddings.extend(ft.apply(batch))
-    embeddings = np.array(embeddings)
-    if saveto:
-        np.save(saveto, embeddings)
-    return embeddings
-
-
-def run_evol_instruct(outfile: str, iters: int, seed_dataset: List[str]):
+def run_evol_instruct(outfile: str, iters: int, seed_dataset_file: str):
+    instructions = [x["instruction"] for x in json.load(open(seed_dataset_file, "r"))]
     wandb.init(project="wizard")
     chat = ChatOpenAI(temperature=0.9, client=None)
     with open(outfile, "w") as f:
         for entry in evol_instruct(
                 chat=chat,
                 iters=iters,
-                seed_dataset=seed_dataset,
-                mutators=list(MUTATORS.values()),
-        ):
-            json.dump(entry, f)
-            f.write("\n")
+                seed_dataset=instructions,
+                mutators=list(MUTATORS.values())):
+            s = json.dumps(entry, indent=None)
+            print(s)
+            f.write(s + "\n")
+
+
+def run_novel_instruct(iters: int, seed_dataset_file: str, archive_per_iter: int, max_popn_size: int, output_file: str):
+    instructions = [x["instruction"] for x in json.load(open(seed_dataset_file, "r"))]
+    chat = ChatOpenAI(temperature=0.9, client=None)
+    wandb.init(project="wizard")
+    fe = feat.SentenceFeaturizer()
+    with open(output_file, "w") as f:
+        for entry in novel_instruct(chat, fe,
+                                    iters=iters,
+                                    seed_dataset=instructions,
+                                    mutators=list(MUTATORS.values()),
+                                    max_popn_size=max_popn_size,
+                                    archive_per_iter=archive_per_iter):
+            s = json.dumps(entry, indent=None)
+            print(s)
+            f.write(s + "\n")
 
 
 if __name__ == "__main__":
-    seed_dataset = [x["instruction"] for x in json.load(open("../datasets/code_alpaca_tiny.json", "r"))]
     timestamp = datetime.datetime.now().isoformat()
     iters = 2
-    run_evol_instruct(
-        outfile=f"../datasets/evol-instruct-{iters}-{timestamp}.jsonl",
-        iters=iters,
-        seed_dataset=seed_dataset,
-    )
-    # data = util.load_jsonl("../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.jsonl")
-    # embeddings = embed([data["text"] for data in data],
-    #                    saveto="../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.npy")
-    #
-    # chat = ChatOpenAI(temperature=0.9, client=None)
-    # df = pd.DataFrame(data)
-    # df["valid"] = df["text"].apply(lambda x: filter_problem(chat, x))
-
-    # # show all cols
-    # pd.set_option('display.max_columns', None)
-    # print(df)
-    # df.to_csv("../datasets/evol-instruct-single-100-2023-08-24T12:17:16.661029.csv")
-
-    # run_search(
-    #     iters=20,
-    #     archive_per_iter=5,
-    #     max_popn_size=10,
-    #     seed_dataset="../datasets/code_alpaca_tiny.json",
-    #     output_file="../datasets/code_alpaca_tiny_nov_10x20_1.jsonl"
+    # run_evol_instruct(
+    #     outfile=f"../datasets/evol-instruct-{iters}-{timestamp}.jsonl",
+    #     iters=iters,
+    #     seed_dataset="../datasets/code_alpaca_tiny.json",,
     # )
+    run_novel_instruct(
+        iters=iters,
+        seed_dataset_file="../datasets/code_alpaca_tiny.json",
+        archive_per_iter=5,
+        max_popn_size=10,
+        output_file=f"../datasets/novel-instruct-test-{iters}-{timestamp}.jsonl"
+    )
