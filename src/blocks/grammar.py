@@ -1,4 +1,3 @@
-# import pdb
 import itertools as it
 import torch as T
 import torch.nn.functional as F
@@ -8,37 +7,12 @@ from typing import Type
 import blocks.util as util
 import blocks.ant as ant
 
-# bitmap size constants
 B_W = 16
 B_H = 16
 SPRITE_MAX_SIZE = 6
-
 LIB_SIZE = 8  # number of z's, sprites
 Z_LO = 0  # min poss value in z_n
 Z_HI = max(B_W, B_H)  # max poss value in z_n
-Z_IGNORE = -1  # ignore z's that have this value
-IMG_IGNORE = -1  # ignore pixels that have this value
-FULL_LEXICON = ([i for i in range(Z_LO, Z_HI + 1)] +
-                [f'z_{i}' for i in range(LIB_SIZE)] +
-                [f'S_{i}' for i in range(LIB_SIZE)] +
-                [f'CS_{i}' for i in range(LIB_SIZE)] +
-                ['x_max', 'y_max',
-                 '~', '+', '-', '*', '<', '&', '?',
-                 'P', 'L', 'CR', 'SR'
-                                 'H', 'V', 'T', '#', 'o', '@', '!', '{', '}', '(', ')'])
-OLD_LEXICON = (
-        [i for i in range(Z_LO, Z_HI + 1)] +
-        [f'z_{i}' for i in range(LIB_SIZE)] +
-        [f'S_{i}' for i in range(LIB_SIZE)] +
-        ['x_max', 'y_max', 'P', 'L', 'CR', 'SR', '{', '}', '(', ')']
-)
-SIMPLE_LEXICON = (
-        [i for i in range(Z_LO, Z_HI + 1)] +
-        [f'z_{i}' for i in range(LIB_SIZE)] +
-        [f'S_{i}' for i in range(LIB_SIZE)] +
-        [f'CS_{i}' for i in range(LIB_SIZE)] +
-        ['x_max', 'y_max', 'P', 'CL', 'LL', 'CR', 'SR', '{', '}', '(', ')']
-)
 
 
 class Visited:
@@ -68,7 +42,9 @@ class Expr(Visited):
     def __lt__(self, other):
         return str(self) < str(other)
 
-    def eval(self, env={}, height=B_H, width=B_W):
+    def eval(self, env=None, height=B_H, width=B_W):
+        if env is None:
+            env = {}
         return self.accept(Eval(env, height, width))
 
     def extract_indices(self, type):
@@ -111,29 +87,6 @@ class Expr(Visited):
                     for path in child]
 
         return self.accept(MapReduce(f_reduce, f_map))
-
-    def perturb_leaves(self, p, range=(0, 2)):
-        n_perturbed = 0
-
-        # range = self.range(envs=[])
-        def perturb(expr):
-            nonlocal n_perturbed
-            if random.random() < p:
-                n_perturbed += 1
-                return expr.accept(Perturb(range))
-            else:
-                return expr
-
-        def perturb_leaf(type, *args):
-            return perturb(type(*args))
-
-        def perturb_node(type, *children):
-            try:
-                return perturb(type(*children))
-            except UnimplementedError:
-                return type(*children)
-
-        return self.accept(MapReduce(f_map=perturb_leaf, f_reduce=perturb_node))
 
     def lines(self):
         try:
@@ -1230,29 +1183,6 @@ class WellFormed(Visitor):
 
     def visit_Repeat(self, f, n):
         return f.out_type == 'transform' and n.out_type == 'int' and f.accept(self) and n.accept(self)
-
-
-class Perturb(Visitor):
-    def __init__(self, range): self.range = range
-
-    def visit_Nil(self): return Not(Nil())
-
-    def visit_Num(self, n): return Num(n + random.choice([-1, 1]) * random.randint(*self.range))
-
-    def visit_Z(self, i): return Z(random.randint(0, LIB_SIZE - 1))
-
-    def visit_HFlip(self): return VFlip()
-
-    def visit_VFlip(self): return HFlip()
-
-    def visit_Plus(self, x, y):
-        return Minus(x, y) if random.randint(0, 1) > 0 else Times(x, y)
-
-    def visit_Minus(self, x, y):
-        return Times(x, y) if random.randint(0, 1) > 0 else Plus(x, y)
-
-    def visit_Times(self, x, y):
-        return Plus(x, y) if random.randint(0, 1) > 0 else Minus(x, y)
 
 
 class MapReduce(Visitor):

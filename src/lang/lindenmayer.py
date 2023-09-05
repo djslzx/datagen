@@ -6,7 +6,7 @@ from math import sin, cos, radians
 import numpy as np
 from skimage import filters, draw
 import itertools as it
-from sys import stderr, maxsize
+from sys import stderr
 import colorsys
 import matplotlib.pyplot as plt
 import torch as T

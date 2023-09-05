@@ -166,7 +166,9 @@ class Grammar:
             else:
                 return a
 
-        def norm(prods):
+        def norm(symbol, prods):
+            if len(prods) == 0:
+                raise ValueError(f"Empty production list for symbol {symbol}")
             z, _ = prods[0]
             if isinstance(z, T.Tensor):
                 z = T.logsumexp(T.stack([w for w, _ in prods]), 0)
@@ -176,7 +178,7 @@ class Grammar:
             return [(add_log(w, alpha) - add_log(z, alpha * len(prods)), form)
                     for w, form in prods]
 
-        self.rules = {symbol: norm(productions)
+        self.rules = {symbol: norm(symbol, productions)
                       for symbol, productions in self.rules.items()}
         return self
 
