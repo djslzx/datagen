@@ -4,10 +4,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import List, Union
+from typing import List, Union, Optional
 import graph_tool.all as gt
 from langchain.chat_models import ChatOpenAI
 
+import featurizers as feat
 import util
 import wizard
 
@@ -187,102 +188,83 @@ if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.min_rows", 50)
 
-    file = "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098"
-    data = util.load_jsonl(f"{file}.jsonl")
-    # # embeddings = wizard.embed([data["text"] for data in data], saveto=f"{file}.npy")
-    embeddings = np.load(f"../datasets/{file}.npy")
-    df = pd.DataFrame(data)
-    df = embed_dist(df, embeddings)
-    df.to_csv(f"{file}.csv")
-    # df = pd.read_csv(f"{file}.csv")
-    # avg_distance(df, 100)
+    files = {
+        "novel-instruct": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
+        "evol-instruct-20Kx3": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
+        "evol-instruct-1000x100": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+    }
+    full_df: Optional[pd.DataFrame] = None
+    for name, file in files.items():
+        data = util.load_jsonl(f"{file}.jsonl")
+        # embeddings = wizard.embed(feat.SentenceFeaturizer(), [data["text"] for data in data], saveto=f"{file}.npy")
+        embeddings = np.load(f"../datasets/{file}.npy")
+        print(f"Loaded file {file} with {len(data)} samples and {len(embeddings)} embeddings")
+
+        df = pd.DataFrame(data)
+        df = embed_dist(df, embeddings)
+        df["id"] = df.index
+        df["source file"] = name
+        full_df = df if full_df is None else pd.concat([full_df, df], ignore_index=True)
 
     # # check how many roots are represented at each iteration
     # roots_by_iter = df.groupby("iter")["root"].nunique()
     # print(roots_by_iter.describe())
-    #
-    # # average pc dist by generation
-    # dists_by_gen = df.groupby("iter")["pc dist"]
-    # print(dists_by_gen.describe())
-    #
-    # # avg rc dist by gen
-    # sns.lineplot(data=df, x="iter", y="rc dist")
+
+    # # avg pc dist by gen
+    # sns.relplot(data=full_df, x="iter", y="pc dist", hue="source file", kind="line")
     # plt.gcf().set_size_inches(12, 6)
     # plt.show()
     #
-    # sns.lineplot(data=df, x="iter", y="rc dist", hue="mutator")
-    # plt.gcf().set_size_inches(12, 6)
-    # plt.show()
+    # for name in files.keys():
+    #     sns.relplot(data=full_df[full_df["source file"] == name],
+    #                 x="iter", y="pc dist", hue="mutator", col="source file", kind="line")
+    #     plt.gcf().set_size_inches(12, 6)
+    #     plt.show()
     #
-    # plot pc dist by mutator
-    # sns.catplot(data=df, x="mutator", y="pc dist", kind='violin')
+    # # plot pc dist by mutator
+    # sns.catplot(data=full_df, x="mutator", y="pc dist", kind='violin', row="source file")
     # plt.gcf().set_size_inches(12, 6)
     # plt.show()
 
-    # plot proportion of 0-distance pairs by mutator
-    df["same"] = df["pc dist"] == 0
-    sns.catplot(data=df, x="mutator", y="same", kind='bar')
+    # sample best parent-child pairs
+    samples: pd.DataFrame = (
+        full_df
+        .loc[full_df["iter"] % 20 == 0]
+        .sort_values("pc dist", ascending=False)
+        .groupby(["iter", "source file"])
+        .head(3)
+        .sort_values(["source file", "iter"])
+        [["source file", "iter", "text", "pc dist", "mutator"]]
+    )
+    for i, row in samples.iterrows():
+        print(
+            f"{row['iter']} ({row['source file']}) w/ dist {row['pc dist']}:\n"
+            f"#+begin_quote"
+            f"{row['text']}"
+            f"#+end_quote"
+        )
+    samples = (
+        full_df
+        .loc[full_df["source file"] == "evol-instruct-20Kx3"]
+        .sort_values("pc dist", ascending=False)
+        .groupby("iter")
+        .head(3)
+        .sort_values("iter")
+        [["iter", "text", "pc dist", "mutator"]]
+    )
+    print("Samples from evol-instruct-20Kx3")
+    for i, row in samples.iterrows():
+        print(
+            f"{row['iter']} w/ dist {row['pc dist']}:\n"
+            f"#+begin_quote"
+            f"{row['text']}"
+            f"#+end_quote"
+        )
 
-    # # plot pc dist over time for each chain
-    # sns.lineplot(data=df, x="iter", y="pc dist")
-    # plt.gcf().set_size_inches(12, 6)
-    # plt.show()
+    # # plot proportion of 0-distance pairs by mutator
+    # df["same"] = df["pc dist"] == 0
+    # sns.catplot(data=df, x="mutator", y="same", kind='bar')
 
-    # input-output pair with greatest parent-child dist in each generation
-    # max_pc = df.loc[df.groupby("iteration")["parent-child dist"].idxmax()]
-    # print(max_pc[["iteration", "sample.input.name", "sample.output.name", "parent-child dist"]].to_markdown())
-    # min_pc = df.loc[df.groupby("iteration")["parent-child dist"].idxmin()]
-    # print(min_pc[["iteration", "sample.input.name", "sample.output.name", "parent-child dist"]].to_markdown())
-
-    # find outputs with "sorry"
+    # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
     # print(sorry)
-
-    # # print 3 best parent-child pairs with greatest score in every 10th generation
-    # samples = (
-    #     df
-    #     .loc[df["iteration"] % 10 == 0]
-    #     .sort_values("score", ascending=False)
-    #     .groupby("iteration")
-    #     .head(1)
-    #     .sort_values("iteration")
-    #     [["iteration", "sample.output.text", "score", "parent-child dist", "sample.evol_method"]]
-    # )
-    # for i, row in samples.iterrows():
-    #     print(f"Generation {row['iteration']}, "
-    #           f"score: {row['score']}, "
-    #           f"evol_method: {row['sample.evol_method']}")
-    #     print("#+begin_quote")
-    #     print(row['sample.output.text'])
-    #     print("#+end_quote")
-
-    # plot_by_generation(df, "total len")
-    # plot_by_generation(df, "len")
-    # plot_by_generation(df, "num words")
-    # plot_by_generation(df, "avg word length")
-    # plot_by_generation(df, "parent-child dist")
-    # plot_by_generation(df, "scaled parent-child dist")
-    # plot_by_generation(df, "score")
-    # plot_by_generation(df, "rank")
-
-    # fig, axes = plt.subplots(2, 2, figsize=(12, 6))
-    # sns.lineplot(df, x="iteration", y="parent-child dist", ax=axes[0, 0])
-    # sns.lineplot(df, x="iteration", y="scaled parent-child dist", ax=axes[0, 1])
-    # sns.lineplot(df, x="iteration", y="parent-child dist", hue="sample.evol_method", ax=axes[1, 0])
-    # sns.lineplot(df, x="iteration", y="scaled parent-child dist", hue="sample.evol_method", ax=axes[1, 1])
-    # plt.suptitle("Parent-child distance by generation")
-    # plt.tight_layout()
-    # plt.show()
-
-    # G = build_lineage_graph(df, chat=None)
-    # root = add_root_to_sources_(G)
-    # print(G)
-    #
-    # vG = gt.GraphView(G,
-    #                   vfilt=lambda v: G.vp.iteration[v] < 4,
-    #                   efilt=lambda e: G.vp.iteration[e.target()] < 4)
-    # draw_lineage_graph(
-    #     G,
-    #     pos=genealogy_layout(G),  # gt.radial_tree_layout(vG, root=root)
-    #     outfile="lineage_graph_big"
-    # )
