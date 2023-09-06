@@ -2,9 +2,7 @@ import copy
 import datetime
 import os
 import random
-import sys
-from math import ceil
-from pprint import pp
+from tqdm import tqdm
 from typing import List, Generator, Union, Tuple, Optional, Iterator
 import numpy as np
 import json
@@ -12,9 +10,7 @@ import json
 import pandas as pd
 from sklearn import preprocessing, random_projection
 from sklearn.manifold import MDS
-from tqdm import tqdm
 from sklearn.neighbors import NearestNeighbors
-import networkx as nx
 import wandb
 import langchain
 from langchain import LLMChain
@@ -202,7 +198,7 @@ def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutator
 def embed(ft: feat.Featurizer, texts: Union[List[str], np.ndarray], batch_size=128, saveto=None) -> np.ndarray:
     # use sentence transformer to generate embeddings
     embeddings = []
-    for batch in util.batched(texts, batch_size=batch_size):
+    for batch in tqdm(util.batched(texts, batch_size=batch_size), total=len(texts) // batch_size):
         embeddings.extend(ft.apply(batch))
     embeddings = np.array(embeddings)
     scaler = preprocessing.StandardScaler()
@@ -342,8 +338,12 @@ def run_evol_instruct(outfile: str, iters: int, seed_dataset_file: str):
             f.write(s + "\n")
 
 
-def run_novel_instruct(iters: int, seed_dataset_file: str, archive_per_iter: int, max_popn_size: int, output_file: str):
-    instructions = [x["instruction"] for x in json.load(open(seed_dataset_file, "r"))]
+def run_novel_instruct(iters: int, seed_dataset: Union[str, List], archive_per_iter: int, max_popn_size: int, output_file: str):
+    if isinstance(seed_dataset, str):
+        instructions = [x["instruction"] for x in json.load(open(seed_dataset_file, "r"))]
+    else:
+        assert isinstance(seed_dataset, list)
+        instructions = seed_dataset
     chat = ChatOpenAI(temperature=0.9, client=None)
     wandb.init(project="wizard")
     fe = feat.SentenceFeaturizer()
@@ -367,9 +367,21 @@ if __name__ == "__main__":
     #     iters=iters,
     #     seed_dataset="../datasets/code_alpaca_tiny.json",,
     # )
+    tiny_seed = [  # first few project euler problems
+        "If we list all the natural numbers below 10 that are multiples of 3 or 5, we get 3, 5, 6 and 9. "
+        "The sum of these multiples is 23. Find the sum of all the multiples of 3 or 5 below 1000.",
+        "Find the sum of all even terms in the Fibonacci sequence whose values do not exceed four million.",
+        "Find the largest prime factor of the number 600851475143.",
+        "Find the largest palindrome made from the product of two 3-digit numbers.",
+        "What is the smallest positive number that is evenly divisible by all of the numbers from 1 to 20?",
+        "What is the 10,001st prime number?",
+        "A Pythagorean triplet is a set of three natural numbers, a < b < c, for which, a^2 + b^2 = c^2. "
+        "For example, 3^2 + 4^2 = 9 + 16 = 25 = 5^2. There exists exactly one Pythagorean triplet for which a + b + c = 1000. "
+        "Find the product abc.",
+    ]
     run_novel_instruct(
         iters=iters,
-        seed_dataset_file="../datasets/code_alpaca_tiny.json",
+        seed_dataset=tiny_seed,  #"../datasets/code_alpaca_tiny.json",
         archive_per_iter=5,
         max_popn_size=10,
         output_file=f"../datasets/novel-instruct-test-{iters}-{timestamp}.jsonl"
