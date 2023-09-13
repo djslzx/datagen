@@ -1,4 +1,6 @@
 from typing import Dict, Any
+from matplotlib import pyplot as plt
+import einops as ein
 
 from lang.tree import Language, Tree, Grammar
 from featurizers import Featurizer, ResnetFeaturizer
@@ -48,21 +50,21 @@ class Blocks(Language):
            | "(" "apply" transform bmp ")"    -> apply
            | "(" "line" point point color ")" -> line
            | "(" "rect" point point color ")" -> rect
-        transform: "hflip" 
-                 | "vflip" 
+        transform: "hflip" -> hflip
+                 | "vflip" -> vflip
                  | "(" "translate" int int ")"           -> translate
                  | "(" "compose" transform transform ")" -> compose
                  | "(" "repeat" transform int ")"        -> repeat
         color: NUMBER
         int: NUMBER 
-           | "xmax" 
-           | "ymax" 
+           | "xmax" -> xmax
+           | "ymax" -> ymax
            | "(" "z" NUMBER ")"            -> z
            | "(" "if" bool int int ")"     -> if
            | "(" "plus" int int ")"        -> plus
            | "(" "minus" int int ")"       -> minus
            | "(" "times" int int ")"       -> times
-        bool: "nil" 
+        bool: "nil" -> nil
             | "(" "not" bool ")"      -> not
             | "(" "and" bool bool ")" -> and
             | "(" "lt" int int ")"    -> lt
@@ -73,18 +75,27 @@ class Blocks(Language):
         %ignore WS
     """
 
-    def __init__(self):
-        model = Grammar.from_components(Blocks.types, gram=1)
+    def __init__(self, gram: int, featurizer: Featurizer):
+        assert gram in {1, 2}
+        model = Grammar.from_components(Blocks.types, gram=gram)
         super().__init__(
             parser_grammar=Blocks.metagrammar,
             parser_start="bmp",
             root_type="Bmp",
             model=model,
-            featurizer=ResnetFeaturizer(),
+            featurizer=featurizer,
         )
 
     def _to_obj(self, t: Tree, env: Dict[str, Any] = None) -> grammar.Expr:
         if t.is_leaf():
+            if t.value == "hflip":
+                return grammar.HFlip()
+            elif t.value == "vflip":
+                return grammar.VFlip()
+            elif t.value == "xmax":
+                return grammar.XMax()
+            elif t.value == "ymax":
+                return grammar.YMax()
             raise ValueError(f"Unexpected leaf: {t}")
         elif t.value == "int" or t.value == "color":
             return grammar.Num(n=int(t.children[0].value))
@@ -100,10 +111,6 @@ class Blocks(Language):
         elif t.value == "and":
             a, b = t.children
             return grammar.And(self._to_obj(a, env), self._to_obj(b, env))
-        elif t.value == "xmax":
-            return grammar.XMax()
-        elif t.value == "ymax":
-            return grammar.YMax()
         elif t.value == "z":
             i = self._to_obj(t.children[0], env)
             return grammar.Z(i)
@@ -143,10 +150,6 @@ class Blocks(Language):
         elif t.value == "repeat":
             f, n = t.children
             return grammar.Repeat(self._to_obj(f, env), self._to_obj(n, env))
-        elif t.value == "hflip":
-            return grammar.HFlip()
-        elif t.value == "vflip":
-            return grammar.VFlip()
         elif t.value == "translate":
             x, y = t.children
             return grammar.Translate(self._to_obj(x, env), self._to_obj(y, env))
@@ -156,8 +159,9 @@ class Blocks(Language):
 
     def eval(self, t: Tree, env: Dict[str, Any] = None):
         o = self._to_obj(t, env)
-        evaluator = grammar.Eval(env=env)
-        return o.accept(evaluator)
+        evaluator = grammar.Eval(env=env, height=16, width=16)
+        bmp = o.accept(evaluator)
+        return ein.repeat(bmp, "h w -> h w c", c=3)
 
     @property
     def str_semantics(self) -> Dict:
@@ -192,10 +196,12 @@ class Blocks(Language):
 
 
 if __name__ == "__main__":
-    b = Blocks()
+    b = Blocks(featurizer=ResnetFeaturizer(), gram=2)
     print(b.model)
     examples = [
         "(rect (point 1 2) (point 1 2) 1)",
+        "(rect (point 1 1) (point xmax ymax) 1)",
+        "(rect (point 1 1) (point 15 15) 1)",
         "(line (point 1 2) (point 3 4) 1)",
         "(seq (line (point 1 2) (point 3 4) 1) "
         "     (rect (point 1 2) (point 1 2) 1))",
@@ -205,4 +211,6 @@ if __name__ == "__main__":
         t = b.parse(s)
         print(t.to_sexp())
         print(b.to_str(t))
-        print(b.eval(t))
+        img = b.eval(t)
+        plt.imshow(img)
+        plt.show()
