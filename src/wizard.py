@@ -340,7 +340,7 @@ def run_evol_instruct(outfile: str, iters: int, seed_dataset_file: str):
 
 def run_novel_instruct(iters: int, seed_dataset: Union[str, List], archive_per_iter: int, max_popn_size: int, output_file: str):
     if isinstance(seed_dataset, str):
-        instructions = [x["instruction"] for x in json.load(open(seed_dataset_file, "r"))]
+        instructions = [x["instruction"] for x in json.load(open(seed_dataset, "r"))]
     else:
         assert isinstance(seed_dataset, list)
         instructions = seed_dataset

@@ -246,8 +246,8 @@ def read_runs_into_df(filenames: Dict[str, str]) -> pd.DataFrame:
     for shortname, filename in filenames.items():
         data = util.load_jsonl(f"{filename}.jsonl")
         # embeddings = wizard.embed(feat.SentenceFeaturizer(), [data["text"] for data in data], saveto=f"{file}.npy")
-        embeddings = np.load(f"../datasets/{filename}.npy")
-        print(f"Loaded file {filename} with {len(data)} samples and {len(embeddings)} embeddings")
+        embeddings = np.load(f"{filename}.npy")
+        print(f"Loaded file {filename} with {len(embeddings)} embeddings")
 
         df = pd.DataFrame(data)
         df = embed_dist(df, embeddings)
@@ -267,35 +267,69 @@ def density_distance(a_embeddings: np.ndarray, b_embeddings: np.ndarray, k=1) ->
     return d
 
 
+def pairwise_density_distances(data: dict, n_samples: int):
+    rows = []
+    for k1, k2 in it.combinations(data.keys(), r=2):
+        print(f"{k1}, {k2} w/ {n_samples} samples")
+        e1 = data[k1]["embeddings"]
+        e2 = data[k2]["embeddings"]
+        e1 = e1[np.random.randint(low=0, high=len(e1), size=n_samples)]
+        e2 = e2[np.random.randint(low=0, high=len(e2), size=n_samples)]
+        d12 = density_distance(e1, e2, k=1)
+        d21 = density_distance(e2, e1, k=1)
+        print(f"D({k1}, {k2}) = {d12}")
+        print(f"D({k2}, {k1}) = {d21}")
+        rows.extend([
+            {"src": k1, "dst": k2, "dist": d12 - d21},
+            {"src": k2, "dst": k1, "dist": d21 - d12},
+        ])
+    for k in data.keys():
+        rows.append({"src": k, "dst": k, "dist": 0})
+    df = pd.DataFrame(rows)
+    df = df.pivot(columns="dst", index="src")
+    print(df)
+    sns.heatmap(df, annot=True, cmap=sns.color_palette("vlag", as_cmap=True))
+    plt.show()
+
+
+def det_diversity(embeddings: np.ndarray, n_samples: int) -> float:
+    pass
+
+
+def load_embeddings(filename: str) -> np.ndarray:
+    try:
+        return np.load(f"{filename}.npy")
+    except FileNotFoundError:
+        print(f"Cached embeddings for {filename} not found, generating embeddings...")
+        lines = util.load_jsonl(f"{filename}.jsonl")
+        return wizard.embed(feat.SentenceFeaturizer(),
+                            [line["text"] for line in lines],
+                            saveto=f"{filename}.npy")
+
+
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.min_rows", 50)
 
     filenames = {
-        "novel-instruct": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
-        "evol-instruct-20Kx3": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
-        "evol-instruct-1000x100": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+        "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
+        "NS-euler": "../datasets/novel-instruct-pe-2023-09-07T13:34:54.519254",
+        "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
+        "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
     }
     data = {
         shortname: {
             "data": util.load_jsonl(f"{filename}.jsonl"),
-            "embeddings": np.load(f"../datasets/{filename}.npy"),
+            "embeddings": load_embeddings(f"{filename}"),
         }
         for shortname, filename in filenames.items()
     }
     print("Loaded data:")
     print(*[f"  {name}: {len(data[name]['embeddings'])} embeddings\n" for name in data.keys()])
-    n_samples = 10_000
-    for k1, k2 in it.combinations(data.keys(), r=2):
-        print(f"{k1}, {k2}")
-        e1 = data[k1]["embeddings"]
-        e2 = data[k2]["embeddings"]
-        # e1 = e1[np.random.randint(low=0, high=len(e1), size=n_samples)]
-        # e2 = e2[np.random.randint(low=0, high=len(e2), size=n_samples)]
-        d12 = density_distance(e1, e2, k=1)
-        d21 = density_distance(e2, e1, k=1)
-        print(f"D({k1}, {k2}) = {d12}")
-        print(f"D({k2}, {k1}) = {d21}")
+    pairwise_density_distances(data, n_samples=1000)
+
+    # df = read_runs_into_df(filenames)
+    # pc_dist_plots(df, names=list(filenames.keys()))
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
