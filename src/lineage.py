@@ -1,3 +1,4 @@
+import json
 from pprint import pp
 import itertools as it
 from sklearn.manifold import MDS
@@ -257,7 +258,7 @@ def read_runs_into_df(filenames: Dict[str, str]) -> pd.DataFrame:
     return full_df
 
 
-def density_distance(a_embeddings: np.ndarray, b_embeddings: np.ndarray, k=1) -> float:
+def chamfer_diversity(a_embeddings: np.ndarray, b_embeddings: np.ndarray, k=1) -> float:
     knn = NearestNeighbors(metric="minkowski", n_neighbors=k)
     knn.fit(b_embeddings)
     d = 0
@@ -267,16 +268,49 @@ def density_distance(a_embeddings: np.ndarray, b_embeddings: np.ndarray, k=1) ->
     return d
 
 
-def pairwise_density_distances(data: dict, n_samples: int):
+def avg_density(embeddings: np.ndarray, n_samples: int, n_neighbors=5) -> float:
+    I = np.random.randint(low=0, high=len(embeddings), size=n_samples)
+    embeddings = embeddings[I]
+    knn = NearestNeighbors(metric="minkowski", n_neighbors=n_neighbors + 1)
+    knn.fit(embeddings)
+    d = 0
+    for x in embeddings:
+        dists, _ = knn.kneighbors([x])
+        dists = dists[0]
+        assert dists[0] < 1e-5
+        d += dists[1:].mean()
+    return d / n_neighbors
+
+
+def plot_avg_density(data: dict, n_samples: int):
+    rows = []
+    for key in data.keys():
+        e_k = data[key]["embeddings"]
+        for k in range(1, 11):
+            rows.append({"dataset": key,
+                         "k": k,
+                         "density": avg_density(e_k, n_samples=n_samples, n_neighbors=k)})
+    df = pd.DataFrame(rows)
+    sns.lineplot(df, x="k", y="density", hue="dataset")
+    plt.gcf().set_size_inches(12, 6)
+    plt.show()
+
+
+def plot_chamfer_diversity_heatmap(data: dict, n_samples: int):
     rows = []
     for k1, k2 in it.combinations(data.keys(), r=2):
         print(f"{k1}, {k2} w/ {n_samples} samples")
-        e1 = data[k1]["embeddings"]
-        e2 = data[k2]["embeddings"]
+        l1 = data[k1]["lines"]
+        l2 = data[k2]["lines"]
+        I1 = [i for i, line in enumerate(l1) if line["iter"] > 0]
+        I2 = [i for i, line in enumerate(l2) if line["iter"] > 0]
+        e1 = data[k1]["embeddings"][I1]
+        e2 = data[k2]["embeddings"][I2]
+        print(f"Number of embeddings: {k1}: {len(I1)}, {k2}: {len(I2)}")
         e1 = e1[np.random.randint(low=0, high=len(e1), size=n_samples)]
         e2 = e2[np.random.randint(low=0, high=len(e2), size=n_samples)]
-        d12 = density_distance(e1, e2, k=1)
-        d21 = density_distance(e2, e1, k=1)
+        d12 = chamfer_diversity(e1, e2, k=1)
+        d21 = chamfer_diversity(e2, e1, k=1)
         print(f"D({k1}, {k2}) = {d12}")
         print(f"D({k2}, {k1}) = {d21}")
         rows.extend([
@@ -287,13 +321,44 @@ def pairwise_density_distances(data: dict, n_samples: int):
         rows.append({"src": k, "dst": k, "dist": 0})
     df = pd.DataFrame(rows)
     df = df.pivot(columns="dst", index="src")
-    print(df)
     sns.heatmap(df, annot=True, cmap=sns.color_palette("vlag", as_cmap=True))
+    plt.gcf().set_size_inches(12, 6)
     plt.show()
 
 
 def det_diversity(embeddings: np.ndarray, n_samples: int) -> float:
     pass
+
+
+def plot_embedding_stats(data: dict):
+    def l2_norm(mat: np.ndarray):
+        return np.sum(np.abs(mat) ** 2, axis=1) ** 0.5
+
+    rows = []
+    for k in data:
+        e_k = data[k]["embeddings"]
+        max_sum = np.linalg.norm(e_k, ord=np.inf)
+        min_sum = np.linalg.norm(e_k, ord=-np.inf)
+        max_val = np.linalg.norm(e_k, ord=2)
+        min_val = np.linalg.norm(e_k, ord=-2)
+        max_l2 = np.max(l2_norm(e_k))
+        min_l2 = np.min(l2_norm(e_k))
+        rows.append({
+            "dataset": k,
+            "max sum": max_sum,
+            "min sum": min_sum,
+            "max val": max_val,
+            "min val": min_val,
+            "max l2": max_l2,
+            "min l2": min_l2,
+        })
+    df = pd.melt(pd.DataFrame(rows),
+                 id_vars=["dataset"],
+                 value_vars=["max sum", "min sum",
+                             "max val", "min val",
+                             "max l2", "min l2"])
+    sns.catplot(df, x="variable", y="value", hue="dataset", kind="bar")
+    plt.show()
 
 
 def load_embeddings(filename: str) -> np.ndarray:
@@ -311,22 +376,37 @@ if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.min_rows", 50)
 
+    # # json to jsonl
+    # for file in ["../datasets/code_alpaca_1k",
+    #              "../datasets/code_alpaca_20k"]:
+    #     with open(f"{file}.json", "r") as f_in, open(f"{file}.jsonl", "w") as f_out:
+    #         d = json.load(f_in)
+    #         for x in d:
+    #             x["text"] = x["instruction"]
+    #             s = json.dumps(x, indent=None)
+    #             print(s)
+    #             f_out.write(s + "\n")
+
     filenames = {
         "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
         "NS-euler": "../datasets/novel-instruct-pe-2023-09-07T13:34:54.519254",
         "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
         "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+        # "CA 1K": "../datasets/code_alpaca_1k",
+        # "CA 20K": "../datasets/code_alpaca_20k",
     }
     data = {
         shortname: {
-            "data": util.load_jsonl(f"{filename}.jsonl"),
+            "lines": util.load_jsonl(f"{filename}.jsonl"),
             "embeddings": load_embeddings(f"{filename}"),
         }
         for shortname, filename in filenames.items()
     }
     print("Loaded data:")
     print(*[f"  {name}: {len(data[name]['embeddings'])} embeddings\n" for name in data.keys()])
-    pairwise_density_distances(data, n_samples=1000)
+    plot_avg_density(data, n_samples=1000)
+    plot_chamfer_diversity_heatmap(data, n_samples=1000)
+    plot_embedding_stats(data)
 
     # df = read_runs_into_df(filenames)
     # pc_dist_plots(df, names=list(filenames.keys()))
