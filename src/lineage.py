@@ -1,10 +1,12 @@
 from pprint import pp
+import itertools as it
 from sklearn.manifold import MDS
+from sklearn.neighbors import NearestNeighbors
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Dict
 import graph_tool.all as gt
 from langchain.chat_models import ChatOpenAI
 
@@ -184,52 +186,11 @@ def plot_by_generation(df: pd.DataFrame, y: str):
     plt.show()
 
 
-if __name__ == "__main__":
-    pd.set_option("display.max_columns", None)
-    pd.set_option("display.min_rows", 50)
-
-    files = {
-        "novel-instruct": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
-        "evol-instruct-20Kx3": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
-        "evol-instruct-1000x100": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
-    }
-    full_df: Optional[pd.DataFrame] = None
-    for name, file in files.items():
-        data = util.load_jsonl(f"{file}.jsonl")
-        # embeddings = wizard.embed(feat.SentenceFeaturizer(), [data["text"] for data in data], saveto=f"{file}.npy")
-        embeddings = np.load(f"../datasets/{file}.npy")
-        print(f"Loaded file {file} with {len(data)} samples and {len(embeddings)} embeddings")
-
-        df = pd.DataFrame(data)
-        df = embed_dist(df, embeddings)
-        df["id"] = df.index
-        df["source file"] = name
-        full_df = df if full_df is None else pd.concat([full_df, df], ignore_index=True)
-
-    # # check how many roots are represented at each iteration
-    # roots_by_iter = df.groupby("iter")["root"].nunique()
-    # print(roots_by_iter.describe())
-
-    # # avg pc dist by gen
-    # sns.relplot(data=full_df, x="iter", y="pc dist", hue="source file", kind="line")
-    # plt.gcf().set_size_inches(12, 6)
-    # plt.show()
-    #
-    # for name in files.keys():
-    #     sns.relplot(data=full_df[full_df["source file"] == name],
-    #                 x="iter", y="pc dist", hue="mutator", col="source file", kind="line")
-    #     plt.gcf().set_size_inches(12, 6)
-    #     plt.show()
-    #
-    # # plot pc dist by mutator
-    # sns.catplot(data=full_df, x="mutator", y="pc dist", kind='violin', row="source file")
-    # plt.gcf().set_size_inches(12, 6)
-    # plt.show()
-
+def pc_dist_samples(df: pd.DataFrame):
     # sample best parent-child pairs
     samples: pd.DataFrame = (
-        full_df
-        .loc[full_df["iter"] % 20 == 0]
+        df
+        .loc[df["iter"] % 20 == 0]
         .sort_values("pc dist", ascending=False)
         .groupby(["iter", "source file"])
         .head(3)
@@ -244,8 +205,8 @@ if __name__ == "__main__":
             f"#+end_quote"
         )
     samples = (
-        full_df
-        .loc[full_df["source file"] == "evol-instruct-20Kx3"]
+        df
+        .loc[df["source file"] == "evol-instruct-20Kx3"]
         .sort_values("pc dist", ascending=False)
         .groupby("iter")
         .head(3)
@@ -261,9 +222,80 @@ if __name__ == "__main__":
             f"#+end_quote"
         )
 
-    # # plot proportion of 0-distance pairs by mutator
-    # df["same"] = df["pc dist"] == 0
-    # sns.catplot(data=df, x="mutator", y="same", kind='bar')
+
+def pc_dist_plots(df: pd.DataFrame, names: List[str]):
+    # avg pc dist by gen
+    sns.relplot(data=df, x="iter", y="pc dist", hue="source file", kind="line")
+    plt.gcf().set_size_inches(12, 6)
+    plt.show()
+
+    for name in names:
+        sns.relplot(data=df[df["source file"] == name],
+                    x="iter", y="pc dist", hue="mutator", col="source file", kind="line")
+        plt.gcf().set_size_inches(12, 6)
+        plt.show()
+
+    # plot pc dist by mutator
+    sns.catplot(data=df, x="mutator", y="pc dist", kind='violin', row="source file")
+    plt.gcf().set_size_inches(12, 6)
+    plt.show()
+
+
+def read_runs_into_df(filenames: Dict[str, str]) -> pd.DataFrame:
+    full_df: Optional[pd.DataFrame] = None
+    for shortname, filename in filenames.items():
+        data = util.load_jsonl(f"{filename}.jsonl")
+        # embeddings = wizard.embed(feat.SentenceFeaturizer(), [data["text"] for data in data], saveto=f"{file}.npy")
+        embeddings = np.load(f"../datasets/{filename}.npy")
+        print(f"Loaded file {filename} with {len(data)} samples and {len(embeddings)} embeddings")
+
+        df = pd.DataFrame(data)
+        df = embed_dist(df, embeddings)
+        df["id"] = df.index
+        df["source file"] = shortname
+        full_df = df if full_df is None else pd.concat([full_df, df], ignore_index=True)
+    return full_df
+
+
+def density_distance(a_embeddings: np.ndarray, b_embeddings: np.ndarray, k=1) -> float:
+    knn = NearestNeighbors(metric="minkowski", n_neighbors=k)
+    knn.fit(b_embeddings)
+    d = 0
+    for a in a_embeddings:
+        dists, _ = knn.kneighbors([a])
+        d += dists.mean()
+    return d
+
+
+if __name__ == "__main__":
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.min_rows", 50)
+
+    filenames = {
+        "novel-instruct": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
+        "evol-instruct-20Kx3": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
+        "evol-instruct-1000x100": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+    }
+    data = {
+        shortname: {
+            "data": util.load_jsonl(f"{filename}.jsonl"),
+            "embeddings": np.load(f"../datasets/{filename}.npy"),
+        }
+        for shortname, filename in filenames.items()
+    }
+    print("Loaded data:")
+    print(*[f"  {name}: {len(data[name]['embeddings'])} embeddings\n" for name in data.keys()])
+    n_samples = 10_000
+    for k1, k2 in it.combinations(data.keys(), r=2):
+        print(f"{k1}, {k2}")
+        e1 = data[k1]["embeddings"]
+        e2 = data[k2]["embeddings"]
+        # e1 = e1[np.random.randint(low=0, high=len(e1), size=n_samples)]
+        # e2 = e2[np.random.randint(low=0, high=len(e2), size=n_samples)]
+        d12 = density_distance(e1, e2, k=1)
+        d21 = density_distance(e2, e1, k=1)
+        print(f"D({k1}, {k2}) = {d12}")
+        print(f"D({k2}, {k1}) = {d21}")
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
