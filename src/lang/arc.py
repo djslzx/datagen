@@ -1,9 +1,9 @@
 from typing import Dict, Any
 
-from lang.tree import Language, Tree, Grammar, ParseError
+from lang.tree import Language, Tree, Grammar
 from featurizers import Featurizer, ResnetFeaturizer
+import blocks.grammar as grammar
 import util
-import blocks
 
 
 class Blocks(Language):
@@ -16,7 +16,6 @@ class Blocks(Language):
         "not": ["Bool", "Bool"],
         "lt": ["Int", "Int", "Bool"],
         "and": ["Bool", "Bool", "Bool"],
-        "or": ["Bool", "Bool", "Bool"],
         # int
         "int": ["Int", "Int"],
         "xmax": ["Int"],
@@ -33,7 +32,6 @@ class Blocks(Language):
         # bitmaps
         "line": ["Point", "Point", "Color", "Bmp"],
         "rect": ["Point", "Point", "Color", "Bmp"],
-        "sprite": ["Int", "Point", "Bmp"],
         # transforms
         "seq": ["Bmp", "Bmp", "Bmp"],
         "apply": ["Transform", "Bmp", "Bmp"],
@@ -50,7 +48,6 @@ class Blocks(Language):
            | "(" "apply" transform bmp ")"    -> apply
            | "(" "line" point point color ")" -> line
            | "(" "rect" point point color ")" -> rect
-           | "(" "sprite" int point ")"       -> sprite
         transform: "hflip" 
                  | "vflip" 
                  | "(" "translate" int int ")"           -> translate
@@ -68,7 +65,6 @@ class Blocks(Language):
         bool: "nil" 
             | "(" "not" bool ")"      -> not
             | "(" "and" bool bool ")" -> and
-            | "(" "or" bool bool ")"  -> or
             | "(" "lt" int int ")"    -> lt
         point: "(" "point" int int ")" -> point
         
@@ -87,8 +83,81 @@ class Blocks(Language):
             featurizer=ResnetFeaturizer(),
         )
 
+    def _to_obj(self, t: Tree, env: Dict[str, Any] = None) -> grammar.Expr:
+        if t.is_leaf():
+            raise ValueError(f"Unexpected leaf: {t}")
+        elif t.value == "int" or t.value == "color":
+            return grammar.Num(n=int(t.children[0].value))
+        elif t.value == "nil":
+            return grammar.Nil()
+        elif t.value == "not":
+            c = t.children[0]
+            b = self._to_obj(c, env)
+            return grammar.Not(b)
+        elif t.value == "lt":
+            a, b = t.children
+            return grammar.Lt(self._to_obj(a, env), self._to_obj(b, env))
+        elif t.value == "and":
+            a, b = t.children
+            return grammar.And(self._to_obj(a, env), self._to_obj(b, env))
+        elif t.value == "xmax":
+            return grammar.XMax()
+        elif t.value == "ymax":
+            return grammar.YMax()
+        elif t.value == "z":
+            i = self._to_obj(t.children[0], env)
+            return grammar.Z(i)
+        elif t.value == "plus":
+            a, b = t.children
+            return grammar.Plus(self._to_obj(a, env), self._to_obj(b, env))
+        elif t.value == "minus":
+            a, b = t.children
+            return grammar.Minus(self._to_obj(a, env), self._to_obj(b, env))
+        elif t.value == "times":
+            a, b = t.children
+            return grammar.Times(self._to_obj(a, env), self._to_obj(b, env))
+        elif t.value == "if":
+            b, x, y = t.children
+            return grammar.If(self._to_obj(b, env), self._to_obj(x, env), self._to_obj(y, env))
+        elif t.value == "point":
+            x, y = t.children
+            return self._to_obj(x, env), self._to_obj(y, env)
+        elif t.value == "line":
+            p1, p2, c = t.children
+            x1, y1 = self._to_obj(p1, env)
+            x2, y2 = self._to_obj(p2, env)
+            c = self._to_obj(c, env)
+            return grammar.CornerLine(x1, y1, x2, y2, c)
+        elif t.value == "rect":
+            p1, p2, c = t.children
+            x1, y1 = self._to_obj(p1, env)
+            x2, y2 = self._to_obj(p2, env)
+            c = self._to_obj(c, env)
+            return grammar.CornerRect(x1, y1, x2, y2, c)
+        elif t.value == "seq":
+            x, y = t.children
+            return grammar.Join(self._to_obj(x, env), self._to_obj(y, env))
+        elif t.value == "apply":
+            f, x = t.children
+            return grammar.Apply(self._to_obj(f, env), self._to_obj(x, env))
+        elif t.value == "repeat":
+            f, n = t.children
+            return grammar.Repeat(self._to_obj(f, env), self._to_obj(n, env))
+        elif t.value == "hflip":
+            return grammar.HFlip()
+        elif t.value == "vflip":
+            return grammar.VFlip()
+        elif t.value == "translate":
+            x, y = t.children
+            return grammar.Translate(self._to_obj(x, env), self._to_obj(y, env))
+        elif t.value == "compose":
+            f, g = t.children
+            return grammar.Compose(self._to_obj(f, env), self._to_obj(g, env))
+
     def eval(self, t: Tree, env: Dict[str, Any] = None):
-        print(t)
+        o = self._to_obj(t, env)
+        evaluator = grammar.Eval(env=env)
+        return o.accept(evaluator)
 
     @property
     def str_semantics(self) -> Dict:
@@ -110,7 +179,6 @@ class Blocks(Language):
             "line": lambda p1, p2, c: f"(line {p1} {p2} {c})",
             "point": lambda x, y: f"(point {x} {y})",
             "rect": lambda p1, p2, c: f"(rect {p1} {p2} {c})",
-            "sprite": lambda i, p: f"(sprite {i} {p})",
             "seq": lambda x, y: f"(seq {x} {y})",
             "apply": lambda t, x: f"(apply {t} {x})",
             "repeat": lambda t, n: f"(repeat {t} {n})",

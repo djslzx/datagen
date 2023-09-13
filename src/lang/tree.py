@@ -14,6 +14,7 @@ class Tree:
     """
     A program tree
     """
+
     def __init__(self, value, *children):
         self.value = value
         self.children: List[Tree] = list(children)
@@ -100,6 +101,7 @@ class Tree:
             return self.value
 
     def to_str(self, semantics: Dict) -> str:
+        assert isinstance(semantics, dict), f"Expected dict but got {semantics} of type {type(semantics)}"
         sym = self.value
         args = [c.to_str(semantics) for c in self.children]
         if sym in semantics:
