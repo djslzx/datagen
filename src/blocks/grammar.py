@@ -588,8 +588,13 @@ class EnvironmentError(Exception):
     pass
 
 
+class EvalError(Exception):
+    pass
+
+
 class Eval(Visitor):
     def __init__(self, env, height=B_H, width=B_W):
+        assert 'z' in env, "Eval env missing Z"
         self.env = env
         self.height = height
         self.width = width
@@ -700,7 +705,8 @@ class Eval(Visitor):
         c = color.accept(self)
         x_min, y_min, x_max, y_max = (x_min.accept(self), y_min.accept(self),
                                       x_max.accept(self), y_max.accept(self))
-        assert all(isinstance(v, int) for v in [x_min, y_min, x_max, y_max]), f"Got types {[type(v) for v in [x_min, y_min, x_max, y_max]]}"
+        assert all(isinstance(v, int) for v in
+                   [x_min, y_min, x_max, y_max]), f"Got types {[type(v) for v in [x_min, y_min, x_max, y_max]]}"
         assert x_min <= x_max and y_min <= y_max
         return self.make_bitmap(lambda p: (x_min <= p[0] <= x_max and y_min <= p[1] <= y_max) * c)
 
