@@ -1,4 +1,6 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from collections import ChainMap
+import numpy as np
 from matplotlib import pyplot as plt
 import einops as ein
 
@@ -19,10 +21,10 @@ class Blocks(Language):
         "lt": ["Int", "Int", "Bool"],
         "and": ["Bool", "Bool", "Bool"],
         # int
-        "int": ["Int", "Int"],
+        "int": ["LiteralInt", "Int"],
         "xmax": ["Int"],
         "ymax": ["Int"],
-        "z": ["Int", "Int"],
+        "z": ["LiteralInt", "Int"],
         "plus": ["Int", "Int", "Int"],
         "minus": ["Int", "Int", "Int"],
         "times": ["Int", "Int", "Int"],
@@ -30,7 +32,7 @@ class Blocks(Language):
         # points
         "point": ["Int", "Int", "Point"],
         # color
-        "color": ["Int", "Color"],
+        "color": ["LiteralInt", "Color"],
         # bitmaps
         "line": ["Point", "Point", "Color", "Bmp"],
         "rect": ["Point", "Point", "Color", "Bmp"],
@@ -43,39 +45,39 @@ class Blocks(Language):
         "translate": ["Int", "Int", "Transform"],
         "compose": ["Transform", "Transform", "Transform"],
     }
-    types.update({k: ["Color"] for k in range(5)})
-    types.update({k: ["Int"] for k in range(10)})
+    types.update({k: ["LiteralInt"] for k in range(10)})
     metagrammar = r"""
         bmp: "(" "seq" bmp bmp ")"            -> seq
            | "(" "apply" transform bmp ")"    -> apply
            | "(" "line" point point color ")" -> line
            | "(" "rect" point point color ")" -> rect
-        transform: "hflip" -> hflip
-                 | "vflip" -> vflip
+        transform: "hflip"                               -> hflip
+                 | "vflip"                               -> vflip
                  | "(" "translate" int int ")"           -> translate
                  | "(" "compose" transform transform ")" -> compose
                  | "(" "repeat" transform int ")"        -> repeat
-        color: NUMBER
-        int: NUMBER 
-           | "xmax" -> xmax
-           | "ymax" -> ymax
-           | "(" "z" NUMBER ")"            -> z
+        color: n                           -> color
+        int: n                             -> int
+           | "xmax"                        -> xmax
+           | "ymax"                        -> ymax
+           | "(" "z" n ")"                 -> z
            | "(" "if" bool int int ")"     -> if
            | "(" "plus" int int ")"        -> plus
            | "(" "minus" int int ")"       -> minus
            | "(" "times" int int ")"       -> times
-        bool: "nil" -> nil
-            | "(" "not" bool ")"      -> not
-            | "(" "and" bool bool ")" -> and
-            | "(" "lt" int int ")"    -> lt
-        point: "(" "point" int int ")" -> point
+        bool: "nil"                        -> nil
+            | "(" "not" bool ")"           -> not
+            | "(" "and" bool bool ")"      -> and
+            | "(" "lt" int int ")"         -> lt
+        point: "(" "point" int int ")"     -> point
+        n: NUMBER                          -> lit
         
         %import common.WS
         %import common.NUMBER
         %ignore WS
     """
 
-    def __init__(self, gram: int, featurizer: Featurizer):
+    def __init__(self, gram: int, featurizer: Featurizer, env: Optional[Dict] = None, height=16, width=16):
         assert gram in {1, 2}
         model = Grammar.from_components(Blocks.types, gram=gram)
         super().__init__(
@@ -85,8 +87,11 @@ class Blocks(Language):
             model=model,
             featurizer=featurizer,
         )
+        self.env = {} if env is None else env
+        self.height = height
+        self.width = width
 
-    def _to_obj(self, t: Tree, env: Dict[str, Any] = None) -> grammar.Expr:
+    def _to_obj(self, t: Tree, env: Dict[str, Any] = None):
         if t.is_leaf():
             if t.value == "hflip":
                 return grammar.HFlip()
@@ -97,14 +102,16 @@ class Blocks(Language):
             elif t.value == "ymax":
                 return grammar.YMax()
             raise ValueError(f"Unexpected leaf: {t}")
+        elif t.value == "lit":
+            return int(t.children[0].value)
         elif t.value == "int" or t.value == "color":
-            return grammar.Num(n=int(t.children[0].value))
+            c = t.children[0]
+            return grammar.Num(self._to_obj(c, env))
         elif t.value == "nil":
             return grammar.Nil()
         elif t.value == "not":
             c = t.children[0]
-            b = self._to_obj(c, env)
-            return grammar.Not(b)
+            return grammar.Not(self._to_obj(c, env))
         elif t.value == "lt":
             a, b = t.children
             return grammar.Lt(self._to_obj(a, env), self._to_obj(b, env))
@@ -112,8 +119,8 @@ class Blocks(Language):
             a, b = t.children
             return grammar.And(self._to_obj(a, env), self._to_obj(b, env))
         elif t.value == "z":
-            i = self._to_obj(t.children[0], env)
-            return grammar.Z(i)
+            c = t.children[0]
+            return grammar.Z(self._to_obj(c, env))
         elif t.value == "plus":
             a, b = t.children
             return grammar.Plus(self._to_obj(a, env), self._to_obj(b, env))
@@ -158,16 +165,24 @@ class Blocks(Language):
             return grammar.Compose(self._to_obj(f, env), self._to_obj(g, env))
 
     def eval(self, t: Tree, env: Dict[str, Any] = None):
-        o = self._to_obj(t, env)
+        env = ChainMap(self.env, env)
+        try:
+            o = self._to_obj(t, env)
+        except ValueError as e:
+            raise ValueError(f"Failed to evaluate expression {t.to_sexp()}")
+
         evaluator = grammar.Eval(env=env, height=16, width=16)
-        bmp = o.accept(evaluator)
-        return ein.repeat(bmp, "h w -> h w c", c=3)
+        try:
+            bmp = o.accept(evaluator).numpy().astype(np.uint8)
+            return ein.repeat(bmp, "h w -> h w c", c=3)
+        except AssertionError:
+            return np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
     @property
     def str_semantics(self) -> Dict:
         semantics = {
-            "int": lambda x: str(x),
-            "color": lambda x: str(x),
+            "int": lambda n: str(n),
+            "color": lambda n: str(n),
             "nil": lambda: "nil",
             "not": lambda x: f"(not {x})",
             "lt": lambda x, y: f"(lt {x} {y})",
@@ -175,7 +190,7 @@ class Blocks(Language):
             "or": lambda x, y: f"(or {x} {y})",
             "xmax": lambda: "xmax",
             "ymax": lambda: "ymax",
-            "z": lambda x: f"(z {x})",
+            "z": lambda i: f"(z {i})",
             "plus": lambda x, y: f"(plus {x} {y})",
             "minus": lambda x, y: f"(minus {x} {y})",
             "times": lambda x, y: f"(times {x} {y})",
@@ -196,19 +211,27 @@ class Blocks(Language):
 
 
 if __name__ == "__main__":
-    b = Blocks(featurizer=ResnetFeaturizer(), gram=2)
-    print(b.model)
+    b = Blocks(featurizer=ResnetFeaturizer(), gram=2, env={"z": list(range(10))})
     examples = [
-        "(rect (point 1 2) (point 1 2) 1)",
-        "(rect (point 1 1) (point xmax ymax) 1)",
-        "(rect (point 1 1) (point 15 15) 1)",
-        "(line (point 1 2) (point 3 4) 1)",
-        "(seq (line (point 1 2) (point 3 4) 1) "
-        "     (rect (point 1 2) (point 1 2) 1))",
-        "(apply hflip (line (point 1 2) (point 1 4) 1))",
+        # "(rect (point 1 2) (point 1 2) 1)",
+        # "(rect (point 1 1) (point xmax ymax) 1)",
+        # "(rect (point 1 1) (point 15 15) 1)",
+        # "(line (point 1 2) (point 3 4) 1)",
+        # "(seq (line (point 1 2) (point 3 4) 1) "
+        # "     (rect (point 1 2) (point 1 2) 1))",
+        # "(apply hflip (line (point 1 2) (point 1 4) 1))",
+        "(rect (point 1 1) (point (z 1) (z 2)) 1)"
     ]
-    for s in examples:
-        t = b.parse(s)
+    for x in examples:
+        t = b.parse(x)
+        print(t.to_sexp())
+        print(b.to_str(t))
+        img = b.eval(t, )
+        print(img)
+
+    b.fit(corpus=[b.parse(s) for s in examples], alpha=0.01)
+    for i in range(10):
+        t = b.sample()
         print(t.to_sexp())
         print(b.to_str(t))
         img = b.eval(t)
