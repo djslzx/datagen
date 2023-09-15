@@ -140,6 +140,40 @@ def propose_checker(chat: ChatOpenAI, problem: str) -> str:
     return chain.run(input=problem)
 
 
+def check_problem_novel(chat: ChatOpenAI, src_problem: str, dst_problem: str) -> str:
+    """Check that a problem is sufficiently different from its parent"""
+    system_prompt = SystemMessagePromptTemplate.from_template(
+        "The following is an output from a language model. "
+        "The language model was asked to produce a mutated version of a programming problem. "
+        "Did the model output a new problem that isn't trivially the same problem?  "
+        "Answer True/False, with no punctuation or extra text. "
+    )
+    human_prompt = HumanMessagePromptTemplate.from_template(
+        "Original problem:\n"
+        "{src_problem}\n\n"
+        "New problem:\n"
+        "{dst_problem}"
+    )
+    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
+    chain = LLMChain(llm=chat, prompt=prompt)
+    return chain.run(src_problem=src_problem, dst_problem=dst_problem)
+
+
+def check_problem_solvable(chat: ChatOpenAI, problem: str) -> str:
+    """Check that a problem can be solved by LLM"""
+    system_prompt = SystemMessagePromptTemplate.from_template(
+        "Consider the following programming task. Do not complete it.  "
+        "Given the complexity and breadth of the outlined problem, can you provide a complete and functional "
+        "code solution for the outlined programming problem, considering all the specified features and requirements? "
+        "Answer True/False, with no punctuation or extra text."
+        " You should only answer 'True' when you are able to follow up with a full solution, not merely an outline."
+    )
+    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
+    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
+    chain = LLMChain(llm=chat, prompt=prompt)
+    return chain.run(input=problem)
+
+
 # generate a dataset using Evol-Instruct from the WizardLM paper
 def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutators: List[str]) -> Iterator[dict]:
     dataset = seed_dataset
@@ -323,10 +357,9 @@ def mutate_prompt(chat: ChatOpenAI, text: str, k: int) -> List[str]:
     return chain.run(k=k, input=text)
 
 
-def run_evol_instruct(outfile: str, iters: int, seed_dataset_file: str):
+def run_evol_instruct(chat: ChatOpenAI, outfile: str, iters: int, seed_dataset_file: str):
     instructions = [x["instruction"] for x in json.load(open(seed_dataset_file, "r"))]
     wandb.init(project="wizard")
-    chat = ChatOpenAI(temperature=0.9, client=None)
     with open(outfile, "w") as f:
         for entry in evol_instruct(
                 chat=chat,
@@ -338,13 +371,12 @@ def run_evol_instruct(outfile: str, iters: int, seed_dataset_file: str):
             f.write(s + "\n")
 
 
-def run_novel_instruct(iters: int, seed_dataset: Union[str, List], archive_per_iter: int, max_popn_size: int, output_file: str):
+def run_novel_instruct(chat: ChatOpenAI, iters: int, seed_dataset: Union[str, List], archive_per_iter: int, max_popn_size: int, output_file: str):
     if isinstance(seed_dataset, str):
         instructions = [x["instruction"] for x in json.load(open(seed_dataset, "r"))]
     else:
         assert isinstance(seed_dataset, list)
         instructions = seed_dataset
-    chat = ChatOpenAI(temperature=0.9, client=None)
     wandb.init(project="wizard")
     fe = feat.SentenceFeaturizer()
     with open(output_file, "w") as f:
@@ -362,7 +394,10 @@ def run_novel_instruct(iters: int, seed_dataset: Union[str, List], archive_per_i
 if __name__ == "__main__":
     timestamp = datetime.datetime.now().isoformat()
     iters = 2
+    chat = ChatOpenAI(temperature=0.9, model_name="gpt-3.5-turbo-0613")
+
     # run_evol_instruct(
+    #     chat=chat,
     #     outfile=f"../datasets/evol-instruct-{iters}-{timestamp}.jsonl",
     #     iters=iters,
     #     seed_dataset="../datasets/code_alpaca_tiny.json",,
@@ -380,6 +415,7 @@ if __name__ == "__main__":
         "Find the product abc.",
     ]
     run_novel_instruct(
+        chat=chat,
         iters=iters,
         seed_dataset=tiny_seed,  #"../datasets/code_alpaca_tiny.json",
         archive_per_iter=5,
