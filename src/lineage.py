@@ -410,23 +410,23 @@ if __name__ == "__main__":
 
     filenames = {
         "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
-        # "NS-euler": "../datasets/novel-instruct-pe-2023-09-07T13:34:54.519254",
-        # "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
-        # "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
-        # "CA 1K": "../datasets/code_alpaca_1k",
-        # "CA 20K": "../datasets/code_alpaca_20k",
+        "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
+        "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
+        "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+        "CA 1K": "../datasets/code_alpaca_1k",
+        "CA 20K": "../datasets/code_alpaca_20k",
     }
-    data = {
-        shortname: {
-            "lines": util.load_jsonl(f"{filename}.jsonl"),
-            "embeddings": load_embeddings(f"{filename}"),
-        }
-        for shortname, filename in filenames.items()
-    }
-    print("Loaded data:")
-    for name in data.keys():
-        n_embeddings = len(data[name]['embeddings'])
-        print(f"  {name}: {n_embeddings} embeddings")
+    # data = {
+    #     shortname: {
+    #         "lines": util.load_jsonl(f"{filename}.jsonl"),
+    #         "embeddings": load_embeddings(f"{filename}"),
+    #     }
+    #     for shortname, filename in filenames.items()
+    # }
+    # print("Loaded data:")
+    # for name in data.keys():
+    #     n_embeddings = len(data[name]['embeddings'])
+    #     print(f"  {name}: {n_embeddings} embeddings")
 
     # plot_avg_density(data, n_samples=1000)
     # plot_chamfer_diversity_heatmap(data, n_samples=1000)
@@ -437,12 +437,20 @@ if __name__ == "__main__":
     df = read_runs_into_df(filenames, with_embeddings=False)
 
     # add solvable column
-    df = df[:10]
     chat = ChatOpenAI(temperature=0.9, model_name="gpt-3.5-turbo-0613")
-    df = add_solvable_col(chat, df)
-    df = add_novel_col(chat, df)
+    with wizard.get_openai_callback() as cb, open("../datasets/extras.jsonl", "w") as f:
+        for i, row in df.iterrows():
+            row["solvable?"] = wizard.check_problem_solvable(chat, row['text'])
+            row["novel?"] = wizard.wizard.check_problem_novel(chat, row['text'], row['parent text'])
+            line = json.dumps(row, indent=None)
+            print(line)
+            f.write(line + "\n")
+
+        if i % 100 == 0:
+            print(f"Cost: {cb.total_cost}")
+
     print(df)
-    df.to_csv("../datasets/NI-2023-09-01-extras.csv")
+    df.to_csv("../datasets/all-extras.csv")
     # df = pd.read_csv("../datasets/NI-2023-09-01-extras.csv")[["iter", "id", "name", "text", "solvable?"]]
 
     # show percentage of solvable by iter
