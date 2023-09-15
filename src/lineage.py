@@ -252,8 +252,7 @@ def pc_dist_plots(df: pd.DataFrame, names: List[str]):
 def read_runs_into_df(filenames: Dict[str, str], with_embeddings=True) -> pd.DataFrame:
     full_df: Optional[pd.DataFrame] = None
     for shortname, filename in filenames.items():
-        data = util.load_jsonl(f"{filename}.jsonl")
-        df = pd.DataFrame(data)
+        df = pd.read_json(f"{filename}.jsonl", lines=True)
         df = add_ancestors(df)
 
         if with_embeddings:
@@ -382,26 +381,17 @@ def load_embeddings(filename: str) -> np.ndarray:
                             saveto=f"{filename}.npy")
 
 
-def add_solvable_col(chat: ChatOpenAI, df: pd.DataFrame) -> pd.DataFrame:
-    solvable = []
-    with wizard.get_openai_callback() as cb:
-        for i, row in tqdm(df.iterrows(), total=len(df)):
-            solvable.append(wizard.check_problem_solvable(chat, row['text']))
+def add_extras(chat: ChatOpenAI, df: pd.DataFrame, saveto: str) -> pd.DataFrame:
+    with wizard.get_openai_callback() as cb, open(saveto, "w") as f:
+        for i, row in df.iterrows():
+            row["solvable?"] = wizard.check_problem_solvable(chat, row['text'])
+            row["novel?"] = wizard.check_problem_novel(chat, row['text'], row['parent text'])
+            line = json.dumps(row.to_dict(), indent=None)
+            f.write(line + "\n")
             if i % 100 == 0:
                 print(f"Cost: {cb.total_cost}")
-    df["solvable?"] = solvable
-    return df
 
-
-def add_novel_col(chat: ChatOpenAI, df: pd.DataFrame) -> pd.DataFrame:
-    novel = []
-    with wizard.get_openai_callback() as cb:
-        for i, row in tqdm(df.iterrows(), total=len(df)):
-            novel.append(wizard.check_problem_novel(chat, src_problem=row['text'], dst_problem=row['parent text']))
-            if i % 100 == 0:
-                print(f"Cost: {cb.total_cost}")
-    df["novel?"] = novel
-    return df
+    return pd.read_json(saveto, lines=True)
 
 
 if __name__ == "__main__":
@@ -410,11 +400,11 @@ if __name__ == "__main__":
 
     filenames = {
         "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
-        "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
-        "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
-        "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
-        "CA 1K": "../datasets/code_alpaca_1k",
-        "CA 20K": "../datasets/code_alpaca_20k",
+        # "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
+        # "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
+        # "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+        # "CA 1K": "../datasets/code_alpaca_1k",
+        # "CA 20K": "../datasets/code_alpaca_20k",
     }
     # data = {
     #     shortname: {
@@ -437,18 +427,10 @@ if __name__ == "__main__":
     df = read_runs_into_df(filenames, with_embeddings=False)
 
     # add solvable column
+    df = df[:3]
     chat = ChatOpenAI(temperature=0.9, model_name="gpt-3.5-turbo-0613")
-    with wizard.get_openai_callback() as cb, open("../datasets/extras.jsonl", "w") as f:
-        for i, row in df.iterrows():
-            row["solvable?"] = wizard.check_problem_solvable(chat, row['text'])
-            row["novel?"] = wizard.wizard.check_problem_novel(chat, row['text'], row['parent text'])
-            line = json.dumps(row, indent=None)
-            print(line)
-            f.write(line + "\n")
-
-        if i % 100 == 0:
-            print(f"Cost: {cb.total_cost}")
-
+    df = add_extras(chat, df, "../datasets/all-extras.jsonl")
+    # df = pd.read_json("../datasets/all-extras.jsonl", lines=True)
     print(df)
     df.to_csv("../datasets/all-extras.csv")
     # df = pd.read_csv("../datasets/NI-2023-09-01-extras.csv")[["iter", "id", "name", "text", "solvable?"]]
