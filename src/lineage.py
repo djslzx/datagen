@@ -1,5 +1,6 @@
 import json
 from pprint import pp
+from tqdm import tqdm
 import itertools as it
 from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
@@ -128,11 +129,13 @@ def load_json_as_df(filename: str) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def embed_dist(df: pd.DataFrame, embeddings: np.ndarray) -> pd.DataFrame:
-    """analyze semantic distances between parents and children"""
+def add_ancestors(df: pd.DataFrame) -> pd.DataFrame:
     df.set_index("id", inplace=True)
     df["parent"].fillna(df.index.to_series(), inplace=True)
     df["parent"] = df["parent"].astype(np.int32)
+    df["parent name"] = df.apply(lambda row: df.loc[row["parent"]]["name"], axis=1)
+    df["parent text"] = df.apply(lambda row: df.loc[row["parent"]]["text"], axis=1)
+    df["mutator"].fillna("self", inplace=True)
 
     # add root column
     roots = []
@@ -141,11 +144,15 @@ def embed_dist(df: pd.DataFrame, embeddings: np.ndarray) -> pd.DataFrame:
             root_id = id
         roots.append(root_id)
     df["root"] = roots
+    df["root name"] = df.apply(lambda row: df.loc[row["root"]]["name"], axis=1)
+    df["root text"] = df.apply(lambda row: df.loc[row["root"]]["text"], axis=1)
+    return df
 
-    df["mutator"].fillna("self", inplace=True)
+
+def add_pc_dist(df: pd.DataFrame, embeddings: np.ndarray) -> pd.DataFrame:
+    """analyze semantic distances between parents and children"""
     df["embedding"] = pd.Series([v for v in embeddings], dtype=object)
     assert type(df["embedding"].iloc[0]) == np.ndarray
-    df["parent name"] = df.apply(lambda row: df.loc[row["parent"]]["name"], axis=1)
     df["parent embedding"] = df.apply(lambda row: df.loc[row["parent"]]["embedding"], axis=1)
     df["root embedding"] = df.apply(lambda row: df.loc[row["root"]]["embedding"], axis=1)
     df["pc dist"] = df.apply(lambda row: np.linalg.norm(row["embedding"] - row["parent embedding"]), axis=1)
@@ -242,16 +249,19 @@ def pc_dist_plots(df: pd.DataFrame, names: List[str]):
     plt.show()
 
 
-def read_runs_into_df(filenames: Dict[str, str]) -> pd.DataFrame:
+def read_runs_into_df(filenames: Dict[str, str], with_embeddings=True) -> pd.DataFrame:
     full_df: Optional[pd.DataFrame] = None
     for shortname, filename in filenames.items():
         data = util.load_jsonl(f"{filename}.jsonl")
-        # embeddings = wizard.embed(feat.SentenceFeaturizer(), [data["text"] for data in data], saveto=f"{file}.npy")
-        embeddings = np.load(f"{filename}.npy")
-        print(f"Loaded file {filename} with {len(embeddings)} embeddings")
-
         df = pd.DataFrame(data)
-        df = embed_dist(df, embeddings)
+        df = add_ancestors(df)
+
+        if with_embeddings:
+            # embeddings = wizard.embed(feat.SentenceFeaturizer(), [data["text"] for data in data], saveto=f"{file}.npy")
+            embeddings = np.load(f"{filename}.npy")
+            print(f"Loaded file {filename} with {len(embeddings)} embeddings")
+            df = add_pc_dist(df, embeddings)
+
         df["id"] = df.index
         df["source file"] = shortname
         full_df = df if full_df is None else pd.concat([full_df, df], ignore_index=True)
@@ -372,26 +382,37 @@ def load_embeddings(filename: str) -> np.ndarray:
                             saveto=f"{filename}.npy")
 
 
+def add_solvable_col(chat: ChatOpenAI, df: pd.DataFrame) -> pd.DataFrame:
+    solvable = []
+    with wizard.get_openai_callback() as cb:
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            solvable.append(wizard.check_problem_solvable(chat, row['text']))
+            if i % 100 == 0:
+                print(f"Cost: {cb.total_cost}")
+    df["solvable?"] = solvable
+    return df
+
+
+def add_novel_col(chat: ChatOpenAI, df: pd.DataFrame) -> pd.DataFrame:
+    novel = []
+    with wizard.get_openai_callback() as cb:
+        for i, row in tqdm(df.iterrows(), total=len(df)):
+            novel.append(wizard.check_problem_novel(chat, src_problem=row['text'], dst_problem=row['parent text']))
+            if i % 100 == 0:
+                print(f"Cost: {cb.total_cost}")
+    df["novel?"] = novel
+    return df
+
+
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.min_rows", 50)
 
-    # # json to jsonl
-    # for file in ["../datasets/code_alpaca_1k",
-    #              "../datasets/code_alpaca_20k"]:
-    #     with open(f"{file}.json", "r") as f_in, open(f"{file}.jsonl", "w") as f_out:
-    #         d = json.load(f_in)
-    #         for x in d:
-    #             x["text"] = x["instruction"]
-    #             s = json.dumps(x, indent=None)
-    #             print(s)
-    #             f_out.write(s + "\n")
-
     filenames = {
         "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
-        "NS-euler": "../datasets/novel-instruct-pe-2023-09-07T13:34:54.519254",
-        "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
-        "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+        # "NS-euler": "../datasets/novel-instruct-pe-2023-09-07T13:34:54.519254",
+        # "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
+        # "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
         # "CA 1K": "../datasets/code_alpaca_1k",
         # "CA 20K": "../datasets/code_alpaca_20k",
     }
@@ -403,13 +424,39 @@ if __name__ == "__main__":
         for shortname, filename in filenames.items()
     }
     print("Loaded data:")
-    print(*[f"  {name}: {len(data[name]['embeddings'])} embeddings\n" for name in data.keys()])
-    plot_avg_density(data, n_samples=1000)
-    plot_chamfer_diversity_heatmap(data, n_samples=1000)
-    plot_embedding_stats(data)
+    for name in data.keys():
+        n_embeddings = len(data[name]['embeddings'])
+        print(f"  {name}: {n_embeddings} embeddings")
 
-    # df = read_runs_into_df(filenames)
+    # plot_avg_density(data, n_samples=1000)
+    # plot_chamfer_diversity_heatmap(data, n_samples=1000)
+    # plot_embedding_stats(data)
+
+    # todo: child-child dist - how similar are children of a given parent to one another over time?
+
+    df = read_runs_into_df(filenames, with_embeddings=False)
+
+    # add solvable column
+    df = df[:10]
+    chat = ChatOpenAI(temperature=0.9, model_name="gpt-3.5-turbo-0613")
+    df = add_solvable_col(chat, df)
+    df = add_novel_col(chat, df)
+    print(df)
+    df.to_csv("../datasets/NI-2023-09-01-extras.csv")
+    # df = pd.read_csv("../datasets/NI-2023-09-01-extras.csv")[["iter", "id", "name", "text", "solvable?"]]
+
+    # show percentage of solvable by iter
+    df = df[["iter", "solvable?", "novel?"]]
+    df["solvable?"] = df["solvable?"] == "True"
+    df["novel?"] = df["novel?"] == "True"
+    grp = df.groupby("iter").mean()["solvable?"]
+    print(grp)
+    sns.lineplot(grp)
+    plt.show()
+
+    # [[""]]
     # pc_dist_plots(df, names=list(filenames.keys()))
+    # pc_dist_samples(df)
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
