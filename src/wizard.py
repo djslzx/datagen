@@ -162,13 +162,16 @@ def check_problem_novel(chat: ChatOpenAI, src_problem: str, dst_problem: str) ->
 def check_problem_solvable(chat: ChatOpenAI, problem: str) -> str:
     """Check that a problem can be solved by LLM"""
     system_prompt = SystemMessagePromptTemplate.from_template(
-        "Consider the following programming task. Do not complete it.  "
-        "Given the complexity and breadth of the outlined problem, can you provide a complete and functional "
-        "code solution for the outlined programming problem, considering all the specified features and requirements? "
-        "Answer True/False, with no punctuation or extra text."
-        " You should only answer 'True' when you are able to follow up with a full solution, not merely an outline."
+        "Given the complexity and breadth of the given problem, can you provide a complete and functional "
+        "code solution, meeting all the specified requirements? "
+        "Answer True/False, with no punctuation or extra text. "
+        "You should only answer 'True' when you are able to follow up with a full solution. "
+        "If you can only provide an outline, you should respond with 'False'."
     )
-    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
+    human_prompt = HumanMessagePromptTemplate.from_template(
+        "Programming problem:\n"
+        "{input}"
+    )
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(input=problem)
