@@ -21,34 +21,31 @@ def load_json_as_df(filename: str) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def add_ancestors(df: pd.DataFrame) -> pd.DataFrame:
-    df.set_index("id", inplace=True)
-    df["parent"].fillna(df.index.to_series(), inplace=True)
-    df["parent"] = df["parent"].astype(np.int32)
-    df["parent name"] = df.apply(lambda row: df.loc[row["parent"]]["name"], axis=1)
-    df["parent text"] = df.apply(lambda row: df.loc[row["parent"]]["text"], axis=1)
-    df["mutator"].fillna("self", inplace=True)
+def parent_row(df, row):
+    # check if df has "source file" column
+    if "source file" in df.columns:
+        out = df.loc[(df["id"] == row["parent"]) &
+                     (df["source file"] == row["source file"])]
+    else:
+        out = df.loc[df["id"] == row["parent"]]
+    assert len(out) == 1
+    return out.iloc[0]
 
-    # add root column
-    roots = []
-    for id, row in df.iterrows():
-        if row.iter == 0:
-            root_id = id
-        roots.append(root_id)
-    df["root"] = roots
-    df["root name"] = df.apply(lambda row: df.loc[row["root"]]["name"], axis=1)
-    df["root text"] = df.apply(lambda row: df.loc[row["root"]]["text"], axis=1)
+
+def add_parents(df: pd.DataFrame) -> pd.DataFrame:
+    df["parent"].fillna(df["id"].to_series(), inplace=True)
+    df["parent"] = df["parent"].astype(np.int32)
+    df["parent name"] = df.apply(lambda row: parent_row(df, row)["name"], axis=1)
+    df["parent text"] = df.apply(lambda row: parent_row(df, row)["text"], axis=1)
+    df["mutator"].fillna("self", inplace=True)
     return df
 
 
-def add_pc_dist(df: pd.DataFrame, embeddings: np.ndarray) -> pd.DataFrame:
+def add_pc_dist(df: pd.DataFrame) -> pd.DataFrame:
     """analyze semantic distances between parents and children"""
-    df["embedding"] = pd.Series([v for v in embeddings], dtype=object)
     assert type(df["embedding"].iloc[0]) == np.ndarray
-    df["parent embedding"] = df.apply(lambda row: df.loc[row["parent"]]["embedding"], axis=1)
-    df["root embedding"] = df.apply(lambda row: df.loc[row["root"]]["embedding"], axis=1)
+    df["parent embedding"] = df.apply(lambda row: parent_row(df, row)["embedding"], axis=1)
     df["pc dist"] = df.apply(lambda row: np.linalg.norm(row["embedding"] - row["parent embedding"]), axis=1)
-    df["rc dist"] = df.apply(lambda row: np.linalg.norm(row["embedding"] - row["root embedding"]), axis=1)
     return df
 
 
@@ -73,16 +70,6 @@ def avg_distance(df: pd.DataFrame, n_samples: int):
     sns.lineplot(data=sample, x="iter", y="value", hue="cols")
     plt.title(f"Average embedding distance by generation ({n_samples} samples)")
     plt.gcf().set_size_inches(12, 6)
-    plt.show()
-
-
-def plot_by_generation(df: pd.DataFrame, y: str):
-    """plot a metric by generation"""
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))  # 1 row, 2 columns
-    sns.lineplot(df, x="iteration", y=y, ax=axes[1])
-    sns.lineplot(df, x="iteration", y=y, hue="sample.evol_method", ax=axes[0])
-    plt.suptitle(f"{y} by generation")
-    plt.tight_layout()
     plt.show()
 
 
@@ -145,15 +132,15 @@ def read_runs_into_df(filenames: Dict[str, str], with_embeddings=True) -> pd.Dat
     full_df: Optional[pd.DataFrame] = None
     for shortname, filename in filenames.items():
         df = pd.read_json(f"{filename}.jsonl", lines=True)
-        df = add_ancestors(df)
+        df = add_parents(df)
 
         if with_embeddings:
             # embeddings = wizard.embed(feat.SentenceFeaturizer(), [data["text"] for data in data], saveto=f"{file}.npy")
             embeddings = np.load(f"{filename}.npy")
             print(f"Loaded file {filename} with {len(embeddings)} embeddings")
-            df = add_pc_dist(df, embeddings)
+            df["embedding"] = pd.Series([v for v in embeddings], dtype=object)
+            df = add_pc_dist(df)
 
-        df["id"] = df.index
         df["source file"] = shortname
         full_df = df if full_df is None else pd.concat([full_df, df], ignore_index=True)
     return full_df
@@ -228,6 +215,7 @@ def plot_chamfer_diversity_heatmap(data: dict, n_samples: int):
 
 
 def det_diversity(embeddings: np.ndarray, n_samples: int) -> float:
+    """Use determinant (volume of parallelepiped) to measure diversity"""
     pass
 
 
@@ -262,9 +250,20 @@ def plot_embedding_stats(data: dict):
     plt.show()
 
 
-def load_embeddings(filename: str) -> np.ndarray:
+def load_embeddings(filename: str, expected_length=None) -> np.ndarray:
     try:
-        return np.load(f"{filename}.npy")
+        embeddings = np.load(f"{filename}.npy")
+        if expected_length:
+            if expected_length > len(embeddings):
+                print(f"Expected {expected_length} embeddings, got {len(embeddings)}. Generating more embeddings...")
+                lines = util.load_jsonl(f"{filename}.jsonl")
+                return wizard.embed(feat.SentenceFeaturizer(),
+                                    [line["text"] for line in lines],
+                                    saveto=f"{filename}.npy")
+            else:
+                return embeddings[:expected_length]
+        else:
+            return embeddings
     except FileNotFoundError:
         print(f"Cached embeddings for {filename} not found, generating embeddings...")
         lines = util.load_jsonl(f"{filename}.jsonl")
@@ -286,6 +285,97 @@ def add_extras(chat: ChatOpenAI, df: pd.DataFrame, saveto: str) -> pd.DataFrame:
     return pd.read_json(saveto, lines=True)
 
 
+def analyze_datasets(filenames: Dict[str, str]):
+    data = {
+        shortname: {
+            "lines": util.load_jsonl(f"{filename}.jsonl"),
+            "embeddings": load_embeddings(f"{filename}"),
+        }
+        for shortname, filename in filenames.items()
+    }
+    print("Loaded data:")
+    for name in data.keys():
+        n_embeddings = len(data[name]['embeddings'])
+        print(f"  {name}: {n_embeddings} embeddings")
+
+    plot_avg_density(data, n_samples=1000)
+    plot_chamfer_diversity_heatmap(data, n_samples=1000)
+    plot_embedding_stats(data)
+
+    # todo: child-child dist - how similar are children of a given parent to one another over time?
+
+    df = read_runs_into_df(filenames, with_embeddings=False)[:10]
+
+    # add solvable column
+    chat = ChatOpenAI(temperature=0.9, model_name="gpt-3.5-turbo-0613")
+    df = add_extras(chat, df, "../datasets/all-extras.jsonl")
+
+    # pc_dist_plots(df, names=list(filenames.keys()))
+    # pc_dist_samples(df)
+
+
+def analyze_annotations(annot_file: str, filename_map: Dict[str, str]):
+    df = pd.read_json(annot_file, lines=True)
+    # df = df[df["id"] < 100]  # use a subset of the dataset for testing
+    print(df["source file"].value_counts())
+
+    # add embeddings and pc dist
+    # embed_map = {}
+    for shortname, filename in filename_map.items():
+        n_entries = len(df[df["source file"] == shortname])
+        if n_entries == 0:
+            continue
+        # embeddings = load_embeddings(filename, expected_length=n_entries)
+        # embed_map[shortname] = embeddings
+
+        # add ids if not present
+        if "id" not in df.columns:
+            df.loc[df["source file"] == shortname, "id"] = np.arange(n_entries)
+
+        # check that ids were added properly:
+        # - if mutator is self, id should match parent
+        # - if mutator is not self, id should be different from parent
+
+    # # add embeddings
+    # min_id = df["id"].min()  # fixme: assumes all ids start at the same number
+    # df["embedding"] = df.apply(lambda row: embed_map[row["source file"]][row["id"] - min_id], axis=1)
+    #
+    # # check that every entry has an embedding
+    # assert df["embedding"].isna().sum() == 0, f"Missing embeddings for {df[df['embedding'].isna()]['source file']}"
+    # df = add_pc_dist(df)
+
+    # show percentage of solvable by iter
+    df = df[["iter", "source file", "solvable?", "novel?", "chosen?"]]
+    df["solvable?"] = df["solvable?"] == "True"
+    df["novel?"] = df["novel?"] == "True"
+    # df["non-identical?"] = df["pc dist"] > 1e-5
+    df["chosen?"] = df["chosen?"] == 1.0
+    df["both?"] = df["novel?"] & df["solvable?"]
+    grp = (df
+           .groupby(["iter", "source file"], group_keys=False)
+           .mean())
+    grp.reset_index(inplace=True)
+    print(grp)
+
+    table = pd.melt(grp,
+                    id_vars=["iter", "source file"],
+                    value_vars=["solvable?", "novel?", "both?"])
+    print(table)
+
+    sns.relplot(table, x="iter", y="value", hue="source file", style="variable", kind="line")
+    plt.show()
+
+    # condition on whether entries were chosen
+    print(df["chosen?"].value_counts())
+    grp = (df[df["chosen?"]]
+           .groupby(["iter", "source file"], group_keys=False)
+           .mean())
+    grp.reset_index(inplace=True)
+    table = pd.melt(grp, id_vars=["iter", "source file"], value_vars=["solvable?", "novel?", "both?"])
+    sns.relplot(table, x="iter", y="value", hue="source file", style="variable", kind="line")
+    plt.show()
+
+
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.min_rows", 50)
@@ -298,46 +388,7 @@ if __name__ == "__main__":
         # "CA 1K": "../datasets/code_alpaca_1k",
         # "CA 20K": "../datasets/code_alpaca_20k",
     }
-    # data = {
-    #     shortname: {
-    #         "lines": util.load_jsonl(f"{filename}.jsonl"),
-    #         "embeddings": load_embeddings(f"{filename}"),
-    #     }
-    #     for shortname, filename in filenames.items()
-    # }
-    # print("Loaded data:")
-    # for name in data.keys():
-    #     n_embeddings = len(data[name]['embeddings'])
-    #     print(f"  {name}: {n_embeddings} embeddings")
-
-    # plot_avg_density(data, n_samples=1000)
-    # plot_chamfer_diversity_heatmap(data, n_samples=1000)
-    # plot_embedding_stats(data)
-
-    # todo: child-child dist - how similar are children of a given parent to one another over time?
-
-    df = read_runs_into_df(filenames, with_embeddings=False)
-
-    # add solvable column
-    chat = ChatOpenAI(temperature=0.9, model_name="gpt-3.5-turbo-0613")
-    df = add_extras(chat, df, "../datasets/all-extras.jsonl")
-    # df = pd.read_json("../datasets/all-extras.jsonl", lines=True)
-    print(df)
-    df.to_csv("../datasets/all-extras.csv")
-    # df = pd.read_csv("../datasets/NI-2023-09-01-extras.csv")[["iter", "id", "name", "text", "solvable?"]]
-
-    # show percentage of solvable by iter
-    df = df[["iter", "solvable?", "novel?"]]
-    df["solvable?"] = df["solvable?"] == "True"
-    df["novel?"] = df["novel?"] == "True"
-    grp = df.groupby("iter").mean()["solvable?"]
-    print(grp)
-    # sns.lineplot(grp)
-    # plt.show()
-
-    # [[""]]
-    # pc_dist_plots(df, names=list(filenames.keys()))
-    # pc_dist_samples(df)
+    analyze_annotations("../datasets/annotated.jsonl", filenames)
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
