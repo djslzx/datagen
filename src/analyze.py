@@ -375,6 +375,22 @@ def analyze_annotations(annot_file: str, filename_map: Dict[str, str]):
     sns.relplot(table, x="iter", y="value", hue="source file", style="variable", kind="line")
     plt.show()
 
+    # summary heatmap
+    # rows: source file
+    # cols: variable
+    # values: mean
+    grp = (df
+           [["source file", "solvable?", "novel?", "both?"]]
+           .groupby(["source file"], group_keys=False)
+           .mean())
+    grp.reset_index(inplace=True)
+    table = pd.melt(grp, id_vars=["source file"], value_vars=["solvable?", "novel?", "both?"])
+    print(table)
+    table = table.pivot(columns="variable", index="source file")
+    print(table)
+    sns.heatmap(table, annot=True, cmap=sns.color_palette("vlag", as_cmap=True))
+    plt.show()
+
 
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
