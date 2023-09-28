@@ -8,6 +8,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Union, Optional, Dict
+import textwrap
+import datetime
 from langchain.chat_models import ChatOpenAI
 
 import featurizers as feat
@@ -21,22 +23,17 @@ def load_json_as_df(filename: str) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def parent_row(df, row):
-    # check if df has "source file" column
-    if "source file" in df.columns:
-        out = df.loc[(df["id"] == row["parent"]) &
-                     (df["source file"] == row["source file"])]
-    else:
-        out = df.loc[df["id"] == row["parent"]]
-    assert len(out) == 1
-    return out.iloc[0]
-
-
 def add_parents(df: pd.DataFrame) -> pd.DataFrame:
-    df["parent"].fillna(df["id"].to_series(), inplace=True)
+    df["parent"].fillna(df["id"], inplace=True)
     df["parent"] = df["parent"].astype(np.int32)
-    df["parent name"] = df.apply(lambda row: parent_row(df, row)["name"], axis=1)
-    df["parent text"] = df.apply(lambda row: parent_row(df, row)["text"], axis=1)
+    if "source file" in df.columns:
+        df["parent name"] = df.apply(lambda row: df.loc[df["id"] == row["parent"]]["name"], axis=1)
+        df["parent text"] = df.apply(lambda row: df.loc[df["id"] == row["parent"]]["text"], axis=1)
+    else:
+        df["parent name"] = df.apply(
+            lambda row: df.loc[(df["id"] == row["parent"]) & (df["source file"] == row["source file"])]["name"], axis=1)
+        df["parent text"] = df.apply(
+            lambda row: df.loc[(df["id"] == row["parent"]) & (df["source file"] == row["source file"])]["text"], axis=1)
     df["mutator"].fillna("self", inplace=True)
     return df
 
@@ -44,7 +41,12 @@ def add_parents(df: pd.DataFrame) -> pd.DataFrame:
 def add_pc_dist(df: pd.DataFrame) -> pd.DataFrame:
     """analyze semantic distances between parents and children"""
     assert type(df["embedding"].iloc[0]) == np.ndarray
-    df["parent embedding"] = df.apply(lambda row: parent_row(df, row)["embedding"], axis=1)
+    if "source file" in df.columns:
+        df["parent embedding"] = df.apply(
+            lambda row: df.loc[(df["id"] == row["parent"]) & (df["source file"] == row["source file"])]["embedding"],
+            axis=1)
+    else:
+        df["parent embedding"] = df.apply(lambda row: df.loc[df["id"] == row["parent"]]["embedding"], axis=1)
     df["pc dist"] = df.apply(lambda row: np.linalg.norm(row["embedding"] - row["parent embedding"]), axis=1)
     return df
 
@@ -314,19 +316,15 @@ def analyze_datasets(filenames: Dict[str, str]):
     # pc_dist_samples(df)
 
 
-def analyze_annotations(annot_file: str, filename_map: Dict[str, str]):
+def load_annotations(annot_file: str, filename_map: Dict[str, str]) -> pd.DataFrame:
     df = pd.read_json(annot_file, lines=True)
     # df = df[df["id"] < 100]  # use a subset of the dataset for testing
     print(df["source file"].value_counts())
 
-    # add embeddings and pc dist
-    # embed_map = {}
     for shortname, filename in filename_map.items():
         n_entries = len(df[df["source file"] == shortname])
         if n_entries == 0:
             continue
-        # embeddings = load_embeddings(filename, expected_length=n_entries)
-        # embed_map[shortname] = embeddings
 
         # add ids if not present
         if "id" not in df.columns:
@@ -336,6 +334,41 @@ def analyze_annotations(annot_file: str, filename_map: Dict[str, str]):
         # - if mutator is self, id should match parent
         # - if mutator is not self, id should be different from parent
 
+    # df["rank"] = df["rank"].astype(int)
+    df["solvable?"] = df["solvable?"] == "True"
+    df["novel?"] = df["novel?"] == "True"
+    # df["non-identical?"] = df["pc dist"] > 1e-5
+    df["chosen?"] = df["chosen?"] == 1.0
+    df["both?"] = df["novel?"] & df["solvable?"]
+    return df
+
+
+def sample_problems(chat: ChatOpenAI, df: pd.DataFrame, n: int, outfile: str):
+    rows = []
+    headings = ["iter", "source file", "mutator", "parent name", "name", "text",
+                "score", "rank", "chosen?", "solvable?", "novel?"]
+    for source in df["source file"].unique():
+        print(f"Source: {source}")
+        sample = (df[(df["chosen?"] | (source.lower().startswith("wiz")))
+                     & (df["source file"] == source)
+                     # & (df["solvable?"])
+                     & (df["novel?"])]
+                  .sample(n=n)
+                  .sort_values(["iter", "source file"]))
+        rows.extend(sample[headings].to_records(index=False))
+    out = pd.DataFrame.from_records(rows, columns=headings)
+
+    solutions = []
+    for i, row in tqdm(out.iterrows()):
+        soln = wizard.propose_solution(chat, row["text"])
+        print(f"Produced solution: {soln}")
+        solutions.append(soln)
+    out["solution"] = solutions
+
+    out.to_csv(outfile)
+
+
+def analyze_annotations(df: pd.DataFrame):
     # # add embeddings
     # min_id = df["id"].min()  # fixme: assumes all ids start at the same number
     # df["embedding"] = df.apply(lambda row: embed_map[row["source file"]][row["id"] - min_id], axis=1)
@@ -344,20 +377,11 @@ def analyze_annotations(annot_file: str, filename_map: Dict[str, str]):
     # assert df["embedding"].isna().sum() == 0, f"Missing embeddings for {df[df['embedding'].isna()]['source file']}"
     # df = add_pc_dist(df)
 
-    # show percentage of solvable by iter
-    df = df[["iter", "source file", "solvable?", "novel?", "chosen?"]]
-    df["solvable?"] = df["solvable?"] == "True"
-    df["novel?"] = df["novel?"] == "True"
-    # df["non-identical?"] = df["pc dist"] > 1e-5
-    df["chosen?"] = df["chosen?"] == 1.0
-    df["both?"] = df["novel?"] & df["solvable?"]
-    grp = (df
-           .groupby(["iter", "source file"], group_keys=False)
-           .mean())
-    grp.reset_index(inplace=True)
-    print(grp)
+    for y in ["solvable?", "novel?", "both?"]:
+        sns.relplot(df, x="iter", y=y, hue="source file")
+        plt.show()
 
-    table = pd.melt(grp,
+    table = pd.melt(df,
                     id_vars=["iter", "source file"],
                     value_vars=["solvable?", "novel?", "both?"])
     print(table)
@@ -366,20 +390,13 @@ def analyze_annotations(annot_file: str, filename_map: Dict[str, str]):
     plt.show()
 
     # condition on whether entries were chosen
-    print(df["chosen?"].value_counts())
-    grp = (df[df["chosen?"]]
-           .groupby(["iter", "source file"], group_keys=False)
-           .mean())
-    grp.reset_index(inplace=True)
-    table = pd.melt(grp, id_vars=["iter", "source file"], value_vars=["solvable?", "novel?", "both?"])
-    sns.relplot(table, x="iter", y="value", hue="source file", style="variable", kind="line")
-    plt.show()
+    for y in ["solvable?", "novel?", "both?"]:
+        sns.relplot(df[df["chosen?"]], x="iter", y=y, hue="source file", kind="line")
+        plt.show()
 
     # summary heatmap
-    # rows: source file
-    # cols: variable
-    # values: mean
     grp = (df
+           [df["iter"] > 0]
            [["source file", "solvable?", "novel?", "both?"]]
            .groupby(["source file"], group_keys=False)
            .mean())
@@ -391,10 +408,38 @@ def analyze_annotations(annot_file: str, filename_map: Dict[str, str]):
     sns.heatmap(table, annot=True, cmap=sns.color_palette("vlag", as_cmap=True))
     plt.show()
 
+    def sample_table(mask):
+        entries = (df[mask]
+                   [["source file", "iter", "mutator", "text", "parent text", "solvable?", "novel?"]]
+                   .sample(5))
+        entries["text"] = entries["text"].apply(lambda x: '\n'.join(textwrap.wrap(x, width=40)))
+        entries["parent text"] = entries["parent text"].apply(lambda x: '\n'.join(textwrap.wrap(x, width=40)))
+        return entries.to_markdown(index=False)
+
+    def sample_text(mask):
+        entries = (df[mask]
+                   [["source file", "iter", "mutator", "text", "parent text", "solvable?", "novel?"]]
+                   .sample(5))
+        return entries["text"].to_list()
+
+    # display a sampling of prompts that are solvable/unsolvable, novel/unoriginal
+    for text in sample_text(df["solvable?"] & df["novel?"]):
+        print(text)
+
+    # print(
+    #     "Solvable:", sample_table(df["solvable?"]),
+    #     "Unsolvable:", sample_table(~df["solvable?"]),
+    #     "Novel:", sample_table(df["novel?"]),
+    #     "Unoriginal:", sample_table(~df["novel?"]),
+    #     sep="\n"
+    # )
+
 
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.min_rows", 50)
+    pd.set_option('display.max_colwidth', 40)
+    timestamp = datetime.datetime.now().isoformat()
 
     filenames = {
         "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
@@ -404,7 +449,10 @@ if __name__ == "__main__":
         # "CA 1K": "../datasets/code_alpaca_1k",
         # "CA 20K": "../datasets/code_alpaca_20k",
     }
-    analyze_annotations("../datasets/annotated.jsonl", filenames)
+    df = load_annotations("../datasets/annotated-sep20.jsonl", filenames)
+    # analyze_annotations(df)
+    chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-0613")
+    sample_problems(chat, df, n=2, outfile=f"../datasets/sampling-solved-{timestamp}.csv")
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
