@@ -107,14 +107,32 @@ def filter_problem(chat: ChatOpenAI, problem: str) -> Optional[bool]:
 def propose_solution(chat: ChatOpenAI, problem: str) -> str:
     """Prompt the LLM to solve a programming problem"""
     system_prompt = SystemMessagePromptTemplate.from_template(
-        "Please write a solution in Python to the following programming test question. "
-        "Your solution should only use the Python standard library. "
-        "Output only the solution, with no additional text or comments. "
+        "Solve the following programming problem using Python and its standard library.  "
+        "Even if the problem itself says that you may use any language or libraries, "
+        "stick to Python and its standard library.  "
+        "You may write multiple functions, but organize your code so that a function called "
+        "`solution` may be run with any required arguments to fully solve the problem.  "
+        "Output only code, with no accompanying text."
     )
     human_prompt = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(input=problem)
+
+
+def wizard_solve(chat: ChatOpenAI, problem: str) -> str:
+    human_prompt = HumanMessagePromptTemplate.from_template(
+        "Below is an instruction that describes a task. "
+        "Write a response that appropriately completes the request.\n"
+        "\n"
+        "### Instruction:\n"
+        "{instruction}\n"
+        "\n"
+        "### Response:"
+    )
+    prompt = ChatPromptTemplate.from_messages([human_prompt])
+    chain = LLMChain(llm=chat, prompt=prompt)
+    return chain.run(instruction=problem)
 
 
 def propose_checker(chat: ChatOpenAI, problem: str) -> str:
@@ -374,7 +392,8 @@ def run_evol_instruct(chat: ChatOpenAI, outfile: str, iters: int, seed_dataset_f
             f.write(s + "\n")
 
 
-def run_novel_instruct(chat: ChatOpenAI, iters: int, seed_dataset: Union[str, List], archive_per_iter: int, max_popn_size: int, output_file: str):
+def run_novel_instruct(chat: ChatOpenAI, iters: int, seed_dataset: Union[str, List], archive_per_iter: int,
+                       max_popn_size: int, output_file: str):
     if isinstance(seed_dataset, str):
         instructions = [x["instruction"] for x in json.load(open(seed_dataset, "r"))]
     else:
