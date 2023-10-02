@@ -1,9 +1,7 @@
 from __future__ import annotations
-
 import json
 from math import floor, sqrt, ceil
 from pprint import pp
-
 import numpy as np
 import torch as T
 import itertools as it
@@ -16,6 +14,11 @@ from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from func_timeout import func_timeout, FunctionTimedOut
 import openai.error
 from adjustText import adjust_text
+from datetime import datetime
+
+
+def timestamp():
+    return datetime.now().isoformat()
 
 
 class IdGen:

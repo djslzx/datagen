@@ -70,42 +70,72 @@ def few_shot_name_to_problem(chat: ChatOpenAI, df: pd.DataFrame, name: str) -> s
 
 
 if __name__ == "__main__":
+    timestamp = util.timestamp()
     names = [
-        "Determine Color of a Chessboard Square",
-        "Sentence Similarity III",
-        "Count Nice Pairs in an Array",
-        "Maximum Number of Groups Getting Fresh Donuts",
-        "Truncate Sentence",
-        "Finding the Users Active Minutes",
-        "Minimum Absolute Sum Difference",
-        "Number of Different Subsequences GCDs",
-        "Maximum Number of Accepted Invitations",
-        "Find Customers With Positive Revenue this Year",
-        "Sign of the Product of an Array",
-        "Find the Winner of the Circular Game",
-        "Minimum Sideway Jumps",
-        "Finding MK Average",
+        ('NS', 'nth Fibonacci Number Finder'),
+        ('NS', "Minimum Spanning Tree (MST) using Prim's Algorithm."),
+        ('NS', 'Longest Increasing Subsequence'),
+        ('NS-euler', 'Longest Subarray with K Distinct Elements'),
+        ('NS-euler', 'Palindrome Checker'),
+        ('NS-euler', 'Message Analytics Manager'),
+        ('Wiz-wide', 'HTML Webpage Generator'),
+        ('Wiz-wide', 'Even Integer Sum'),
+        ('Wiz-wide', 'Even Number List Sum'),
+        ('Wiz-deep', 'Digit Square Sum Calculation'),
+        ('Wiz-deep', 'Subset Sum'),
+        ('Wiz-deep', 'Longest Subarray Target Sum'),
+        # ('NS', 'Common Letters in Two Strings'),
+        # ('NS', 'Average Acceleration Calculation'),
+        # ('NS', 'Election Winner'),
+        # ('NS-euler', 'Find All Divisors'),
+        # ('NS-euler', 'Fibonacci Number Calculation Time Complexity: D) O(2^n)'),
+        # ('NS-euler', 'User Manager System'),
+        # ('Wiz-wide', 'Unique Alphabet Collecting'),
+        # ('Wiz-wide', 'Pattern Printing Program'),
+        # ('Wiz-wide', 'Minimum Serving Time with Queue'),
+        # ('Wiz-deep', 'Count and Sort Frequent Elements'),
+        # ('Wiz-deep', 'Find Duplicate Substrings'),
+        # ('Wiz-deep', 'Employee Value Combinations'),
+        ('Leetcode', "Determine Color of a Chessboard Square"),
+        ('Leetcode', "Sentence Similarity III"),
+        ('Leetcode', "Count Nice Pairs in an Array"),
+        ('Leetcode', "Maximum Number of Groups Getting Fresh Donuts"),
+        # ('Leetcode', "Truncate Sentence"),
+        # ('Leetcode', "Finding the Users Active Minutes"),
+        # ('Leetcode', "Minimum Absolute Sum Difference"),
+        # ('Leetcode', "Number of Different Subsequences GCDs"),
+        # ('Leetcode', "Maximum Number of Accepted Invitations"),
+        # ('Leetcode', "Find Customers With Positive Revenue this Year"),
+        # ('Leetcode', "Sign of the Product of an Array"),
+        # ('Leetcode', "Find the Winner of the Circular Game"),
+        # ('Leetcode', "Minimum Sideway Jumps"),
+        # ('Leetcode', "Finding MK Average"),
     ]
-
     chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-0613")
 
-    # actual leetcode problem
-    df = pd.read_csv("../datasets/leetcode.csv")
-    subset = df[df["title"].apply(lambda x: x in names)].copy()
-    print(subset["description"])
+    # actual leetcode problems
+    lc = pd.read_csv("../datasets/leetcode.csv")
+    lc_names = [n for s, n in names if s == "Leetcode"]
+    data = pd.read_json("../datasets/annotated-sep20.jsonl", lines=True)
 
-    # zshots = []
-    # for name in names:
-    #     zshot = zero_shot_name_to_problem(chat, name)
-    #     print(f"{name} => {zshot}")
-    #     zshots.append(zshot)
-    # subset["zeroshot"] = zshots
-
-    generated = []
-    for name in names:
-        fshot = few_shot_name_to_problem(chat, df, name)
-        print(f"{name} => {fshot}")
-        generated.append(fshot)
-    subset["fewshot"] = generated
-
-    subset[["title", "description", "fewshot"]].to_csv("../datasets/leetcode-fewshot.csv")
+    rows = []
+    for source, name in tqdm(names):
+        zshot = zero_shot_name_to_problem(chat, name)
+        fshot = few_shot_name_to_problem(chat, lc, name)
+        # zshot = "-".join(["zeroshot", source, name])
+        # fshot = "-".join(["fewshot", source, name])
+        if name in lc_names:
+            orig = lc.loc[lc["title"] == name]["description"].values[0]
+        else:
+            orig = data.loc[data["name"] == name]["text"].values[0]
+        rows.append({
+            "name": name,
+            "source": source,
+            "zero shot": zshot,
+            "few shot": fshot,
+            "original": orig
+        })
+    df = pd.DataFrame(rows)
+    print(df)
+    df[["name", "source", "original", "zero shot", "few shot"]].to_csv(
+        f"../datasets/leetcode-extended-{timestamp}.csv")

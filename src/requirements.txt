@@ -42,3 +42,5 @@ py-readability-metrics
 pygraphviz
 # graph_tool  # install using brew
 tabulate
+trl  # transformer rl
+codellama

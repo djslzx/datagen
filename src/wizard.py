@@ -49,33 +49,42 @@ def mutator_name(method_text: str) -> str:
     return "unknown"
 
 
+def simple_chat_prompt(system_prompt: str, user_prompt: str) -> ChatPromptTemplate:
+    return ChatPromptTemplate.from_messages([
+        SystemMessagePromptTemplate.from_template(system_prompt),
+        HumanMessagePromptTemplate.from_template(user_prompt),
+    ])
+
+
 def propose_name(chat: ChatOpenAI, text: str) -> str:
-    system_prompt = SystemMessagePromptTemplate.from_template(
-        "Come up with a name for the following programming problem.  "
-        "The name should contain no more than 5 words.  "
-        "Your response should contain no formatting.  "
-        "Each word in the name should be separated by a space."
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "Come up with a name for the following programming problem.  "
+            "The name should contain no more than 5 words.  "
+            "Your response should contain no formatting.  "
+            "Each word in the name should be separated by a space."
+        ),
+        user_prompt="{input}",
     )
-    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
-    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(input=text)
 
 
 def mutate_problem(chat: ChatOpenAI, problem: str, mutator: str) -> str:
     """Use the LLM to mutate the given programming problem"""
-    system_prompt = SystemMessagePromptTemplate.from_template(
-        "Please increase the difficulty of the given programming test question a bit. "
-        "You can increase the difficulty using, but not limited to, the following methods: {mutator}"
-        "Your response should consist of a new programming test question that is entirely self-contained: "
-        "it should be solvable without "
-        "(a) knowing the original question, "
-        "(b) having a network connection, or"
-        "(c) using any system calls. "
-        "Output only the new programming question, with no additional text."
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "Please increase the difficulty of the given programming test question a bit. "
+            "You can increase the difficulty using, but not limited to, the following methods: {mutator}"
+            "Your response should consist of a new programming test question that is entirely self-contained: "
+            "it should be solvable without "
+            "(a) knowing the original question, "
+            "(b) having a network connection, or"
+            "(c) using any system calls. "
+            "Output only the new programming question, with no additional text."
+        ),
+        user_prompt="{input}",
     )
-    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
-    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     output = chain.run(mutator=mutator, input=problem)
     return output
@@ -83,17 +92,18 @@ def mutate_problem(chat: ChatOpenAI, problem: str, mutator: str) -> str:
 
 def filter_problem(chat: ChatOpenAI, problem: str) -> Optional[bool]:
     """Use the LLM to filter out programming problems that are not self-contained"""
-    system_prompt = SystemMessagePromptTemplate.from_template(
-        "Please determine whether the following programming test question is valid. "
-        "A programming test question is valid if it is entirely self-contained, i.e., "
-        "it is solvable without "
-        "(a) referencing an 'original question', "
-        "(b) having a network connection, or"
-        "(c) using any system calls. "
-        "Output only True or False, with no additional text."
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "Please determine whether the following programming test question is valid. "
+            "A programming test question is valid if it is entirely self-contained, i.e., "
+            "it is solvable without "
+            "(a) referencing an 'original question', "
+            "(b) having a network connection, or"
+            "(c) using any system calls. "
+            "Output only True or False, with no additional text."
+        ),
+        user_prompt="{input}",
     )
-    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
-    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     output = chain.run(input=problem)
     if output == "True":
@@ -106,33 +116,89 @@ def filter_problem(chat: ChatOpenAI, problem: str) -> Optional[bool]:
 
 def propose_solution(chat: ChatOpenAI, problem: str) -> str:
     """Prompt the LLM to solve a programming problem"""
-    system_prompt = SystemMessagePromptTemplate.from_template(
-        "Solve the following programming problem using Python and its standard library.  "
-        "Even if the problem itself says that you may use any language or libraries, "
-        "stick to Python and its standard library.  "
-        "You may write multiple functions, but organize your code so that a function called "
-        "`solution` may be run with any required arguments to fully solve the problem.  "
-        "Output only code, with no accompanying text."
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "Solve the following programming problem using Python and its standard library.  "
+            "Even if the problem itself says that you may use any language or libraries, "
+            "stick to Python and its standard library.  "
+            "You may write multiple functions, but organize your code so that a function called "
+            "`solution` may be run with any required arguments to fully solve the problem.  "
+            "Output only code, with no accompanying text."
+        ),
+        user_prompt="{input}"
     )
-    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
-    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(input=problem)
 
 
 def wizard_solve(chat: ChatOpenAI, problem: str) -> str:
-    human_prompt = HumanMessagePromptTemplate.from_template(
-        "Below is an instruction that describes a task. "
-        "Write a response that appropriately completes the request.\n"
-        "\n"
-        "### Instruction:\n"
-        "{instruction}\n"
-        "\n"
-        "### Response:"
-    )
-    prompt = ChatPromptTemplate.from_messages([human_prompt])
+    prompt = ChatPromptTemplate.from_messages([
+        HumanMessagePromptTemplate.from_template(
+            "Below is an instruction that describes a task. "
+            "Write a response that appropriately completes the request.\n"
+            "\n"
+            "### Instruction:\n"
+            "{instruction}\n"
+            "\n"
+            "### Response:"
+        ),
+    ])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(instruction=problem)
+
+
+def propose_entry_point(chat: ChatOpenAI, problem: str, soln: str) -> str:
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "For the following programming problem and its accompanying solution, "
+            "what is the name of the main function in the solution that solves the problem?  "
+            "Provide only the function name, with no accompanying text."
+        ),
+        user_prompt="{input}"
+    )
+    chain = LLMChain(llm=chat, prompt=prompt)
+    return chain.run(input=problem)
+
+
+def propose_test_from_text(chat: ChatOpenAI, problem: str) -> str:
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "You are an AI teaching assistant.  "
+            "Your task is to produce test cases to evaluate student implementations of programming problems.  "
+            "Produce 5 test cases for the following problem.  "
+            "Your test cases should be boolean functions that return True when the student implementation passes the test, and False otherwise.  "
+            "Try to provide a variety of tests that can give an accurate assessment of a student solution's correctness.  "
+            "Where possible, write your test cases in Python and stick to the standard library.  "
+            "You should output only code, with no accompanying text.  "
+            "Do not attempt to solve the problem."
+        ),
+        user_prompt="{input}"
+    )
+    chain = LLMChain(llm=chat, prompt=prompt)
+    return chain.run(input=problem)
+
+
+def propose_test_from_text_and_solution(chat: ChatOpenAI, problem: str, solution: str) -> str:
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "You are an AI teaching assistant.  "
+            "Your task is to produce test cases to evaluate student implementations of programming problems.  "
+            "Produce 5 test cases for the following problem and sample solution.  "
+            "Your test cases should be boolean functions that return True when the student implementation passes the test, and False otherwise.  "
+            "Try to provide a variety of tests that can give an accurate assessment of a student solution's correctness.  "
+            "Where possible, write your test cases in Python and stick to the standard library.  "
+            "You should output only code, with no accompanying text.  "
+            "Do not attempt to solve the problem."
+        ),
+        user_prompt=(
+            "###Problem"
+            "{problem}"
+            "###Sample solution"
+            "{soln}"
+        ),
+    )
+    chain = LLMChain(llm=chat, prompt=prompt)
+    return chain.run(problem=problem, soln=solution)
 
 
 def propose_checker(chat: ChatOpenAI, problem: str) -> str:
@@ -142,55 +208,58 @@ def propose_checker(chat: ChatOpenAI, problem: str) -> str:
     A checker is a function f that takes in a proposed solution g
     and returns True iff g is a correct solution to the problem:
     """
-    system_prompt = SystemMessagePromptTemplate.from_template(
-        "Given a programming problem p, a checker for p is a function f that takes in a proposed solution function g "
-        "and returns True if and only if g is a correct solution to the problem. "
-        "A simple example of a checker is a function that tests g against a set of input-output pairs. "
-        "In cases where generating these input-output pairs is more difficult, a checker may instead sample outputs from g"
-        "and verify that they satisfy the problem's constraints."
-        "Please write a deterministic checker in Python for the following programming problem. "
-        "Do not include a solution to the programming problem in your response. "
-        "Output only the checker, with no additional text. "
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "Given a programming problem p, a checker for p is a function f that takes in a proposed solution function g "
+            "and returns True if and only if g is a correct solution to the problem. "
+            "A simple example of a checker is a function that tests g against a set of input-output pairs. "
+            "In cases where generating these input-output pairs is more difficult, a checker may instead sample outputs from g"
+            "and verify that they satisfy the problem's constraints."
+            "Please write a deterministic checker in Python for the following programming problem. "
+            "Do not include a solution to the programming problem in your response. "
+            "Output only the checker, with no additional text. "
+        ),
+        user_prompt="{input}",
     )
-    human_prompt = HumanMessagePromptTemplate.from_template("{input}")
-    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(input=problem)
 
 
 def check_problem_novel(chat: ChatOpenAI, src_problem: str, dst_problem: str) -> str:
     """Check that a problem is sufficiently different from its parent"""
-    system_prompt = SystemMessagePromptTemplate.from_template(
-        "The following is an output from a language model. "
-        "The language model was asked to produce a mutated version of a programming problem. "
-        "Did the model output a new problem that isn't trivially the same problem?  "
-        "Answer True/False, with no punctuation or extra text. "
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "The following is an output from a language model. "
+            "The language model was asked to produce a mutated version of a programming problem. "
+            "Did the model output a new problem that isn't trivially the same problem?  "
+            "Answer True/False, with no punctuation or extra text. "
+        ),
+        user_prompt=(
+            "Original problem:\n"
+            "{src_problem}\n\n"
+            "New problem:\n"
+            "{dst_problem}"
+        ),
     )
-    human_prompt = HumanMessagePromptTemplate.from_template(
-        "Original problem:\n"
-        "{src_problem}\n\n"
-        "New problem:\n"
-        "{dst_problem}"
-    )
-    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(src_problem=src_problem, dst_problem=dst_problem)
 
 
 def check_problem_solvable(chat: ChatOpenAI, problem: str) -> str:
     """Check that a problem can be solved by LLM"""
-    system_prompt = SystemMessagePromptTemplate.from_template(
-        "Given the complexity and breadth of the given problem, can you provide a complete and functional "
-        "code solution, meeting all the specified requirements? "
-        "Answer True/False, with no punctuation or extra text. "
-        "You should only answer 'True' when you are able to follow up with a full solution. "
-        "If you can only provide an outline, you should respond with 'False'."
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "Given the complexity and breadth of the given problem, can you provide a complete and functional "
+            "code solution, meeting all the specified requirements? "
+            "Answer True/False, with no punctuation or extra text. "
+            "You should only answer 'True' when you are able to follow up with a full solution. "
+            "If you can only provide an outline, you should respond with 'False'."
+        ),
+        user_prompt=(
+            "Programming problem:\n"
+            "{input}"
+        ),
     )
-    human_prompt = HumanMessagePromptTemplate.from_template(
-        "Programming problem:\n"
-        "{input}"
-    )
-    prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(input=problem)
 
@@ -436,11 +505,23 @@ if __name__ == "__main__":
         "For example, 3^2 + 4^2 = 9 + 16 = 25 = 5^2. There exists exactly one Pythagorean triplet for which a + b + c = 1000. "
         "Find the product abc.",
     ]
-    run_novel_instruct(
-        chat=chat,
-        iters=iters,
-        seed_dataset=tiny_seed,  #"../datasets/code_alpaca_tiny.json",
-        archive_per_iter=5,
-        max_popn_size=10,
-        output_file=f"../datasets/novel-instruct-test-{iters}-{timestamp}.jsonl"
-    )
+    problem_sample = [
+
+    ]
+    for problem in tiny_seed:
+        out = wizard_solve(chat, problem)
+        print(f"Problem:",
+              f"{problem}",
+              f"",
+              f"Solution:",
+              f"{out}",
+              sep="\n")
+
+    # run_novel_instruct(
+    #     chat=chat,
+    #     iters=iters,
+    #     seed_dataset=tiny_seed,  # "../datasets/code_alpaca_tiny.json",
+    #     archive_per_iter=5,
+    #     max_popn_size=10,
+    #     output_file=f"../datasets/novel-instruct-test-{iters}-{timestamp}.jsonl"
+    # )
