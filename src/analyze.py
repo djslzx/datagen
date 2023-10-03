@@ -301,10 +301,11 @@ def add_predicate_cols(chat: ChatOpenAI, df: pd.DataFrame, saveto: str) -> pd.Da
     )
 
 
-def add_solve_col(chat: ChatOpenAI, df: pd.DataFrame, saveto: str):
+def add_solution_cols(chat: ChatOpenAI, df: pd.DataFrame, saveto: str, n=1):
     return add_extras(
         df=df,
-        extras=[("solution", lambda row: wizard.propose_solution(chat, row["text"]))],
+        extras=[(f"solution-{i}", lambda row: wizard.propose_solution(chat, row["text"]))
+                for i in range(n)],
         saveto=saveto,
     )
 
@@ -377,7 +378,7 @@ def load_annotations(annot_file: str, filename_map: Dict[str, str]) -> pd.DataFr
 
 def sample_problems(df: pd.DataFrame, n: int):
     rows = []
-    headings = ["iter", "source file", "mutator", "parent name", "name", "text",
+    headings = ["id", "iter", "source file", "mutator", "parent name", "name", "text",
                 "score", "rank", "chosen?", "solvable?", "novel?"]
     for source in df["source file"].unique():
         print(f"Source: {source}")
@@ -474,17 +475,18 @@ if __name__ == "__main__":
     }
     df = load_annotations("../datasets/annotated-sep20.jsonl", filenames)
     # analyze_annotations(df)
-    chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-0613")
-    n = 10
+    lo_temp_chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-0613")
+    hi_temp_chat = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-0613")
+    n = 1
     df = sample_problems(df, n=n)
-    df = add_solve_col(chat, df, saveto=f"../datasets/sampling-solved-{timestamp}")
+    df = add_solution_cols(hi_temp_chat, df, n=2, saveto=f"../datasets/sampling-solved-{timestamp}")
     # df = add_entry_point_col(chat, df, f"../datasets/sampling-epoint-{timestamp}")
     df = add_extras(
         df,
         saveto=f"../datasets/sampling-tests-{timestamp}",
         extras=[
-            ("test(text)", lambda row: wizard.propose_test_from_text(chat, row["text"])),
-            ("test(text, soln)", lambda row: wizard.propose_test_from_text_and_solution(chat, row["text"], row["solution"])),
+            ("test(text)", lambda row: wizard.propose_test_from_text(lo_temp_chat, row["text"])),
+            ("test(text, soln)", lambda row: wizard.propose_test_from_text_and_solution(lo_temp_chat, row["text"], row["solution-0"])),
         ],
     )
     print(df)
