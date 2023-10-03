@@ -261,7 +261,15 @@ def propose_test_from_text(chat: ChatOpenAI, problem: str) -> str:
             "Try to provide a variety of tests that can give an accurate assessment of a student solution's correctness.  "
             "Where possible, write your test cases in Python and stick to the standard library.  "
             "You should output only code, with no accompanying text.  "
-            "Do not attempt to solve the problem."
+            "Do not attempt to solve the problem.  "
+            
+            # format guidelines
+            "Use the following format:\n"
+            "\n"
+            "```python\n"
+            "def test_1() -> bool:\n"
+            "    ...\n"
+            "```"
         ),
         user_prompt="{input}"
     )
@@ -269,17 +277,33 @@ def propose_test_from_text(chat: ChatOpenAI, problem: str) -> str:
     return chain.run(input=problem)
 
 
-def propose_test_from_text_and_solution(chat: ChatOpenAI, problem: str, solution: str) -> str:
+def propose_test_from_text_and_solution(chat: ChatOpenAI, problem: str, solution: str, n: int = 1) -> str:
     prompt = simple_chat_prompt(
         system_prompt=(
             "You are an AI teaching assistant.  "
             "Your task is to produce test cases to evaluate student implementations of programming problems.  "
-            "Produce 5 test cases for the following problem and sample solution.  "
+            "Produce {n} test cases for the following problem and sample solution.  "
             "Your test cases should be boolean functions that return True when the student implementation passes the test, and False otherwise.  "
             "Try to provide a variety of tests that can give an accurate assessment of a student solution's correctness.  "
             "Where possible, write your test cases in Python and stick to the standard library.  "
             "You should output only code, with no accompanying text.  "
-            "Do not attempt to solve the problem."
+            "Do not attempt to solve the problem.  "
+
+            # format guidelines
+            "Use the following format:\n"
+            "\n"
+            "```python\n"
+            "def test_1() -> bool:\n"
+            "    ...\n"
+            "\n"
+            "def test_2() -> bool:\n"
+            "    ...\n"
+            "\n"
+            "...\n"
+            "\n"
+            "def test_{n}() -> bool:\n"
+            "    ....\n"
+            "```"
         ),
         user_prompt=(
             "###Problem"
@@ -289,7 +313,7 @@ def propose_test_from_text_and_solution(chat: ChatOpenAI, problem: str, solution
         ),
     )
     chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(problem=problem, soln=solution)
+    return chain.run(problem=problem, soln=solution, n=n)
 
 
 def propose_checker(chat: ChatOpenAI, problem: str) -> str:
