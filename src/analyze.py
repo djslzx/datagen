@@ -459,6 +459,59 @@ def analyze_annotations(df: pd.DataFrame):
     # )
 
 
+def analyze_extras(df: pd.DataFrame):
+    """
+    - are the solutions all the same?
+    - are the tests all the same?
+    - how similar are the tests in test(text) to those in test(text, soln)?
+    - how many tests are runnable? how do we check this?
+      - failure modes:
+        - needs web connection
+        - needs functions to be defined
+        - needs external resources (run code in a container? but then too slow...)
+        - code is malformed
+        - etc
+    - how many solutions pass the tests?
+    """
+    # how many solutions are the same?
+    n_solns = max(int(c[len("solution-"):])
+                  for c in df.columns if c.startswith("solution-"))
+    print(f"n solns: {n_solns}")
+    df["n unique solns"] = df.apply(
+        lambda row: len({
+            row[f"solution-{i}"] for i in range(n_solns)
+        }),
+        axis=1
+    )
+    avg_n_uniq_solns = df["n unique solns"].mean()
+    print(f"Average number of unique solutions per row: {avg_n_uniq_solns}")
+
+    # how similar (SBert distance) are the solutions?
+    pass
+
+    # how similar are the tests?
+    pass
+
+
+def run_extras(annot_file: str, filenames: dict, n_samples: int, n_solns: int) -> pd.DataFrame:
+    df = load_annotations(annot_file, filenames)
+    lo_temp_chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
+    hi_temp_chat = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613")
+    df = sample_problems(df, n=n_samples)
+    df = add_solution_cols(hi_temp_chat, df, n=n_solns, saveto=f"../datasets/sampling-solved-{timestamp}")
+    # df = add_entry_point_col(chat, df, f"../datasets/sampling-epoint-{timestamp}")
+    df = add_extras(
+        df,
+        saveto=f"../datasets/sampling-tests-{timestamp}",
+        extras=[
+            ("test(text)", lambda row: wizard.propose_test_from_text(lo_temp_chat, row["text"])),
+            ("test(text, soln)",
+             lambda row: wizard.propose_test_from_text_and_solution(lo_temp_chat, row["text"], row["solution-0"])),
+        ],
+    )
+    return df
+
+
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.min_rows", 50)
@@ -473,23 +526,13 @@ if __name__ == "__main__":
         # "CA 1K": "../datasets/code_alpaca_1k",
         # "CA 20K": "../datasets/code_alpaca_20k",
     }
-    df = load_annotations("../datasets/annotated-sep20.jsonl", filenames)
+
+    # df = load_annotations("../datasets/annotated-sep20.jsonl", filenames)
     # analyze_annotations(df)
-    lo_temp_chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-0613")
-    hi_temp_chat = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-0613")
-    n = 1
-    df = sample_problems(df, n=n)
-    df = add_solution_cols(hi_temp_chat, df, n=2, saveto=f"../datasets/sampling-solved-{timestamp}")
-    # df = add_entry_point_col(chat, df, f"../datasets/sampling-epoint-{timestamp}")
-    df = add_extras(
-        df,
-        saveto=f"../datasets/sampling-tests-{timestamp}",
-        extras=[
-            ("test(text)", lambda row: wizard.propose_test_from_text(lo_temp_chat, row["text"])),
-            ("test(text, soln)", lambda row: wizard.propose_test_from_text_and_solution(lo_temp_chat, row["text"], row["solution-0"])),
-        ],
-    )
-    print(df)
+    # df = run_extras(annot_file="../datasets/annotated-sep20.jsonl", filenames=filenames, n_samples=10, n_solns=2)
+    # df = pd.read_json("../datasets/sampling-tests-2023-10-02T22:52:58.129383.jsonl", lines=True)
+    df = pd.read_json("../datasets/sampling-tests-2023-10-03T00:51:02.288607.jsonl", lines=True)
+    analyze_extras(df)
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]

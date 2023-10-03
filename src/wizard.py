@@ -131,6 +131,97 @@ def propose_solution(chat: ChatOpenAI, problem: str) -> str:
     return chain.run(input=problem)
 
 
+def propose_multiple_solutions(chat: ChatOpenAI, n: int, problem: str) -> str:
+    prompt = simple_chat_prompt(
+        system_prompt=(
+            "You are an AI programming assistant.  "
+            "Propose exactrly {n} code solutions to the following programming problem.  "
+            "Solve the problem using Python and its standard library.  "
+            "You may write multiple functions.  "
+            "Output only code, with no accompanying text.  "
+            "Ensure that all solutions you propose have distinct approaches to the problem.  "
+            "You must output your solutions as exactly {n} strings in a Python list, in the following format:\n"
+            "```python\n"
+            "[\n"
+            "    '''\n"
+            "    <code for solution 1>\n"
+            "    ''',\n"
+            "    '''\n"
+            "    <code for solution 2>\n"
+            "    ''',\n"
+            "    ....\n"
+            "    '''\n"
+            "    <code for solution {n}>\n"
+            "    ''',\n"
+            "]\n"
+            "```\n"
+        ),
+        user_prompt="{input}"
+    )
+    chain = LLMChain(llm=chat, prompt=prompt)
+    return chain.run(input=problem, n=n)
+
+
+def demo_multiple_solutions():
+    problems = [
+        """
+        Design a class called "Triangle" that represents a triangle. The "Triangle" class should have the following attributes:
+        - "side1" (an integer) - The length of side 1 of the triangle.
+        - "side2" (an integer) - The length of side 2 of the triangle.
+        - "side3" (an integer) - The length of side 3 of the triangle.
+
+        The "Triangle" class should also have the following methods:
+
+        - "__init__" - Initializes a new instance of the "Triangle" class with the given lengths of all sides.
+        - "get_perimeter" - Returns the perimeter of the triangle, which is calculated by adding all three side lengths together.
+        - "get_area" - Returns the area of the triangle, which is calculated using Heron's formula: 
+        area = sqrt(s * (s - a) * (s - b) * (s - c)), where s is the semiperimeter of the triangle and a, b, and c are the lengths of the sides.
+
+        Implement the "Triangle" class in Python. Make sure to include a sample usage of the "Triangle" class to demonstrate its functionality.
+
+        For example:
+
+        t1 = Triangle(3, 4, 5)
+        print(t1.get_perimeter())  # Output: 12
+        print(t1.get_area())  # Output: 6.0
+        """,
+        """
+        Write a function `multiplyArrays(arr1, arr2)` that takes in two arrays `arr1` and `arr2` of equal length, and returns an array `result` where each element `result[i]` is the product of `arr1[i]` and `arr2[i]`. 
+        For example, given `arr1 = [2, 3, 4]` and `arr2 = [5, 6, 7]`, the function should return `[10, 18, 28]` since `10 = 2 * 5`, `18 = 3 * 6`, and `28 = 4 * 7`. 
+        Your implementation should have a time complexity of O(n), where n is the length of the input arrays.
+        """,
+        """
+        Given a binary tree, validate if it is a binary search tree (BST).
+
+        A BST is defined as follows:
+        - The left subtree of a node contains only nodes with keys less than the node's key.
+        - The right subtree of a node contains only nodes with keys greater than the node's key.
+        - Both the left and right subtrees must also be binary search trees.
+        
+        For example, given the following tree:
+        
+                5
+               / \
+              3   7
+             / \
+            1   4
+        
+        The output should be `true` since this tree satisfies the BST property.
+        
+        Note:
+        - Assume that each node in the tree has a unique key value.
+        - The tree may be unbalanced.
+        """,
+    ]
+    for problem in problems:
+        out = propose_multiple_solutions(
+            ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613"),
+            n=5,
+            problem=problem
+        )
+        print(out)
+
+
 def wizard_solve(chat: ChatOpenAI, problem: str) -> str:
     prompt = ChatPromptTemplate.from_messages([
         HumanMessagePromptTemplate.from_template(
@@ -483,6 +574,9 @@ def run_novel_instruct(chat: ChatOpenAI, iters: int, seed_dataset: Union[str, Li
 
 
 if __name__ == "__main__":
+    demo_multiple_solutions()
+    exit(0)
+
     timestamp = datetime.datetime.now().isoformat()
     iters = 2
     chat = ChatOpenAI(temperature=0.9, model_name="gpt-3.5-turbo-0613")
