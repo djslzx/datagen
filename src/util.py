@@ -17,6 +17,37 @@ from adjustText import adjust_text
 from datetime import datetime
 
 
+def strip_markdown(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        assert text.endswith("```")
+        return "\n".join(text.split("\n")[1:-1])
+    else:
+        return text
+
+
+def test_strip_markdown():
+    cases = [
+        ("""
+         ```python
+         x + 1
+         ```
+         """,
+         "         x + 1"),
+        ("""
+         ```
+         x + 2
+         ```
+         
+         
+         """,
+         "         x + 2"),
+    ]
+    for x, y in cases:
+        out = strip_markdown(x)
+        assert out == y, f"Expected {y} but got {out}"
+
+
 def timestamp():
     return datetime.now().isoformat()
 
