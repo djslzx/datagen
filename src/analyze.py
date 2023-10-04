@@ -308,10 +308,11 @@ def add_solution_cols(chat: ChatOpenAI, df: pd.DataFrame, saveto: str, n=1):
         extras=[("solutions", lambda row: wizard.propose_multiple_solutions(chat, n=n, problem=row["text"]))],
         saveto=saveto
     )
-    # # parse out solutions into separate columns
-    # df[[f"solution-{i}" for i in range(n)]] = [
-    #     unsafe_split_list_text(val, n) for val in df["solutions"]
-    # ]
+    # parse out solutions into separate columns
+    df[[f"soln-{i}" for i in range(n)]] = [
+        util.pad_list(util.split_py_markdown(val), n, "")
+        for val in df["solutions"]
+    ]
     return df
 
 
@@ -483,7 +484,7 @@ def analyze_extras(df: pd.DataFrame):
     print(f"n solns: {n_solns}")
     df["n unique solns"] = df.apply(
         lambda row: len({
-            row[f"solution-{i}"] for i in range(n_solns)
+            row[f"soln-{i}"] for i in range(n_solns)
         }),
         axis=1
     )
@@ -497,7 +498,7 @@ def analyze_extras(df: pd.DataFrame):
     pass
 
 
-def make_extras(annot_file: str, filenames: dict, n_samples: int, n_solns: int, n_tests: int) -> pd.DataFrame:
+def make_extras(annot_file: str, filenames: dict, n_samples: int, n_solns: int, n_tests_per_soln: int) -> pd.DataFrame:
     df = load_annotations(annot_file, filenames)
     lo_temp_chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     hi_temp_chat = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613")
@@ -508,11 +509,15 @@ def make_extras(annot_file: str, filenames: dict, n_samples: int, n_solns: int, 
         df,
         saveto=f"../datasets/sample-tests-{timestamp}",
         extras=[
-            ("tests(text)", lambda row: wizard.propose_tests_from_text(lo_temp_chat, row["text"], n_tests)),
-            ("tests(text, soln)",
-             lambda row: wizard.propose_tests_from_text_and_solution(lo_temp_chat, row["text"], row["solutions"],
-                                                                     n_tests)),
-        ],
+                   ("tests(text)",
+                    lambda row: wizard.propose_tests_from_text(lo_temp_chat, row["text"], n_tests_per_soln)),
+               ] + [
+                   (f"tests(text, soln_{i})",
+                    lambda row: wizard.propose_tests_from_text_and_solution(
+                        lo_temp_chat, row["text"], row[f"soln-{i}"], n_tests_per_soln
+                    ))
+                   for i in range(n_solns)
+               ],
     )
     return df
 
@@ -534,10 +539,14 @@ if __name__ == "__main__":
 
     # df = load_annotations("../datasets/annotated-sep20.jsonl", filenames)
     # analyze_annotations(df)
-    df = make_extras(annot_file="../datasets/annotated-sep20.jsonl", filenames=filenames, n_samples=1, n_solns=3, n_tests=2)
+    df = make_extras(annot_file="../datasets/annotated-sep20.jsonl",
+                     filenames=filenames,
+                     n_samples=1,
+                     n_solns=3,
+                     n_tests_per_soln=1)
     # df = pd.read_json("../datasets/sampling-tests-2023-10-02T22:52:58.129383.jsonl", lines=True)
     # df = pd.read_json("../datasets/sampling-tests-2023-10-03T00:51:02.288607.jsonl", lines=True)
-    analyze_extras(df)
+    # analyze_extras(df)
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
