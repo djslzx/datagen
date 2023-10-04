@@ -18,12 +18,22 @@ from adjustText import adjust_text
 from datetime import datetime
 
 
+def pad_list(xs: List, n: int, nil: Any) -> List:
+    """
+    Make xs into a list of length n.  Remove entries if len(xs) > n, add nils if len(xs) < n.
+    """
+    if len(xs) < n:
+        return xs + [nil] * (n - len(xs))
+    else:
+        return xs[:n]
+
+
 def split_py_markdown(text: str) -> List[str]:
     """
     Split a string formatted as "```python<x1>``` ... ```python<xn>```" into
     the list of strings [x1, ..., xn].
     """
-    return [x.strip() for x in re.findall(r"```python\s*(.*)\s*```", text)]
+    return [x.strip() for x in re.findall(r"```python\s*([^`]*)\s*```", text)]
 
 
 def strip_markdown(text: str) -> str:

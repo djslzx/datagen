@@ -3,6 +3,19 @@ import pytest
 from util import *
 
 
+def test_pad_list():
+    cases = [
+        ([1, 2, 3], 0, 0, []),
+        ([1, 2, 3], 1, 0, [1]),
+        ([1, 2, 3], 2, 0, [1, 2]),
+        ([1, 2, 3], 3, 0, [1, 2, 3]),
+        ([1, 2, 3], 5, 0, [1, 2, 3, 0, 0]),
+    ]
+    for x, n, nil, y in cases:
+        out = pad_list(x, n, nil)
+        assert out == y, f"Expected {y} but got {out}"
+
+
 def test_split_py_markdown():
     cases = [
         """
@@ -34,6 +47,47 @@ def test_split_py_markdown():
         ```
         """,
         ["x + 1", "x + 2"],
+        """
+        hello, distraction here
+        ```python
+        x
+        ```
+        hullo, distraction here
+        ```python
+        x + 1
+        ```
+        goodbye
+        """,
+        ["x", "x + 1"],
+        """
+        Solution 1:
+        ```python
+        def sol1
+        ```
+
+        Solution 2:
+        ```python
+        def sol2
+        ```
+
+        Solution 3:
+        ```python
+        def sol3
+        ```
+        """,
+        ["def sol1", "def sol2", "def sol3"],
+
+        ("```python\n"
+         "x\n"
+         "x\n"
+         "x\n"
+         "```\n"
+         "```python\n"
+         "y\n"
+         "y\n"
+         "y\n"
+         "```\n"),
+        ["x\nx\nx", "y\ny\ny"],
     ]
     for x, y in zip(cases[::2], cases[1::2]):
         out = split_py_markdown(x)
