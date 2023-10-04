@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from math import floor, sqrt, ceil
 from pprint import pp
+import re
 import numpy as np
 import torch as T
 import itertools as it
@@ -15,6 +16,40 @@ from func_timeout import func_timeout, FunctionTimedOut
 import openai.error
 from adjustText import adjust_text
 from datetime import datetime
+
+
+def unsafe_split_list_text(text: str, n: int) -> List[str]:
+    """
+    Split a string representing a list of Python strings into a list of strings,
+    e.g. "['a', 'b', 'c']" -> ['a', 'b', 'c'],
+    stripping markdown annotations (```) as necessary
+    """
+    # WARNING: uses `eval`, so pretty unsafe if the input is not a string of a list
+    text = strip_markdown(text).strip()
+    if not (text.strip().startswith("[") and text.strip().endswith("]")):
+        return [""] * n
+    try:
+        parts = eval(text)
+    except SyntaxError:
+        return [""] * n
+    if len(parts) >= n:
+        return parts[:n]
+    elif len(parts) <= n:
+        return [""] * (n - len(parts))
+    else:
+        return parts
+
+
+def split_list_text(text: str, n: int) -> List[str]:
+    """
+    Split a string representing a list of Python strings into a list of strings,
+    e.g. "['a', 'b', 'c']" -> ['a', 'b', 'c'],
+    stripping markdown annotations (```) as necessary.
+    Does not use `eval` for safety reasons.
+    """
+    # todo: implement using a lark parser
+    raise NotImplementedError
+
 
 
 def strip_markdown(text: str) -> str:

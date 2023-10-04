@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Union, Optional, Dict, Tuple, Callable
 import textwrap
-import datetime
+import regex as re
 from langchain.chat_models import ChatOpenAI
 
 import featurizers as feat
@@ -302,38 +302,17 @@ def add_predicate_cols(chat: ChatOpenAI, df: pd.DataFrame, saveto: str) -> pd.Da
 
 
 def add_solution_cols(chat: ChatOpenAI, df: pd.DataFrame, saveto: str, n=1):
-    def split_solutions(text, n: int) -> List[str]:
-        """Split the row, which should be formatted as a list of Python strings, into a list of strings"""
-        try:
-            text = util.strip_markdown(text)
-            solns = eval(text)
-        except SyntaxError:
-            return [""] * n
-        if len(solns) >= n:
-            solns = solns[:n]
-        print("Solutions:")
-        for soln in solns:
-            print(soln)
-        return solns
-
     # produce multiple solutions with a single prompt, then parse out and turn into separate columns
     df = add_extras(
         df=df,
         extras=[("solutions", lambda row: wizard.propose_multiple_solutions(chat, n=n, problem=row["text"]))],
         saveto=saveto
     )
-    # parse out solutions into separate columns
-    df[[f"solution-{i}" for i in range(n)]] = [
-        split_solutions(val, n)
-        for val in df["solutions"]
-    ]
+    # # parse out solutions into separate columns
+    # df[[f"solution-{i}" for i in range(n)]] = [
+    #     unsafe_split_list_text(val, n) for val in df["solutions"]
+    # ]
     return df
-    # return add_extras(
-    #     df=df,
-    #     extras=[(f"solution-{i}", lambda row: wizard.propose_solution(chat, row["text"]))
-    #             for i in range(n)],
-    #     saveto=saveto,
-    # )
 
 
 def add_entry_point_col(chat: ChatOpenAI, df: pd.DataFrame, saveto: str):
@@ -500,7 +479,7 @@ def analyze_extras(df: pd.DataFrame):
     - how many solutions pass the tests?
     """
     # how many solutions are the same?
-    n_solns = len({c for c in df.columns if c.startswith("solution-")})
+    n_solns = len({c for c in df.columns if c.startswith("solution")})
     print(f"n solns: {n_solns}")
     df["n unique solns"] = df.apply(
         lambda row: len({
@@ -518,7 +497,7 @@ def analyze_extras(df: pd.DataFrame):
     pass
 
 
-def make_extras(annot_file: str, filenames: dict, n_samples: int, n_solns: int) -> pd.DataFrame:
+def make_extras(annot_file: str, filenames: dict, n_samples: int, n_solns: int, n_tests: int) -> pd.DataFrame:
     df = load_annotations(annot_file, filenames)
     lo_temp_chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     hi_temp_chat = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613")
@@ -529,9 +508,10 @@ def make_extras(annot_file: str, filenames: dict, n_samples: int, n_solns: int) 
         df,
         saveto=f"../datasets/sample-tests-{timestamp}",
         extras=[
-            ("test(text)", lambda row: wizard.propose_test_from_text(lo_temp_chat, row["text"])),
-            ("test(text, soln)",
-             lambda row: wizard.propose_test_from_text_and_solution(lo_temp_chat, row["text"], row["solution-0"])),
+            ("tests(text)", lambda row: wizard.propose_tests_from_text(lo_temp_chat, row["text"], n_tests)),
+            ("tests(text, soln)",
+             lambda row: wizard.propose_tests_from_text_and_solution(lo_temp_chat, row["text"], row["solutions"],
+                                                                     n_tests)),
         ],
     )
     return df
@@ -554,7 +534,7 @@ if __name__ == "__main__":
 
     # df = load_annotations("../datasets/annotated-sep20.jsonl", filenames)
     # analyze_annotations(df)
-    df = make_extras(annot_file="../datasets/annotated-sep20.jsonl", filenames=filenames, n_samples=1, n_solns=3)
+    df = make_extras(annot_file="../datasets/annotated-sep20.jsonl", filenames=filenames, n_samples=1, n_solns=3, n_tests=2)
     # df = pd.read_json("../datasets/sampling-tests-2023-10-02T22:52:58.129383.jsonl", lines=True)
     # df = pd.read_json("../datasets/sampling-tests-2023-10-03T00:51:02.288607.jsonl", lines=True)
     analyze_extras(df)

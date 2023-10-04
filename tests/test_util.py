@@ -3,6 +3,30 @@ import pytest
 from util import *
 
 
+def test_split_list_text():
+    cases = [
+        ("['a', 'b', 'c']", ['a', 'b', 'c'], 3),
+        ("['a', 'b', 'c']", ['a', 'b'], 2),
+        ("['a', 'b']", ['a', 'b', ''], 3),
+        ("['a', 'b', 'c', 'd']", ['a', 'b', 'c', 'd'], 4),
+    ]
+    for x, y, n in cases:
+        out = split_list_text(x, n)
+        assert out == y, f"Expected {y} but got {out}"
+
+
+def test_unsafe_split_list_text():
+    cases = [
+        ("['a', 'b', 'c']", ['a', 'b', 'c'], 3),
+        ("['a', 'b', 'c']", ['a', 'b'], 2),
+        ("['a', 'b']", ['a', 'b', ''], 3),
+        ("['a', 'b', 'c', 'd']", ['a', 'b', 'c', 'd'], 4),
+    ]
+    for x, y, n in cases:
+        out = unsafe_split_list_text(x, n)
+        assert out == y, f"Expected {y} but got {out}"
+
+
 def test_invert_array():
     cases = [
         np.array([0, 1, 2, 3, 4, 5]), np.array([0, 1, 2, 3, 4, 5]),
@@ -154,14 +178,14 @@ def test_vec_approx_eq():
     ]
     for a, b, thresh, y in cases:
         for out in [vec_approx_eq(T.tensor(a), T.tensor(b), thresh),
-                    vec_approx_eq(np.array(a), np.array(b), thresh),]:
+                    vec_approx_eq(np.array(a), np.array(b), thresh), ]:
             assert y == out, f"Expected ({a} == {b}, thresh={thresh}) == {y} but got {out}"
 
 
-def test_imscatter():
+def demo_imscatter():
     n_images = 100
     image_size = 20
-    images = np.stack([np.ones((image_size, image_size, 3)) * (((i * 7) % 100)/100)
+    images = np.stack([np.ones((image_size, image_size, 3)) * (((i * 7) % 100) / 100)
                        for i in range(n_images)])
     positions = np.stack([np.array([i % 6, i // 6]) * image_size
                           for i in range(n_images)])
@@ -214,8 +238,10 @@ def test_add_border():
 def dist(a, b):
     return abs(a - b)
 
+
 def bitmap_to_image(bitmap):
     return bitmap[..., np.newaxis] * np.ones((1, 3))
+
 
 def test_center_image():
     cases = [
@@ -250,7 +276,7 @@ def test_center_image():
             f"but got {y_low_gap} and {y_high_gap}"
         images.extend([image, out])
 
-    plot_image_grid(images,
-                    shape=(len(cases), 2),
-                    labels=["original", "centered"] * len(cases))
-    plt.show()
+    # plot_image_grid(images,
+    #                 shape=(len(cases), 2),
+    #                 labels=["original", "centered"] * len(cases))
+    # plt.show()
