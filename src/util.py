@@ -33,6 +33,11 @@ def split_py_markdown(text: str) -> List[str]:
     Split a string formatted as "```python<x1>``` ... ```python<xn>```" into
     the list of strings [x1, ..., xn].
     """
+    # add an end marker for the last block if it doesn't have one
+    n_starts = len(re.findall(r"```python", text))
+    n_ends = len(re.findall(r"```", text))
+    if n_starts > n_ends:
+        text += "```"
     return [x.strip() for x in re.findall(r"```python\s*([^`]*)\s*```", text)]
 
 
