@@ -18,38 +18,12 @@ from adjustText import adjust_text
 from datetime import datetime
 
 
-def unsafe_split_list_text(text: str, n: int) -> List[str]:
+def split_py_markdown(text: str) -> List[str]:
     """
-    Split a string representing a list of Python strings into a list of strings,
-    e.g. "['a', 'b', 'c']" -> ['a', 'b', 'c'],
-    stripping markdown annotations (```) as necessary
+    Split a string formatted as "```python<x1>``` ... ```python<xn>```" into
+    the list of strings [x1, ..., xn].
     """
-    # WARNING: uses `eval`, so pretty unsafe if the input is not a string of a list
-    text = strip_markdown(text).strip()
-    if not (text.strip().startswith("[") and text.strip().endswith("]")):
-        return [""] * n
-    try:
-        parts = eval(text)
-    except SyntaxError:
-        return [""] * n
-    if len(parts) >= n:
-        return parts[:n]
-    elif len(parts) <= n:
-        return [""] * (n - len(parts))
-    else:
-        return parts
-
-
-def split_list_text(text: str, n: int) -> List[str]:
-    """
-    Split a string representing a list of Python strings into a list of strings,
-    e.g. "['a', 'b', 'c']" -> ['a', 'b', 'c'],
-    stripping markdown annotations (```) as necessary.
-    Does not use `eval` for safety reasons.
-    """
-    # todo: implement using a lark parser
-    raise NotImplementedError
-
+    return [x.strip() for x in re.findall(r"```python\s*(.*)\s*```", text)]
 
 
 def strip_markdown(text: str) -> str:

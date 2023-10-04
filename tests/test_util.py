@@ -3,27 +3,40 @@ import pytest
 from util import *
 
 
-def test_split_list_text():
+def test_split_py_markdown():
     cases = [
-        ("['a', 'b', 'c']", ['a', 'b', 'c'], 3),
-        ("['a', 'b', 'c']", ['a', 'b'], 2),
-        ("['a', 'b']", ['a', 'b', ''], 3),
-        ("['a', 'b', 'c', 'd']", ['a', 'b', 'c', 'd'], 4),
+        """
+        ```python
+        x + 1
+        ```
+        
+        ```python
+        x + 2
+        ```
+        """,
+        ["x + 1", "x + 2"],
+        """
+        ```python
+        x + 1
+        ```
+        ```python
+        x + 2
+        ```
+        """,
+        ["x + 1", "x + 2"],
+        """
+        ```python
+        x + 1
+        ```
+        hello there, i am a distraction
+        ```python
+        x + 2
+        ```
+        """,
+        ["x + 1", "x + 2"],
     ]
-    for x, y, n in cases:
-        out = split_list_text(x, n)
-        assert out == y, f"Expected {y} but got {out}"
-
-
-def test_unsafe_split_list_text():
-    cases = [
-        ("['a', 'b', 'c']", ['a', 'b', 'c'], 3),
-        ("['a', 'b', 'c']", ['a', 'b'], 2),
-        ("['a', 'b']", ['a', 'b', ''], 3),
-        ("['a', 'b', 'c', 'd']", ['a', 'b', 'c', 'd'], 4),
-    ]
-    for x, y, n in cases:
-        out = unsafe_split_list_text(x, n)
+    for x, y in zip(cases[::2], cases[1::2]):
+        out = split_py_markdown(x)
         assert out == y, f"Expected {y} but got {out}"
 
 
