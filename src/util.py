@@ -44,7 +44,6 @@ def split_py_markdown(text: str) -> List[str]:
 def strip_markdown(text: str) -> str:
     text = text.strip()
     if text.startswith("```"):
-        assert text.endswith("```")
         return "\n".join(text.split("\n")[1:-1])
     else:
         return text
