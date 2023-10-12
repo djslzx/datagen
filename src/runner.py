@@ -3,6 +3,7 @@ Evaluate LLM-generated code and tests.
 """
 
 import re
+import json
 from pprint import pp
 import pandas as pd
 import numpy as np
@@ -14,7 +15,7 @@ import execution as ex
 import util
 
 
-def make_programs(solns: List[str], tests: List[str]) -> Generator[str, None, None]:
+def make_programs(solns: List[str], tests: List[str]) -> Generator[Dict, None, None]:
     for soln in solns:
         for test in tests:
             test_names = find_tests(test)
@@ -24,10 +25,14 @@ def make_programs(solns: List[str], tests: List[str]) -> Generator[str, None, No
                 test_name = test_names[0]
                 tester = f"assert {test_name}, '{test_name} did not pass'"
             program = "\n\n".join([soln, test, tester])
-            yield program
+            yield {
+                "soln": soln,
+                "test": test,
+                "program": program,
+            }
 
 
-def eval_dataset(filename: str, n_samples: int) -> Generator[Dict, None, None]:
+def eval_dataset(filename: str, n_samples: int, timeout: float) -> Generator[Dict, None, None]:
     def isnan(x):
         try:
             return np.isnan(x)
@@ -35,9 +40,12 @@ def eval_dataset(filename: str, n_samples: int) -> Generator[Dict, None, None]:
             return False
 
     df = pd.read_csv(filename)
-    indices = np.random.randint(low=0, high=len(df), size=n_samples)
-
-    for i, row in df.iloc[indices].iterrows():
+    if n_samples is None:
+        view = df
+    else:
+        indices = np.random.choice(len(df), size=n_samples, replace=False)
+        view = df.iloc[indices]
+    for i, row in view.iterrows():
         solns = [row[f"soln-{i}"] for i in range(3)]
         solns = [x for x in solns if x and not isnan(x)]
 
@@ -45,14 +53,15 @@ def eval_dataset(filename: str, n_samples: int) -> Generator[Dict, None, None]:
         tests = [test for x in tests
                  if x and not isnan(x)
                  for test in split_tests(x)]
-        print(tests)
 
-        for program in make_programs(solns, tests):
-            out = ex.unsafe_check(program=program, timeout=10)
-            out["row id"] = i
-            out["program"] = program
-            out["functions"] = find_fns(program)
-            yield out
+        for d in make_programs(solns, tests):
+            program = d["program"]
+            yield {
+                "row_id": i,
+                **ex.unsafe_check(program=program, timeout=timeout),
+                "functions": find_fns(program),
+                **d,
+            }
 
 
 def find_fns(text: str) -> List[str]:
@@ -82,11 +91,27 @@ def split_tests(source_code):
     return out
 
 
+def incrementally_save(it, filename: str) -> pd.DataFrame:
+    with open(filename + ".jsonl", "w") as f:
+        for x in it:
+            line = json.dumps(x, indent=None)
+            print(line)
+            f.write(line + "\n")
+    df = pd.read_json(filename + ".jsonl", lines=True)
+    df.to_csv(filename + ".csv")
+    return df
+
+
 if __name__ == "__main__":
-    for d in eval_dataset(
+    ts = util.timestamp()
+    df = incrementally_save(
+        it=eval_dataset(
             filename="../datasets/sample-tests-2023-10-04T13:11:58.134555.csv",
             # "../datasets/sample-tests-2023-10-04T14:24:11.544966.csv"
             n_samples=10,
-    ):
-        del d['program']
-        pp(d)
+            timeout=10,
+        ),
+        filename=f"../datasets/evaluated-{ts}",
+    )
+    
+
