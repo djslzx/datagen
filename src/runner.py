@@ -1,5 +1,4 @@
 """
-
 Evaluate LLM-generated code and tests.
 """
 
@@ -10,7 +9,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Union, Optional, Dict, Generator
-import multiprocessing as mp
 
 import execution as ex
 import util
@@ -66,26 +64,29 @@ def find_tests(text: str) -> List[str]:
 
 
 def split_tests(source_code):
-    blocks = ["def test_" + x 
-              for x in source_code.split("def test_")[1:] 
+    # split by decls
+    blocks = ["def test_" + x
+              for x in source_code.split("def test_")[1:]
               if x.strip()]
     out = []
+    # only keep indented lines; stop at first non-indented line
     for block in blocks:
         lines = block.split("\n")
-        blocktext = lines[0] + "\n"
+        block_text = lines[0] + "\n"
         for line in lines[1:]:
             if line.startswith("    "):
-                blocktext += line + "\n"
+                block_text += line + "\n"
             else:
                 break
-        out.append(blocktext)
+        out.append(block_text)
     return out
 
 
 if __name__ == "__main__":
     for d in eval_dataset(
-        filename="../datasets/sample-tests-2023-10-04T13:11:58.134555.csv",  # "../datasets/sample-tests-2023-10-04T14:24:11.544966.csv"
-        n_samples=10,
+            filename="../datasets/sample-tests-2023-10-04T13:11:58.134555.csv",
+            # "../datasets/sample-tests-2023-10-04T14:24:11.544966.csv"
+            n_samples=10,
     ):
         del d['program']
         pp(d)
