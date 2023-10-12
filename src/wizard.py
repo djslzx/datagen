@@ -131,13 +131,14 @@ def propose_solution(chat: ChatOpenAI, problem: str) -> str:
     return chain.run(input=problem)
 
 
-def propose_multiple_solutions(chat: ChatOpenAI, n: int, problem: str) -> str:
+def propose_multiple_solutions(chat: ChatOpenAI, n: int, problem: str, entry_point: str) -> str:
     prompt = simple_chat_prompt(
         system_prompt=(
             "You are an AI programming assistant.  "
             "Propose exactly {n} code solutions to the following programming problem.  "
             "Solve the problem using Python and its standard library.  "
-            "You may write multiple functions.  "
+            "You may write multiple functions; however, the main function that solves the problem "
+            "must be called {entry_point}.  "
             "Output only code, with no accompanying text.  "
             "Ensure that all solutions you propose have distinct approaches to the problem.  "
             "You must output your solutions in the following format:\n"
@@ -155,12 +156,12 @@ def propose_multiple_solutions(chat: ChatOpenAI, n: int, problem: str) -> str:
         user_prompt="{input}"
     )
     chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(input=problem, n=n)
+    return chain.run(input=problem, n=n, entry_point=entry_point)
 
 
 def demo_multiple_solutions():
     problems = [
-        """
+        ("""
         Design a class called "Triangle" that represents a triangle. The "Triangle" class should have the following attributes:
         - "side1" (an integer) - The length of side 1 of the triangle.
         - "side2" (an integer) - The length of side 2 of the triangle.
@@ -180,7 +181,7 @@ def demo_multiple_solutions():
         t1 = Triangle(3, 4, 5)
         print(t1.get_perimeter())  # Output: 12
         print(t1.get_area())  # Output: 6.0
-        """,
+        """, ""),
         """
         Write a function `multiplyArrays(arr1, arr2)` that takes in two arrays `arr1` and `arr2` of equal length, and returns an array `result` where each element `result[i]` is the product of `arr1[i]` and `arr2[i]`. 
         For example, given `arr1 = [2, 3, 4]` and `arr2 = [5, 6, 7]`, the function should return `[10, 18, 28]` since `10 = 2 * 5`, `18 = 3 * 6`, and `28 = 4 * 7`. 
@@ -209,11 +210,12 @@ def demo_multiple_solutions():
         - The tree may be unbalanced.
         """,
     ]
-    for problem in problems:
+    for problem, entry_point in problems:
         out = propose_multiple_solutions(
             ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613"),
             n=5,
-            problem=problem
+            problem=problem,
+            entry_point=entry_point
         )
         print(out)
 
@@ -234,12 +236,19 @@ def wizard_solve(chat: ChatOpenAI, problem: str) -> str:
     return chain.run(instruction=problem)
 
 
-def propose_entry_point(chat: ChatOpenAI, problem: str, soln: str) -> str:
+def propose_entry_point(chat: ChatOpenAI, problem: str) -> str:
     prompt = simple_chat_prompt(
         system_prompt=(
-            "For the following programming problem and its accompanying solution, "
-            "what is the name of the main function in the solution that solves the problem?  "
-            "Provide only the function name, with no accompanying text."
+            "You are an AI teaching assistant.  "
+            "You are testing students using the following programming problem.  "
+            "You have decided to run automated tests on student code solutions, but to do this "
+            "you will require all student solutions to have the same main function name.  "
+            "What is an appropriate function name for the given programming problem?  "
+            "The name should be appropriate for a Python function.  "
+            "For example, 'fibonacci', 'nearest_neighbor', and 'is_powerful' are good function names.  "
+            "Even if the problem itself asks for a specific function name, make sure that it is a "
+            "good name for our purposes.  "
+            "Provide only the name, with no accompanying text.  "
         ),
         user_prompt="{input}"
     )
