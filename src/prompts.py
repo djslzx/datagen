@@ -40,7 +40,7 @@ def cover_story_problem(chat: ChatOpenAI, stories: List[str], concepts: List[str
     s_stories = ", ".join([f"'{story}'" for story in random.choices(population=stories, k=3)])
     s_concepts = ", ".join([f"'{concept}'" for concept in random.choices(population=concepts, k=3)])
     prompt = """
-You are an AI teaching assistant for a computer science department, where your job is to construct programming problems to teach students at varying levels of competency.  A programming problem consists of a "cover story", a "key concept", and a "specification".  The cover story motivates the problem; the key concept is the idea from computer science that the problem seeks to teach or test; and the specification gives guidelines about how solutions to the problem should be structured.  Propose a novel problem consisting of a cover story and concept.  
+You are an AI teaching assistant for a computer science department, where your job is to construct programming problems to teach students at varying levels of competency.  A programming problem consists of a "cover story", a "key concept", and a "specification".  The cover story motivates the problem; the key concept is the idea from computer science that the problem seeks to teach or test; and the specification gives guidelines about how solutions to the problem should be structured.  Propose a novel problem consisting of a cover story, a concept, and a specification.  
 
 You MUST the following format; it is critical that the headings are indicated with three hashes (###), as your responses will be automatically parsed.
 

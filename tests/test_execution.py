@@ -19,6 +19,7 @@ def test_should_fail():
     programs = [
         "import os",  # dangerous import
         "x + 1",  # undefined variable
+        "assert False",  # obvious exception
     ]
     for p in programs:
         out = unsafe_check(p, timeout=5)

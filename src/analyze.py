@@ -24,16 +24,11 @@ def load_json_as_df(filename: str) -> pd.DataFrame:
 
 
 def add_parents(df: pd.DataFrame) -> pd.DataFrame:
+    df.set_index("id", inplace=True, drop=False)
     df["parent"].fillna(df["id"], inplace=True)
     df["parent"] = df["parent"].astype(np.int32)
-    if "source file" in df.columns:
-        df["parent name"] = df.apply(lambda row: df.loc[df["id"] == row["parent"]]["name"], axis=1)
-        df["parent text"] = df.apply(lambda row: df.loc[df["id"] == row["parent"]]["text"], axis=1)
-    else:
-        df["parent name"] = df.apply(
-            lambda row: df.loc[(df["id"] == row["parent"]) & (df["source file"] == row["source file"])]["name"], axis=1)
-        df["parent text"] = df.apply(
-            lambda row: df.loc[(df["id"] == row["parent"]) & (df["source file"] == row["source file"])]["text"], axis=1)
+    df["parent name"] = df.apply(lambda row: df.loc[row["parent"]]["name"], axis=1)
+    df["parent text"] = df.apply(lambda row: df.loc[row["parent"]]["text"], axis=1)
     df["mutator"].fillna("self", inplace=True)
     return df
 
@@ -41,12 +36,8 @@ def add_parents(df: pd.DataFrame) -> pd.DataFrame:
 def add_pc_dist(df: pd.DataFrame) -> pd.DataFrame:
     """analyze semantic distances between parents and children"""
     assert type(df["embedding"].iloc[0]) == np.ndarray
-    if "source file" in df.columns:
-        df["parent embedding"] = df.apply(
-            lambda row: df.loc[(df["id"] == row["parent"]) & (df["source file"] == row["source file"])]["embedding"],
-            axis=1)
-    else:
-        df["parent embedding"] = df.apply(lambda row: df.loc[df["id"] == row["parent"]]["embedding"], axis=1)
+    df.set_index("id", inplace=True, drop=False)
+    df["parent embedding"] = df.apply(lambda row: df.loc[row["parent"]]["embedding"], axis=1)
     df["pc dist"] = df.apply(lambda row: np.linalg.norm(row["embedding"] - row["parent embedding"]), axis=1)
     return df
 
@@ -130,19 +121,11 @@ def pc_dist_plots(df: pd.DataFrame, names: List[str]):
     plt.show()
 
 
-def read_runs_into_df(filenames: Dict[str, str], with_embeddings=True) -> pd.DataFrame:
+def read_runs_into_df(filenames: Dict[str, str]) -> pd.DataFrame:
     full_df: Optional[pd.DataFrame] = None
     for shortname, filename in filenames.items():
         df = pd.read_json(f"{filename}.jsonl", lines=True)
         df = add_parents(df)
-
-        if with_embeddings:
-            # embeddings = wizard.embed(feat.SentenceFeaturizer(), [data["text"] for data in data], saveto=f"{file}.npy")
-            embeddings = np.load(f"{filename}.npy")
-            print(f"Loaded file {filename} with {len(embeddings)} embeddings")
-            df["embedding"] = pd.Series([v for v in embeddings], dtype=object)
-            df = add_pc_dist(df)
-
         df["source file"] = shortname
         full_df = df if full_df is None else pd.concat([full_df, df], ignore_index=True)
     return full_df
@@ -345,7 +328,7 @@ def analyze_datasets(filenames: Dict[str, str]):
 
     # todo: child-child dist - how similar are children of a given parent to one another over time?
 
-    df = read_runs_into_df(filenames, with_embeddings=False)[:10]
+    df = read_runs_into_df(filenames)[:10]
 
     # add solvable column
     chat = ChatOpenAI(temperature=0.9, model_name="gpt-3.5-turbo-0613")
@@ -355,47 +338,17 @@ def analyze_datasets(filenames: Dict[str, str]):
     # pc_dist_samples(df)
 
 
-def load_annotations(annot_file: str, filename_map: Dict[str, str]) -> pd.DataFrame:
-    df = pd.read_json(annot_file, lines=True)
-    # df = df[df["id"] < 100]  # use a subset of the dataset for testing
-    print(df["source file"].value_counts())
-
-    for shortname, filename in filename_map.items():
-        n_entries = len(df[df["source file"] == shortname])
-        if n_entries == 0:
-            continue
-
-        # add ids if not present
-        if "id" not in df.columns:
-            df.loc[df["source file"] == shortname, "id"] = np.arange(n_entries)
-
-        # check that ids were added properly:
-        # - if mutator is self, id should match parent
-        # - if mutator is not self, id should be different from parent
-
-    # df["rank"] = df["rank"].astype(int)
-    df["solvable?"] = df["solvable?"] == "True"
-    df["novel?"] = df["novel?"] == "True"
-    # df["non-identical?"] = df["pc dist"] > 1e-5
-    df["chosen?"] = df["chosen?"] == 1.0
-    df["both?"] = df["novel?"] & df["solvable?"]
-    return df
-
-
 def sample_problems(df: pd.DataFrame, n: int):
     rows = []
-    headings = ["id", "iter", "source file", "mutator", "parent name", "name", "text",
-                "score", "rank", "chosen?", "solvable?", "novel?"]
     for source in df["source file"].unique():
         print(f"Source: {source}")
-        sample = (df[(df["chosen?"] | (source.lower().startswith("wiz")))
-                     & (df["source file"] == source)
-                     # & (df["solvable?"])
-                     & (df["novel?"])]
-                  .sample(n=n)
-                  .sort_values(["iter", "source file"]))
-        rows.extend(sample[headings].to_records(index=False))
-    return pd.DataFrame.from_records(rows, columns=headings)
+        sample = (
+            df[df["source file"] == source]
+            .sample(n=n)
+            # .sort_values(["iter", "source file"])
+        )
+        rows.extend(sample.to_records(index=False))
+    return pd.DataFrame.from_records(rows, columns=df.columns)
 
 
 def analyze_annotations(df: pd.DataFrame):
@@ -498,13 +451,21 @@ def analyze_extras(df: pd.DataFrame):
     pass
 
 
-def make_extras(annot_file: str, filenames: dict, n_samples: int, n_solns: int, n_tests_per_soln: int) -> pd.DataFrame:
-    df = load_annotations(annot_file, filenames)
+def read_problems(filenames: Dict[str, str]) -> pd.DataFrame:
+    full_df: Optional[pd.DataFrame] = None
+    for shortname, filename in filenames.items():
+        df = pd.read_json(f"{filename}.jsonl", lines=True)
+        df = df[["text"]]
+        df["source file"] = shortname
+        full_df = df if full_df is None else pd.concat([full_df, df], ignore_index=True)
+    return full_df
+
+
+def make_extras(df: pd.DataFrame, n_samples: int, n_solns: int, n_tests_per_soln: int) -> pd.DataFrame:
     lo_temp_chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     hi_temp_chat = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613")
     df = sample_problems(df, n=n_samples)
     df = add_solution_cols(hi_temp_chat, df, n=n_solns, saveto=f"../datasets/sample-solutions-{timestamp}")
-    # df = add_entry_point_col(chat, df, f"../datasets/sampling-epoint-{timestamp}")
     df = add_extras(
         df,
         saveto=f"../datasets/sample-tests-{timestamp}",
@@ -523,27 +484,25 @@ def make_extras(annot_file: str, filenames: dict, n_samples: int, n_solns: int, 
 
 
 if __name__ == "__main__":
-    pd.set_option("display.max_columns", None)
-    pd.set_option("display.min_rows", 50)
-    pd.set_option('display.max_colwidth', 40)
+    # pd.set_option("display.max_columns", None)
+    # pd.set_option("display.min_rows", 50)
+    # pd.set_option('display.max_colwidth', 40)
     timestamp = util.timestamp()
 
     filenames = {
         "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
-        # "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
-        # "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
-        # "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
-        # "CA 1K": "../datasets/code_alpaca_1k",
+        "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
+        "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
+        "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+        "CA 1K": "../datasets/code_alpaca_1k",
         # "CA 20K": "../datasets/code_alpaca_20k",
     }
-
-    # df = load_annotations("../datasets/annotated-sep20.jsonl", filenames)
-    # analyze_annotations(df)
-    df = make_extras(annot_file="../datasets/annotated-sep20.jsonl",
-                     filenames=filenames,
+    df = read_problems(filenames)
+    df.to_csv(f"../datasets/all-runs-{timestamp}.csv")
+    df = make_extras(df=df,
                      n_samples=1,
                      n_solns=3,
-                     n_tests_per_soln=1)
+                     n_tests_per_soln=5)
     # df = pd.read_json("../datasets/sampling-tests-2023-10-02T22:52:58.129383.jsonl", lines=True)
     # df = pd.read_json("../datasets/sampling-tests-2023-10-03T00:51:02.288607.jsonl", lines=True)
     # analyze_extras(df)
