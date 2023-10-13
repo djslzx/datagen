@@ -1,3 +1,4 @@
+import re
 import json
 from pprint import pp
 from tqdm import tqdm
@@ -483,29 +484,87 @@ def make_extras(df: pd.DataFrame, n_samples: int, n_solns: int, n_tests_per_soln
     return df
 
 
+# Analyze results from running tests on solutions
+def analyze_test_results(df: pd.DataFrame):
+    print(df.columns)
+    print(df["source file"].unique())
+    print(df["row_id"].unique())
+
+    patterns = {
+        r"test_.+ did not pass": "test did not pass",
+        r"name '.+' is not defined": "name is not defined",
+        r"indentation error (.+)": "indentation error",
+        r"invalid syntax (.+)": "invalid syntax",
+        r"'return' outside function (.+)": "return outside function",
+        r"'.+' object has no attribute '.+'": "object has no attribute",
+        r"No module named": "module not found",
+        r"\[Errno 2\] No such file or directory: '.+'": "file not found",
+        r"module not found '.+'": "module not found",
+        r"expected an indented block (.+)": "expected an indented block",
+    }
+
+    # group together patterns using regex match
+    for pattern, label in patterns.items():
+        df["result"] = df["result"].str.replace(pattern, label, regex=True)
+
+    print(df[["passed", "result"]].value_counts())
+
+    # wrap result text to 30 chars
+    df["result"] = df["result"].apply(lambda x: '\n'.join(textwrap.wrap(x, width=30)))
+
+    # group together results that account for less than 1% as "other"
+    counts = df["result"].value_counts()
+    df["result"] = df["result"].apply(lambda x: x if counts[x] / len(df) > 0.01 else "other")
+
+    # make a stacked bar chart of result type by source file
+    df = df.groupby(["source file", "result"]).size().reset_index(name="count")
+    df = df.pivot(columns="result", index="source file", values="count")
+    df = df.div(df.sum(axis=1), axis=0)
+    df.plot.bar(stacked=True)
+
+    # make the figure bigger and put legend outside of the figure
+    plt.gcf().set_size_inches(12, 6)
+
+    # reverse legend
+    handles, labels = plt.gca().get_legend_handles_labels()
+    plt.legend(reversed(handles), reversed(labels), loc='center left', bbox_to_anchor=(1, 0.5))
+
+    # make sure the legend fits in the figure
+    plt.tight_layout()
+
+    # show the plot
+    plt.show()
+
+    # print a nice table
+    print(df["result"].value_counts().to_markdown())
+
+
 if __name__ == "__main__":
-    # pd.set_option("display.max_columns", None)
+    pd.set_option("display.max_rows", None)
     # pd.set_option("display.min_rows", 50)
     # pd.set_option('display.max_colwidth', 40)
     timestamp = util.timestamp()
 
-    filenames = {
-        "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
-        "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
-        "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
-        "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
-        "CA 1K": "../datasets/code_alpaca_1k",
-        # "CA 20K": "../datasets/code_alpaca_20k",
-    }
-    df = read_problems(filenames)
-    df.to_csv(f"../datasets/all-runs-{timestamp}.csv")
-    df = make_extras(df=df,
-                     n_samples=1,
-                     n_solns=3,
-                     n_tests_per_soln=5)
+    # filenames = {
+    #     "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
+    #     "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
+    #     "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
+    #     "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+    #     "CA 1K": "../datasets/code_alpaca_1k",
+    #     # "CA 20K": "../datasets/code_alpaca_20k",
+    # }
+    # df = read_problems(filenames)
+    # df.to_csv(f"../datasets/all-runs-{timestamp}.csv")
+    # df = make_extras(df=df,
+    #                  n_samples=1,
+    #                  n_solns=3,
+    #                  n_tests_per_soln=5)
     # df = pd.read_json("../datasets/sampling-tests-2023-10-02T22:52:58.129383.jsonl", lines=True)
     # df = pd.read_json("../datasets/sampling-tests-2023-10-03T00:51:02.288607.jsonl", lines=True)
     # analyze_extras(df)
+
+    df = pd.read_json("../datasets/evaluated-2023-10-13T00:29:34.147888.jsonl", lines=True)
+    analyze_test_results(df)
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
