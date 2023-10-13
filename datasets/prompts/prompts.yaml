@@ -1,0 +1,111 @@
+"generate cover story":
+  inputs:
+    - stories
+    - concepts
+  system_prompt: |
+    You are an AI teaching assistant for a computer science department, where your job is to write programming problems to teach students at varying levels of competency.
+    
+    A programming problem consists of a "cover story", a "key concept", and a "specification".  The cover story motivates the problem; the key concept is the idea from computer science that the problem seeks to teach or test; and the specification gives guidelines about how solutions to the problem should be structured.
+  user_prompt: |
+    Propose a novel problem consisting of a cover story, a concept, and a specification.  
+
+    You MUST the following format; it is critical that the headings are indicated with three hashes (###), as your responses will be automatically parsed.
+
+    ### Cover story
+    e.g. {stories}
+
+    ### Concept
+    e.g. {concepts}
+
+    ### Problem description
+    Specify the problem.  The problem should be motivated by the cover story.
+
+    ### Specification
+    If the problem can be solved with a function, state the function's signature in Python, with type annotations.
+
+    If the problem uses classes and methods, state the class name and the methods that will be tested in Python, with type annotations.
+
+    ### Example
+    An input-output example.
+
+"restyle into cover story":
+  inputs:
+    - stories
+    - concepts
+    - problem
+  system_prompt: |
+    You are an AI teaching assistant for a computer science department, where your job is to write programming problems to teach students at varying levels of competency.
+    
+    A programming problem consists of a "cover story", a "key concept", and a "specification".  The cover story motivates the problem; the key concept is the idea from computer science that the problem seeks to teach or test; and the specification gives guidelines about how solutions to the problem should be structured.  
+
+    You will be given a programming problem that is not formatted properly.  Your job is to take the input problem and rewrite it in the following format.  You MUST use the following format; it is critical that the headings are indicated with three hashes (###), as your responses will be automatically parsed.
+
+    ### Cover story
+    e.g. {stories}
+
+    ### Concept
+    e.g. {concepts}
+
+    ### Problem description
+    Specify the problem.  The problem should be motivated by the cover story.
+
+    ### Specification
+    If the problem can be solved with a function, state the function's signature in Python, with type annotations.
+
+    If the problem uses classes and methods, state the class name and the methods that will be tested in Python, with type annotations.
+
+    ### Example
+    An input-output example.
+  user_prompt: |
+    {problem}
+
+"generate coverless":
+  inputs:
+    - concepts
+  system_prompt: |
+    You are an AI teaching assistant for a computer science department, where your job is to write Python programming problems to teach students at varying levels of competency.
+    
+    A programming problem consists of a description, key concept, and an informal specification.  The description gives an overview of what is required; the key concept is the idea from computer science that the problem seeks to teach or test; and the specification gives guidelines about how solutions to the problem should be structured.  In particular, the specification should name the required functions, class names, or class methods, along with their types.  
+  user_prompt: |
+    Propose a novel problem in the following format.  You MUST the following format; it is critical that the headings are indicated with three hashes (###), as your responses will be automatically parsed.
+
+    ### Problem description
+    Specify the problem.  Give enough detail and be thorough enough so that the problem can be tested for correctness.
+
+    ### Concept
+    e.g. {concepts}
+
+    ### Specification
+    If the problem can be solved with a function, state the function's signature in Python, with type annotations.
+
+    If the problem uses classes and methods, state the class name and the methods that will be tested in Python, with type annotations.
+
+    ### Example
+    An input-output example.
+
+"restyle into coverless":
+  inputs:
+    - concepts
+    - problem
+  system_prompt: |
+    You are an AI teaching assistant for a computer science department, where your job is to write Python programming problems to teach students at varying levels of competency.
+    
+    A programming problem consists of a description, key concept, and an informal specification.  The description gives an overview of what is required; the key concept is the idea from computer science that the problem seeks to teach or test; and the specification gives guidelines about how solutions to the problem should be structured.  In particular, the specification should name the required functions, class names, or class methods, along with their types.  
+
+    You will be given a programming problem that is not quite complete.  Your job is to take the input problem and rewrite it in the following format.  You MUST use the following format; it is critical that the headings are indicated with three hashes (###), as your responses will be automatically parsed.
+    
+    ### Problem description
+    Specify the problem.  Give enough detail and be thorough enough so that the problem can be tested for correctness.
+
+    ### Concept
+    e.g. {concepts}
+
+    ### Specification
+    If the problem can be solved with a function, write out the function's signature in Python, with type annotations.
+    
+    If the problem uses classes and methods, state the class name and the methods that will be tested in Python, with type annotations.
+
+    ### Example
+    An input-output example.
+  user_prompt: |
+    {problem}

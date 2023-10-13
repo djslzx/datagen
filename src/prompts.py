@@ -2,8 +2,10 @@
 Collect prompts here
 """
 import os
+from pprint import pp
 from typing import List, Generator, Union, Tuple, Optional, Iterator
 import random
+import yaml
 import numpy as np
 import pandas as pd
 import langchain
@@ -26,6 +28,10 @@ langchain.llm_cache = SQLiteCache(database_path=".langchain.db")
 # fetch api key from env
 API_KEY = os.getenv("OPENAI_API_KEY")
 
+# fetch prompts from prompt file
+PROMPTS = yaml.load(open("../datasets/prompts/prompts.yaml", "r"), Loader=yaml.FullLoader)
+print(f"Loaded prompts: {list(PROMPTS.keys())}")
+
 
 def run_chain(chat: ChatOpenAI, sys_prompt: str, user_prompt: str, **kwargs) -> str:
     prompt = ChatPromptTemplate.from_messages([
@@ -36,42 +42,82 @@ def run_chain(chat: ChatOpenAI, sys_prompt: str, user_prompt: str, **kwargs) -> 
     return chain.run(**kwargs)
 
 
-def cover_story_problem(chat: ChatOpenAI, stories: List[str], concepts: List[str]) -> str:
-    s_stories = ", ".join([f"'{story}'" for story in random.choices(population=stories, k=3)])
-    s_concepts = ", ".join([f"'{concept}'" for concept in random.choices(population=concepts, k=3)])
-    prompt = """
-You are an AI teaching assistant for a computer science department, where your job is to construct programming problems to teach students at varying levels of competency.  A programming problem consists of a "cover story", a "key concept", and a "specification".  The cover story motivates the problem; the key concept is the idea from computer science that the problem seeks to teach or test; and the specification gives guidelines about how solutions to the problem should be structured.  Propose a novel problem consisting of a cover story, a concept, and a specification.  
-
-You MUST the following format; it is critical that the headings are indicated with three hashes (###), as your responses will be automatically parsed.
-
-### Cover story
-e.g. {stories}
-
-### Concept
-e.g. {concepts}
-
-### Problem description
-Specify the problem.  The problem should be motivated by the cover story.
-
-### Specification
-If the problem can be solved with a function, state the function's signature in Python, with type annotations.
-
-If the problem uses classes and methods, state the class name and the methods that will be tested in Python, with type annotations.
-
-### Example
-An input-output example.
-"""
-    return run_chain(chat, sys_prompt=prompt, user_prompt="", stories=s_stories, concepts=s_concepts)
+def sample_str(xs: List[str], n: int) -> str:
+    return ", ".join([f"'{x}'" for x in random.choices(population=xs, k=n)])
 
 
-def evolve_with_hole(chat: ChatOpenAI, problem: str, hole_fill: str) -> str:
-    prompt = """
-You are an AI teaching assistant.  Produce a new, more {hole} programming problem, using the following problem as inspiration.  Make sure to keep the format the same!
-    """
-    return run_chain(chat, sys_prompt=prompt, user_prompt="{problem}", hole=hole_fill, problem=problem)
+def make_problem(chat: ChatOpenAI, concepts: List[str]) -> str:
+    prompt = PROMPTS["generate coverless"]
+    return run_chain(
+        chat,
+        sys_prompt=prompt["system_prompt"],
+        user_prompt=prompt["user_prompt"],
+        concepts=sample_str(concepts, 3)
+    )
+
+
+def restyle_problem(chat: ChatOpenAI, problem: str, concepts: List[str]) -> str:
+    prompt = PROMPTS["restyle into coverless"]
+    return run_chain(
+        chat,
+        sys_prompt=prompt["system_prompt"],
+        user_prompt=prompt["user_prompt"],
+        problem=problem,
+        concepts=sample_str(concepts, 3)
+    )
 
 
 if __name__ == "__main__":
+    PROBLEMS = [
+        """
+        Design a class called "Triangle" that represents a triangle. The "Triangle" class should have the following attributes:
+        - "side1" (an integer) - The length of side 1 of the triangle.
+        - "side2" (an integer) - The length of side 2 of the triangle.
+        - "side3" (an integer) - The length of side 3 of the triangle.
+
+        The "Triangle" class should also have the following methods:
+
+        - "__init__" - Initializes a new instance of the "Triangle" class with the given lengths of all sides.
+        - "get_perimeter" - Returns the perimeter of the triangle, which is calculated by adding all three side lengths together.
+        - "get_area" - Returns the area of the triangle, which is calculated using Heron's formula: 
+        area = sqrt(s * (s - a) * (s - b) * (s - c)), where s is the semiperimeter of the triangle and a, b, and c are the lengths of the sides.
+
+        Implement the "Triangle" class in Python. Make sure to include a sample usage of the "Triangle" class to demonstrate its functionality.
+
+        For example:
+
+        t1 = Triangle(3, 4, 5)
+        print(t1.get_perimeter())  # Output: 12
+        print(t1.get_area())  # Output: 6.0
+        """,
+        """
+        Write a function `multiplyArrays(arr1, arr2)` that takes in two arrays `arr1` and `arr2` of equal length, and returns an array `result` where each element `result[i]` is the product of `arr1[i]` and `arr2[i]`. 
+        For example, given `arr1 = [2, 3, 4]` and `arr2 = [5, 6, 7]`, the function should return `[10, 18, 28]` since `10 = 2 * 5`, `18 = 3 * 6`, and `28 = 4 * 7`. 
+        Your implementation should have a time complexity of O(n), where n is the length of the input arrays.
+        """,
+        """
+        Given a binary tree, validate if it is a binary search tree (BST).
+
+        A BST is defined as follows:
+        - The left subtree of a node contains only nodes with keys less than the node's key.
+        - The right subtree of a node contains only nodes with keys greater than the node's key.
+        - Both the left and right subtrees must also be binary search trees.
+        
+        For example, given the following tree:
+        
+                5
+               / \
+              3   7
+             / \
+            1   4
+        
+        The output should be `true` since this tree satisfies the BST property.
+        
+        Note:
+        - Assume that each node in the tree has a unique key value.
+        - The tree may be unbalanced.
+        """,
+    ]
     CHAT = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613")
     STORIES = [
         "You are a bank manager...",
@@ -91,16 +137,15 @@ if __name__ == "__main__":
         "Knot theory",
         "Greedy algorithm",
     ]
-    FUN_ADJS = ['bubbly', 'zesty', 'giddy', 'wacky', 'cheeky', 'spunky',
-                'frolicsome', 'sprightly', 'pizzazzy', 'snazzy']
+    for problem in PROBLEMS:
+        print("new problem:")
+        print(make_problem(CHAT, concepts=CONCEPTS))
+        print()
 
-    problems = []
-    for i in range(1):
-        problem = cover_story_problem(CHAT, stories=STORIES, concepts=CONCEPTS)
+        print("original problem:")
         print(problem)
-        problems.append(problem)
+        print()
 
-    print("fun!")
-    for adj in FUN_ADJS:
-        print(f"##A {adj} extension:")
-        print(evolve_with_hole(CHAT, problems[0], adj))
+        print("restyled problem:")
+        print(restyle_problem(CHAT, problem=problem, concepts=CONCEPTS))
+        print()
