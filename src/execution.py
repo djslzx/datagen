@@ -17,6 +17,10 @@ def _unsafe_execute(program: str, timeout: float, result: List):
     if "import os" in program:
         result.append("failed: dangerous code")
 
+    # remove print statements
+    program = "\n".join([line for line in program.split("\n")
+                         if not line.strip().startswith("print")])
+
     with create_tempdir():
         # These system calls are needed when cleaning up tempdir.
         import os
