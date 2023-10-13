@@ -507,7 +507,7 @@ def analyze_test_results(df: pd.DataFrame):
     for pattern, label in patterns.items():
         df["result"] = df["result"].str.replace(pattern, label, regex=True)
 
-    print(df[["passed", "result"]].value_counts())
+    print(df["result"].value_counts().to_markdown())
 
     # wrap result text to 30 chars
     df["result"] = df["result"].apply(lambda x: '\n'.join(textwrap.wrap(x, width=30)))
@@ -516,27 +516,19 @@ def analyze_test_results(df: pd.DataFrame):
     counts = df["result"].value_counts()
     df["result"] = df["result"].apply(lambda x: x if counts[x] / len(df) > 0.01 else "other")
 
-    # make a stacked bar chart of result type by source file
-    df = df.groupby(["source file", "result"]).size().reset_index(name="count")
-    df = df.pivot(columns="result", index="source file", values="count")
-    df = df.div(df.sum(axis=1), axis=0)
-    df.plot.bar(stacked=True)
-
-    # make the figure bigger and put legend outside of the figure
-    plt.gcf().set_size_inches(12, 6)
-
-    # reverse legend
-    handles, labels = plt.gca().get_legend_handles_labels()
-    plt.legend(reversed(handles), reversed(labels), loc='center left', bbox_to_anchor=(1, 0.5))
-
-    # make sure the legend fits in the figure
-    plt.tight_layout()
-
-    # show the plot
+    # make a pie chart of result type
+    plt.pie(df["result"].value_counts(), labels=df["result"].value_counts().index)
     plt.show()
 
-    # print a nice table
-    print(df["result"].value_counts().to_markdown())
+    # make a bar chart of result type by source file
+    sns.countplot(data=df, x="source file", hue="result")
+    plt.gcf().set_size_inches(12, 6)
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.tight_layout()
+    plt.show()
+
+    # print a nice table of counts with totals by source file
+    print(df.groupby(["source file"]).size().to_markdown())
 
 
 if __name__ == "__main__":
