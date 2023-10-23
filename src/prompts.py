@@ -33,7 +33,7 @@ PROMPTS = yaml.load(open("../datasets/prompts/prompts.yaml", "r"), Loader=yaml.F
 print(f"Loaded prompts: {list(PROMPTS.keys())}")
 
 
-def run_chain(chat: ChatOpenAI, sys_prompt: str, user_prompt: str, **kwargs) -> str:
+def run_prompt(chat: ChatOpenAI, sys_prompt: str, user_prompt: str, **kwargs) -> str:
     prompt = ChatPromptTemplate.from_messages([
         SystemMessagePromptTemplate.from_template(sys_prompt),
         HumanMessagePromptTemplate.from_template(user_prompt),
@@ -48,7 +48,7 @@ def sample_str(xs: List[str], n: int) -> str:
 
 def make_problem(chat: ChatOpenAI, concepts: List[str]) -> str:
     prompt = PROMPTS["generate coverless"]
-    return run_chain(
+    return run_prompt(
         chat,
         sys_prompt=prompt["system_prompt"],
         user_prompt=prompt["user_prompt"],
@@ -58,7 +58,7 @@ def make_problem(chat: ChatOpenAI, concepts: List[str]) -> str:
 
 def restyle_problem(chat: ChatOpenAI, problem: str, concepts: List[str]) -> str:
     prompt = PROMPTS["restyle into coverless"]
-    return run_chain(
+    return run_prompt(
         chat,
         sys_prompt=prompt["system_prompt"],
         user_prompt=prompt["user_prompt"],
