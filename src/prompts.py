@@ -33,13 +33,30 @@ PROMPTS = yaml.load(open("../datasets/prompts/prompts.yaml", "r"), Loader=yaml.F
 print(f"Loaded prompts: {list(PROMPTS.keys())}")
 
 
-def run_prompt(chat: ChatOpenAI, sys_prompt: str, user_prompt: str, **kwargs) -> str:
+def run_prompt(chat: ChatOpenAI, system_prompt: str, user_prompt: str, **kwargs) -> str:
     prompt = ChatPromptTemplate.from_messages([
-        SystemMessagePromptTemplate.from_template(sys_prompt),
+        SystemMessagePromptTemplate.from_template(system_prompt),
         HumanMessagePromptTemplate.from_template(user_prompt),
     ])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(**kwargs)
+
+
+def run_saved_prompt(chat: ChatOpenAI, key: str, **kwargs) -> str:
+    prompt = PROMPTS[key]
+    inputs = prompt["inputs"]
+    assert len(inputs) == len(kwargs) and all([k in kwargs for k in inputs]), \
+        f"Mismatched inputs: {inputs} vs {kwargs.keys()}"
+
+    system_prompt = prompt["system_prompt"]
+    user_prompt = prompt["user_prompt"]
+
+    return run_prompt(
+        chat,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        **kwargs,
+    )
 
 
 def sample_str(xs: List[str], n: int) -> str:
@@ -47,24 +64,40 @@ def sample_str(xs: List[str], n: int) -> str:
 
 
 def make_problem(chat: ChatOpenAI, concepts: List[str]) -> str:
-    prompt = PROMPTS["generate coverless"]
-    return run_prompt(
+    return run_saved_prompt(
         chat,
-        sys_prompt=prompt["system_prompt"],
-        user_prompt=prompt["user_prompt"],
-        concepts=sample_str(concepts, 3)
+        key="new coverless",
+        concepts=sample_str(concepts, 3),
     )
 
 
 def restyle_problem(chat: ChatOpenAI, problem: str, concepts: List[str]) -> str:
-    prompt = PROMPTS["restyle into coverless"]
-    return run_prompt(
+    return run_saved_prompt(
         chat,
-        sys_prompt=prompt["system_prompt"],
-        user_prompt=prompt["user_prompt"],
+        key="restyle as coverless",
         problem=problem,
-        concepts=sample_str(concepts, 3)
+        concepts=sample_str(concepts, 3),
     )
+
+
+def n_solns(chat: ChatOpenAI, problem: str, n: int) -> List[str]:
+    out = run_saved_prompt(
+        chat,
+        key="n solutions",
+        problem=problem,
+        n=n,
+    )
+    return util.split_py_markdown(out)
+
+
+def n_tests(chat: ChatOpenAI, problem: str, n: int) -> List[str]:
+    out = run_saved_prompt(
+        chat,
+        key="n tests",
+        problem=problem,
+        n=n,
+    )
+    return util.split_py_markdown(out)
 
 
 if __name__ == "__main__":
@@ -118,7 +151,7 @@ if __name__ == "__main__":
         - The tree may be unbalanced.
         """,
     ]
-    CHAT = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613")
+    CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     STORIES = [
         "You are a bank manager...",
         "You are a bank robber...",
@@ -138,14 +171,26 @@ if __name__ == "__main__":
         "Greedy algorithm",
     ]
     for problem in PROBLEMS:
-        print("new problem:")
-        print(make_problem(CHAT, concepts=CONCEPTS))
-        print()
-
         print("original problem:")
         print(problem)
         print()
 
         print("restyled problem:")
-        print(restyle_problem(CHAT, problem=problem, concepts=CONCEPTS))
+        restyled = restyle_problem(CHAT, problem=problem, concepts=CONCEPTS)
+        print(restyled)
         print()
+
+        for p in [problem, restyled]:
+            print("generated solutions:")
+            solns = n_solns(CHAT, problem=problem, n=3)
+            print(f"Generated {len(solns)} solutions:")
+            for soln in solns:
+                print(soln)
+            print()
+
+            print("generated tests:")
+            tests = n_tests(CHAT, problem=problem, n=3)
+            print(f"Generated {len(tests)} tests:")
+            for test in tests:
+                print(test)
+            print()

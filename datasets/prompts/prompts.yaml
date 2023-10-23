@@ -1,4 +1,4 @@
-"generate cover story":
+"new cover story":
   inputs:
     - stories
     - concepts
@@ -28,7 +28,7 @@
     ### Example
     An input-output example.
 
-"restyle into cover story":
+"restyle as cover story":
   inputs:
     - stories
     - concepts
@@ -59,7 +59,7 @@
   user_prompt: |
     {problem}
 
-"generate coverless":
+"new coverless":
   inputs:
     - concepts
   system_prompt: |
@@ -83,38 +83,106 @@
     ### Example
     An input-output example.
 
-"restyle into coverless":
+"restyle as coverless":
   inputs:
     - concepts
     - problem
   system_prompt: |
     You are an AI teaching assistant for a computer science department, where your job is to write Python programming problems to teach students at varying levels of competency.
     
-    A programming problem consists of a description, key concept, and an informal specification.  The description should give a clear overview of what is required, with enough detail so that the problem can be tested for correctness.  The key concept is the idea from computer science that the problem seeks to teach or test.  The specification should give guidelines about how solutions to the problem should be structured.  In particular, the specification should name the required functions, class names, or class methods, along with their types.  The specification should not describe how the problem should be solved, but it should give enough detail to allow tests to be written that can be run on all solutions to the problem.
+    A programming problem consists of a description, key concept, and an informal specification.  
 
-    You will be given a programming problem that is not quite complete.  Your job is to take the input problem and rewrite it in the following format.  You MUST use the following format; it is critical that the headings are indicated with three hashes (###), as your responses will be automatically parsed.
+    You will be given a programming problem that is not quite complete.  Your job is to take the input problem and rewrite it in the following format.  You MUST use the following format.  You MUST keep the headings as they are, and you MUST keep the order of the headings as they are.  DO NOT add subheadings.
+    
+    Do your best to avoid repeating information.  The problem given to you is a guide; do not copy it verbatim.
     
     ### Problem description
-    Specify the problem.  Give enough detail and be thorough enough so that the problem can be tested for correctness.
+    Specify the problem.  The description should give a clear overview of what is required, with enough detail so that all solutions to the problem can be tested for correctness using a uniform test suite.
 
     ### Concept
-    e.g. {concepts}
+    e.g., {concepts}
 
     ### Specification
-    If the problem can be solved with a function, write out the function's signature in Python, with type annotations, like so:
+    If the problem can be solved with a function, write out the function's signature in Python, with type annotations.  Use the following format:
     ```python
     def my_function(arg1: int, arg2: str) -> bool:
+      """A comment that describes what my_function does."""
       ...
     ```
     
-    If the problem uses classes and methods, state the class name and the methods that will be tested in Python, with type annotations, like so:
+    If the problem uses classes and methods, state the class name and the methods that will be tested in Python, with type annotations.  Use the following format:
     ```python
     class MyClass:
-      def my_method(self, arg1: int, arg2: str) -> bool:
+      def method_one(self, arg1: str, arg2: int) -> bool:
+        """A comment that describes what method_one does."""
+        ...
+      def method_two(self, arg1: int, arg2: int) -> int:
+        """A comment that describes what method_two does."""
         ...
     ```
 
     ### Example
-    An input-output example.
+    Provide a code example of how functions or classes used in the solution can be used.  If the problem can be solved with a function, provide an input-output example.  If the problem uses classes and methods, provide an example of how the class can be instantiated and used.
+
+  user_prompt: |
+    {problem}
+
+"n solutions":
+  inputs:
+    - problem
+    - n
+  system_prompt: |
+    You are an AI programming assistant. Propose exactly {n} code solutions to the following programming problem. 
+    
+    Solve the problem using Python and its standard library. You may write multiple helper functions as you see fit.  Make sure that your solutions follow the specification given in the problem.  
+    
+    Output only code, with no accompanying text. Do your best to ensure that all solutions you propose have distinct approaches to the problem. You must output your solutions in the following format:
+    
+    ```python
+    <code for solution 1>
+    ```
+    ```python
+    <code for solution 2>
+    ```
+    ....
+    ```python
+    <code for solution {n}>
+    ```
+    
+    Good luck!
+  user_prompt: |
+    {problem}
+
+"n tests":
+  inputs:
+    - problem
+    - n
+  system_prompt: |
+    You are an AI teaching assistant. Your task is to produce test cases to evaluate student implementations of programming problems.  
+    
+    Produce exactly {n} test cases for the following problem.
+    
+    Your test cases should be boolean functions that return True when the student implementation passes the test, and False otherwise.  
+    
+    Try to provide a variety of tests that can give an accurate assessment of a student solution's correctness.  
+    
+    Where possible, write your test cases in Python and stick to the standard library.  
+    
+    You should output only code, with no accompanying text.  DO NOT ATTEMPT TO SOLVE THE PROBLEM!
+    
+    You must output your tests in the following format.
+    ```python
+    def test_1() -> bool:
+        ...
+    ```
+    ```python
+    def test_2() -> bool:
+        ...
+    ```
+    ....
+    ```python
+    def test_{n}() -> bool:
+    ....
+    ```,
   user_prompt: |
     {problem}
