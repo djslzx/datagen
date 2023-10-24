@@ -44,9 +44,10 @@ def run_prompt(chat: ChatOpenAI, system_prompt: str, user_prompt: str, **kwargs)
 
 def run_saved_prompt(chat: ChatOpenAI, key: str, **kwargs) -> str:
     prompt = PROMPTS[key]
-    inputs = prompt["inputs"]
-    assert len(inputs) == len(kwargs) and all([k in kwargs for k in inputs]), \
-        f"Mismatched inputs: {inputs} vs {kwargs.keys()}"
+    inputs = set(kwargs.keys())
+    expected_inputs = set(prompt["inputs"])
+    assert inputs == expected_inputs, \
+        f"Mismatched inputs: {inputs} vs {expected_inputs}"
 
     system_prompt = prompt["system_prompt"]
     user_prompt = prompt["user_prompt"]
