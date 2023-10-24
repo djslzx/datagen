@@ -93,31 +93,6 @@ def n_tests(chat: ChatOpenAI, problem: str, n: int) -> str:
     )
 
 
-def split_solns(solns: str) -> List[str]:
-    return util.split_py_markdown(solns)
-
-
-def split_tests(text: str):
-    text = util.strip_markdown(text)
-
-    # split by decls
-    blocks = ["def test_" + x
-              for x in text.split("def test_")[1:]
-              if x.strip()]
-    out = []
-    # only keep indented lines; stop at first non-indented line
-    for block in blocks:
-        lines = block.split("\n")
-        block_text = lines[0] + "\n"
-        for line in lines[1:]:
-            if line.startswith("    "):
-                block_text += line + "\n"
-            else:
-                break
-        out.append(block_text)
-    return out
-
-
 def generate_solns_and_tests(problems: List[str]) -> Generator[Tuple[int, str, str], None, None]:
     for id, problem in enumerate(problems):
         yield id, "original problem", problem
@@ -125,13 +100,13 @@ def generate_solns_and_tests(problems: List[str]) -> Generator[Tuple[int, str, s
         orig_solns = n_solns(CHAT, problem=problem, n=3)
         yield id, "original solutions", orig_solns
 
-        for i, soln in enumerate(split_solns(orig_solns)):
+        for i, soln in enumerate(util.split_py_markdown(orig_solns)):
             yield id, f"original solution {i}", soln
 
         orig_tests = n_tests(CHAT, problem=problem, n=3)
         yield id, "original tests", orig_tests
 
-        for i, test in enumerate(split_tests(orig_tests)):
+        for i, test in enumerate(util.split_tests(orig_tests)):
             yield id, f"original test {i}", test
 
         restyled = restyle_problem(CHAT, problem=problem)
@@ -140,13 +115,13 @@ def generate_solns_and_tests(problems: List[str]) -> Generator[Tuple[int, str, s
         restyled_solns = n_solns(CHAT, problem=restyled, n=3)
         yield id, "restyled solutions", restyled_solns
 
-        for i, soln in enumerate(split_solns(restyled_solns)):
+        for i, soln in enumerate(util.split_py_markdown(restyled_solns)):
             yield id, f"restyled solution {i}", soln
 
         restyled_tests = n_tests(CHAT, problem=restyled, n=3)
         yield id, "restyled tests", restyled_tests
 
-        for i, test in enumerate(split_tests(restyled_tests)):
+        for i, test in enumerate(util.split_tests(restyled_tests)):
             yield id, f"restyled test {i}", test
 
 

@@ -52,7 +52,7 @@ def eval_dataset(filename: str, n_samples: int, timeout: float) -> Generator[Dic
         tests = [util.strip_markdown(row[f"tests(text, soln_{i})"]) for i in range(3)]
         tests = [test for x in tests
                  if x and not isnan(x)
-                 for test in split_tests(x)]
+                 for test in util.split_tests(x)]
 
         for d in make_programs(solns, tests):
             program = d["program"]
@@ -72,39 +72,9 @@ def find_tests(text: str) -> List[str]:
     return re.findall(r"def (test_.+)\(.*\)", text)
 
 
-def split_tests(source_code):
-    # split by decls
-    blocks = ["def test_" + x
-              for x in source_code.split("def test_")[1:]
-              if x.strip()]
-    out = []
-    # only keep indented lines; stop at first non-indented line
-    for block in blocks:
-        lines = block.split("\n")
-        block_text = lines[0] + "\n"
-        for line in lines[1:]:
-            if line.startswith("    "):
-                block_text += line + "\n"
-            else:
-                break
-        out.append(block_text)
-    return out
-
-
-def incrementally_save(it, filename: str) -> pd.DataFrame:
-    with open(filename + ".jsonl", "w") as f:
-        for x in it:
-            line = json.dumps(x, indent=None)
-            print(line)
-            f.write(line + "\n")
-    df = pd.read_json(filename + ".jsonl", lines=True)
-    df.to_csv(filename + ".csv")
-    return df
-
-
 if __name__ == "__main__":
     ts = util.timestamp()
-    df = incrementally_save(
+    util.incrementally_save_jsonl(
         it=eval_dataset(
             filename="../datasets/sample-tests-2023-10-04T13:11:58.134555.csv",
             # "../datasets/sample-tests-2023-10-04T14:24:11.544966.csv"
@@ -113,5 +83,3 @@ if __name__ == "__main__":
         ),
         filename=f"../datasets/evaluated-{ts}",
     )
-    
-
