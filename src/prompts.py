@@ -60,24 +60,18 @@ def run_saved_prompt(chat: ChatOpenAI, key: str, **kwargs) -> str:
     )
 
 
-def sample_str(xs: List[str], n: int) -> str:
-    return ", ".join([f"'{x}'" for x in random.choices(population=xs, k=n)])
-
-
-def make_problem(chat: ChatOpenAI, concepts: List[str]) -> str:
+def make_problem(chat: ChatOpenAI) -> str:
     return run_saved_prompt(
         chat,
         key="new coverless",
-        concepts=sample_str(concepts, 3),
     )
 
 
-def restyle_problem(chat: ChatOpenAI, problem: str, concepts: List[str]) -> str:
+def restyle_problem(chat: ChatOpenAI, problem: str) -> str:
     return run_saved_prompt(
         chat,
         key="restyle as coverless",
         problem=problem,
-        concepts=sample_str(concepts, 3),
     )
 
 
@@ -126,34 +120,44 @@ def split_tests(text: str):
 
 def generate_solns_and_tests(problems: List[str]) -> Generator[Tuple[int, str, str], None, None]:
     for id, problem in enumerate(problems):
-        yield id, "original", problem
+        yield id, "original problem", problem
+
         orig_solns = n_solns(CHAT, problem=problem, n=3)
         yield id, "original solutions", orig_solns
+
+        for i, soln in enumerate(split_solns(orig_solns)):
+            yield id, f"original solution {i}", soln
+
         orig_tests = n_tests(CHAT, problem=problem, n=3)
         yield id, "original tests", orig_tests
-        orig_tests_split = split_tests(orig_tests)
-        for i, test in enumerate(orig_tests_split):
-            yield id, f"original tests split {i}", test
 
-        restyled = restyle_problem(CHAT, problem=problem, concepts=CONCEPTS)
-        yield id, "restyled", restyled
+        for i, test in enumerate(split_tests(orig_tests)):
+            yield id, f"original test {i}", test
+
+        restyled = restyle_problem(CHAT, problem=problem)
+        yield id, "restyled problem", restyled
+
         restyled_solns = n_solns(CHAT, problem=restyled, n=3)
         yield id, "restyled solutions", restyled_solns
+
+        for i, soln in enumerate(split_solns(restyled_solns)):
+            yield id, f"restyled solution {i}", soln
+
         restyled_tests = n_tests(CHAT, problem=restyled, n=3)
         yield id, "restyled tests", restyled_tests
-        restyled_tests_split = split_tests(restyled_tests)
-        for i, test in enumerate(restyled_tests_split):
-            yield id, f"restyled tests split {i}", test
+
+        for i, test in enumerate(split_tests(restyled_tests)):
+            yield id, f"restyled test {i}", test
 
 
 def log_and_save(g: Generator, filename: str) -> pd.DataFrame:
     assert filename.endswith(".csv"), f"Filename must end with .csv, got {filename}"
 
     rows = []
-    for id, name, value in g:
+    for id, key, value in g:
         row = {
             "id": id,
-            "name": name,
+            "key": key,
             "value": value,
         }
         pp(row)
@@ -220,4 +224,4 @@ if __name__ == "__main__":
     ]
     ts = util.timestamp()
     gen = generate_solns_and_tests(PROBLEMS)
-    log_and_save(gen, filename="../datasets/prompts/prompts-{ts}.csv")
+    log_and_save(gen, filename=f"../datasets/prompts/prompts-{ts}.csv")
