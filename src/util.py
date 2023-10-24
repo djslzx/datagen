@@ -58,6 +58,13 @@ def test_strip_markdown():
          """,
          "         x + 1"),
         ("""
+         
+         ```python
+         x + 1
+         ```
+         """,
+         "         x + 1"),
+        ("""
          ```
          x + 2
          ```
@@ -65,6 +72,7 @@ def test_strip_markdown():
          
          """,
          "         x + 2"),
+        ("x", "x"),
     ]
     for x, y in cases:
         out = strip_markdown(x)
