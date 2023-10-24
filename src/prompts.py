@@ -80,24 +80,86 @@ def restyle_problem(chat: ChatOpenAI, problem: str, concepts: List[str]) -> str:
     )
 
 
-def n_solns(chat: ChatOpenAI, problem: str, n: int) -> List[str]:
-    out = run_saved_prompt(
+def n_solns(chat: ChatOpenAI, problem: str, n: int) -> str:
+    return run_saved_prompt(
         chat,
         key="n solutions",
         problem=problem,
         n=n,
     )
-    return util.split_py_markdown(out)
 
 
-def n_tests(chat: ChatOpenAI, problem: str, n: int) -> List[str]:
-    out = run_saved_prompt(
+def n_tests(chat: ChatOpenAI, problem: str, n: int) -> str:
+    return run_saved_prompt(
         chat,
         key="n tests",
         problem=problem,
         n=n,
     )
-    return util.split_py_markdown(out)
+
+
+def split_solns(solns: str) -> List[str]:
+    return util.split_py_markdown(solns)
+
+
+def split_tests(text: str):
+    text = util.strip_markdown(text)
+
+    # split by decls
+    blocks = ["def test_" + x
+              for x in text.split("def test_")[1:]
+              if x.strip()]
+    out = []
+    # only keep indented lines; stop at first non-indented line
+    for block in blocks:
+        lines = block.split("\n")
+        block_text = lines[0] + "\n"
+        for line in lines[1:]:
+            if line.startswith("    "):
+                block_text += line + "\n"
+            else:
+                break
+        out.append(block_text)
+    return out
+
+
+def generate_solns_and_tests(problems: List[str]) -> Generator[Tuple[int, str, str], None, None]:
+    for id, problem in enumerate(problems):
+        yield id, "original", problem
+        orig_solns = n_solns(CHAT, problem=problem, n=3)
+        yield id, "original solutions", orig_solns
+        orig_tests = n_tests(CHAT, problem=problem, n=3)
+        yield id, "original tests", orig_tests
+        orig_tests_split = split_tests(orig_tests)
+        for i, test in enumerate(orig_tests_split):
+            yield id, f"original tests split {i}", test
+
+        restyled = restyle_problem(CHAT, problem=problem, concepts=CONCEPTS)
+        yield id, "restyled", restyled
+        restyled_solns = n_solns(CHAT, problem=restyled, n=3)
+        yield id, "restyled solutions", restyled_solns
+        restyled_tests = n_tests(CHAT, problem=restyled, n=3)
+        yield id, "restyled tests", restyled_tests
+        restyled_tests_split = split_tests(restyled_tests)
+        for i, test in enumerate(restyled_tests_split):
+            yield id, f"restyled tests split {i}", test
+
+
+def log_and_save(g: Generator, filename: str) -> pd.DataFrame:
+    assert filename.endswith(".csv"), f"Filename must end with .csv, got {filename}"
+
+    rows = []
+    for id, name, value in g:
+        row = {
+            "id": id,
+            "name": name,
+            "value": value,
+        }
+        pp(row)
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    df.to_csv(filename)
+    return df
 
 
 if __name__ == "__main__":
@@ -152,45 +214,9 @@ if __name__ == "__main__":
         """,
     ]
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
-    STORIES = [
-        "You are a bank manager...",
-        "You are a bank robber...",
-        "Fibonacci numbers are...",
-        "A perfect number is...",
-        "You wake up in a strange room...",
-        "It is the year 1963...",
-    ]
     CONCEPTS = [
-        "Recursion",
-        "Trie data structure",
-        "Stack programs",
-        "Lisp interpreter",
-        "Parallel computation",
-        "Graph theory",
-        "Knot theory",
-        "Greedy algorithm",
+
     ]
-    for problem in PROBLEMS:
-        print("original problem:")
-        print(problem)
-        print()
-
-        print("restyled problem:")
-        restyled = restyle_problem(CHAT, problem=problem, concepts=CONCEPTS)
-        print(restyled)
-        print()
-
-        for p in [problem, restyled]:
-            print("generated solutions:")
-            solns = n_solns(CHAT, problem=problem, n=3)
-            print(f"Generated {len(solns)} solutions:")
-            for soln in solns:
-                print(soln)
-            print()
-
-            print("generated tests:")
-            tests = n_tests(CHAT, problem=problem, n=3)
-            print(f"Generated {len(tests)} tests:")
-            for test in tests:
-                print(test)
-            print()
+    ts = util.timestamp()
+    gen = generate_solns_and_tests(PROBLEMS)
+    log_and_save(gen, filename="../datasets/prompts/prompts-{ts}.csv")
