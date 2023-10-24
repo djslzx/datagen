@@ -16,7 +16,7 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
 )
-from langchain.callbacks import get_openai_callback  # track token usage
+from langchain.callbacks import get_openai_callback
 from langchain.cache import SQLiteCache
 
 import featurizers as feat
@@ -93,7 +93,7 @@ def n_tests(chat: ChatOpenAI, problem: str, n: int) -> str:
     )
 
 
-def generate_solns_and_tests(problems: List[str]) -> Generator[Tuple[int, str, str], None, None]:
+def gen_solns_and_tests(problems: List[str]) -> Generator[Tuple[int, str, str], None, None]:
     for id, problem in enumerate(problems):
         yield id, "original problem", problem
 
@@ -125,21 +125,13 @@ def generate_solns_and_tests(problems: List[str]) -> Generator[Tuple[int, str, s
             yield id, f"restyled test {i}", test
 
 
-def log_and_save(g: Generator, filename: str) -> pd.DataFrame:
-    assert filename.endswith(".csv"), f"Filename must end with .csv, got {filename}"
-
-    rows = []
-    for id, key, value in g:
-        row = {
+def gen_solns_and_tests_dict(problems: List[str]) -> Generator[dict, None, None]:
+    for id, key, val in gen_solns_and_tests(problems):
+        yield {
             "id": id,
             "key": key,
-            "value": value,
+            "value": val,
         }
-        pp(row)
-        rows.append(row)
-    df = pd.DataFrame(rows)
-    df.to_csv(filename)
-    return df
 
 
 if __name__ == "__main__":
@@ -194,9 +186,9 @@ if __name__ == "__main__":
         """,
     ]
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
-    CONCEPTS = [
-
-    ]
     ts = util.timestamp()
-    gen = generate_solns_and_tests(PROBLEMS)
-    log_and_save(gen, filename=f"../datasets/prompts/prompts-{ts}.csv")
+    with get_openai_callback() as cb:
+        util.incrementally_save_jsonl(
+            gen_solns_and_tests_dict(PROBLEMS),
+            filename=f"../datasets/prompts/prompts-{ts}"
+        )
