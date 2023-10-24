@@ -274,17 +274,6 @@ def add_extras(df: pd.DataFrame, extras: List[Tuple[str, Callable]], saveto: str
     return df
 
 
-def add_predicate_cols(chat: ChatOpenAI, df: pd.DataFrame, saveto: str) -> pd.DataFrame:
-    return add_extras(
-        df=df,
-        extras=[
-            ("solvable?", lambda row: wizard.check_problem_solvable(chat, row['text'])),
-            ("novel?", lambda row: wizard.check_problem_novel(chat, row['text'], row['parent text'])),
-        ],
-        saveto=saveto,
-    )
-
-
 def add_solution_cols(chat: ChatOpenAI, df: pd.DataFrame, saveto: str, n=1):
     # produce multiple solutions with a single prompt, then parse out and turn into separate columns
     df = add_extras(
@@ -453,13 +442,18 @@ def analyze_extras(df: pd.DataFrame):
 
 
 def read_problems(filenames: Dict[str, str]) -> pd.DataFrame:
-    full_df: Optional[pd.DataFrame] = None
+    rows = []
     for shortname, filename in filenames.items():
         df = pd.read_json(f"{filename}.jsonl", lines=True)
-        df = df[["text"]]
         df["source file"] = shortname
-        full_df = df if full_df is None else pd.concat([full_df, df], ignore_index=True)
-    return full_df
+
+        # add id column if it doesn't exist
+        if "id" not in df.columns:
+            df["id"] = range(1, len(df) + 1)
+
+        df = df[["id", "source file", "text"]]
+        rows.extend(df.to_records(index=False))
+    return pd.DataFrame.from_records(rows, columns=["id", "source file", "text"])
 
 
 def make_extras(df: pd.DataFrame, n_samples: int, n_solns: int, n_tests_per_soln: int) -> pd.DataFrame:
@@ -486,9 +480,14 @@ def make_extras(df: pd.DataFrame, n_samples: int, n_solns: int, n_tests_per_soln
 
 # Analyze results from running tests on solutions
 def analyze_test_results(df: pd.DataFrame):
-    print(df.columns)
-    print(df["source file"].unique())
-    print(df["row_id"].unique())
+    print("columns:", df.columns)
+    print("source files:", df["source file"].unique())
+
+    # source/id analysis
+    sdf = df.groupby("source file").size().to_frame(name="n triples")
+    sdf["n unique ids"] = df.groupby("source file")["id"].nunique()
+    sdf["avg triple size"] = sdf["n triples"] / sdf["n unique ids"]
+    print(sdf.to_markdown())
 
     patterns = {
         r"test_.+ did not pass": "test did not pass",
@@ -528,7 +527,21 @@ def analyze_test_results(df: pd.DataFrame):
     plt.show()
 
     # print a nice table of counts with totals by source file
+    print("Results by source file:")
     print(df.groupby(["source file"]).size().to_markdown())
+
+    # evaluate solutions: what is the average number of tests passed per solution?
+    tdf = df.groupby(["source file", "id"], as_index=False).agg({"passed": ["sum", "count"]})
+    tdf["% passed"] = tdf["passed"]["sum"] / tdf["passed"]["count"]
+    print(tdf)
+
+    # plot distribution of % passed
+    sns.displot(data=tdf, x="% passed", hue="source file", kind="kde")
+    plt.gcf().set_size_inches(12, 6)
+    plt.show()
+
+    # evaluate tests: what is the average number of solutions that pass each test?
+    pass
 
 
 if __name__ == "__main__":
@@ -537,26 +550,19 @@ if __name__ == "__main__":
     # pd.set_option('display.max_colwidth', 40)
     timestamp = util.timestamp()
 
-    # filenames = {
-    #     "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
-    #     "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
-    #     "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
-    #     "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
-    #     "CA 1K": "../datasets/code_alpaca_1k",
-    #     # "CA 20K": "../datasets/code_alpaca_20k",
-    # }
-    # df = read_problems(filenames)
-    # df.to_csv(f"../datasets/all-runs-{timestamp}.csv")
-    # df = make_extras(df=df,
-    #                  n_samples=1,
-    #                  n_solns=3,
-    #                  n_tests_per_soln=5)
-    # df = pd.read_json("../datasets/sampling-tests-2023-10-02T22:52:58.129383.jsonl", lines=True)
-    # df = pd.read_json("../datasets/sampling-tests-2023-10-03T00:51:02.288607.jsonl", lines=True)
-    # analyze_extras(df)
+    filenames = {
+        "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
+        "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
+        "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
+        "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
+        "CA 1K": "../datasets/code_alpaca_1k",
+        # "CA 20K": "../datasets/code_alpaca_20k",
+    }
+    df = read_problems(filenames)
+    df.to_csv(f"../datasets/all-runs-{timestamp}.csv")
 
-    df = pd.read_json("../datasets/evaluated-2023-10-13T00:29:34.147888.jsonl", lines=True)
-    analyze_test_results(df)
+    # df = pd.read_json("../datasets/evaluated-2023-10-13T01:25:05.868620.jsonl", lines=True)
+    # analyze_test_results(df)
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
