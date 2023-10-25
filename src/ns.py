@@ -140,7 +140,7 @@ def evo_search(L: Language,
         "Number of samples taken should be significantly larger than number of samples kept"
     assert len(init_popn) >= 5, \
         f"Initial population ({len(init_popn)}) must be geq number of nearest neighbors (5)"
-    assert length_penalty_type in {"additive", "inverse"}
+    assert length_penalty_type in {"additive", "inverse", None}
 
     def embed(S):
         return extract_features(L, S, n_samples=samples_per_program, batch_size=8)
@@ -182,9 +182,11 @@ def evo_search(L: Language,
         dists = np.sum(dists, axis=1)
         len_samples = np.array([len(x) for x in samples])
         if length_penalty_type == "additive":
-            scores = dists - length_penalty_additive_coeff * len_samples  # add penalty term for length
-        else:
+            scores = dists - length_penalty_additive_coeff * len_samples
+        elif length_penalty_type == "inverse":
             scores = dists / (len_samples + length_penalty_inverse_coeff)
+        else:
+            scores = dists
 
         # select samples to carry over to next generation
         i_popn = select_indices(select, scores, max_popn_size)
@@ -349,8 +351,8 @@ def viz_real_points_results(path: str):
 
 def run_on_arc():
     wandb.init(project="arc-novelty")
-    featurizer = ResnetFeaturizer(sigma=0)
-    lang = arc.Blocks(featurizer=featurizer, gram=2)
+    feat = ResnetFeaturizer(sigma=1)
+    lang = arc.Blocks(featurizer=feat, gram=2)
     seed = [
         "(rect (point 1 2) (point 1 2) 1)",
         "(rect (point 1 1) (point xmax ymax) 1)",
