@@ -3,7 +3,7 @@ Collect prompts here
 """
 import os
 from pprint import pp
-from typing import List, Generator, Union, Tuple, Optional, Iterator
+from typing import List, Generator, Union, Tuple, Optional, Iterator, Iterable
 import random
 import yaml
 import numpy as np
@@ -93,40 +93,42 @@ def n_tests(chat: ChatOpenAI, problem: str, n: int) -> str:
     )
 
 
-def gen_solns_and_tests(problems: List[str]) -> Generator[Tuple[int, str, str], None, None]:
-    for id, problem in enumerate(problems):
+def gen_solns_and_tests(chat: ChatOpenAI, problems: Iterable[Tuple[int, str]]) -> Generator[
+    Tuple[int, str, str], None, None]:
+    for id, problem in problems:
         yield id, "original problem", problem
 
-        orig_solns = n_solns(CHAT, problem=problem, n=3)
+        orig_solns = n_solns(chat, problem=problem, n=3)
         yield id, "original solutions", orig_solns
 
         for i, soln in enumerate(util.split_py_markdown(orig_solns)):
             yield id, f"original solution {i}", soln
 
-        orig_tests = n_tests(CHAT, problem=problem, n=3)
+        orig_tests = n_tests(chat, problem=problem, n=3)
         yield id, "original tests", orig_tests
 
         for i, test in enumerate(util.split_tests(orig_tests)):
             yield id, f"original test {i}", test
 
-        restyled = restyle_problem(CHAT, problem=problem)
+        restyled = restyle_problem(chat, problem=problem)
         yield id, "restyled problem", restyled
 
-        restyled_solns = n_solns(CHAT, problem=restyled, n=3)
+        restyled_solns = n_solns(chat, problem=restyled, n=3)
         yield id, "restyled solutions", restyled_solns
 
         for i, soln in enumerate(util.split_py_markdown(restyled_solns)):
             yield id, f"restyled solution {i}", soln
 
-        restyled_tests = n_tests(CHAT, problem=restyled, n=3)
+        restyled_tests = n_tests(chat, problem=restyled, n=3)
         yield id, "restyled tests", restyled_tests
 
         for i, test in enumerate(util.split_tests(restyled_tests)):
             yield id, f"restyled test {i}", test
 
 
-def gen_solns_and_tests_dict(problems: List[str]) -> Generator[dict, None, None]:
-    for id, key, val in gen_solns_and_tests(problems):
+def gen_solns_and_tests_dict(chat: ChatOpenAI, problems: List[dict]) -> Generator[dict, None, None]:
+    problems = [(d["id"], d["text"]) for d in problems]
+    for id, key, val in gen_solns_and_tests(chat, problems):
         yield {
             "id": id,
             "key": key,
@@ -187,8 +189,5 @@ if __name__ == "__main__":
     ]
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     ts = util.timestamp()
-    with get_openai_callback() as cb:
-        util.incrementally_save_jsonl(
-            gen_solns_and_tests_dict(PROBLEMS),
-            filename=f"../datasets/prompts/prompts-{ts}"
-        )
+    for x in gen_solns_and_tests(CHAT, enumerate(PROBLEMS)):
+        print(x)
