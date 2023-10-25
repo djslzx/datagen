@@ -14,8 +14,16 @@ import tempfile
 
 
 def _unsafe_execute(program: str, timeout: float, result: List):
-    if "import os" in program:
-        result.append("failed: dangerous code")
+    forbidden = [
+        "import os",
+        "from os import",
+        "import sys",
+        "from sys import",
+    ]
+    for x in forbidden:
+        if x in program:
+            result.append(f"failed: dangerous code containing `{x}`")
+            return
 
     with create_tempdir():
         # These system calls are needed when cleaning up tempdir.

@@ -23,7 +23,7 @@ def make_programs(solns: List[str], tests: List[str]) -> Generator[Dict, None, N
                 tester = "assert False, 'no tests found'"
             else:
                 test_name = test_names[0]
-                tester = f"assert {test_name}, '{test_name} did not pass'"
+                tester = f"assert {test_name}(), '{test_name} did not pass'"
             program = "\n\n".join([soln, test, tester])
             yield {
                 "soln": soln,
@@ -57,7 +57,8 @@ def eval_dataset(filename: str, n_samples: int, timeout: float) -> Generator[Dic
         for d in make_programs(solns, tests):
             program = d["program"]
             yield {
-                "row_id": i,
+                "id": row["id"],
+                "source file": row["source file"],
                 **ex.unsafe_check(program=program, timeout=timeout),
                 "functions": find_fns(program),
                 **d,
@@ -108,7 +109,7 @@ if __name__ == "__main__":
         it=eval_dataset(
             filename="../datasets/sample-tests-2023-10-04T13:11:58.134555.csv",
             # "../datasets/sample-tests-2023-10-04T14:24:11.544966.csv"
-            n_samples=10,
+            n_samples=None,
             timeout=10,
         ),
         filename=f"../datasets/evaluated-{ts}",
