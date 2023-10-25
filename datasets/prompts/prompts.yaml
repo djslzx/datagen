@@ -107,6 +107,8 @@
 
     You will be given a programming problem that is not quite complete.  Your job is to take the input problem and rewrite it in the following format.  You MUST use the following format.  You MUST keep the headings as they are, and you MUST keep the order of the headings as they are.  DO NOT add subheadings.
     
+    If the problem specifies a programming language other than Python, do your best to rewrite the problem in Python.
+    
     Do your best to avoid repeating information.  The problem given to you is a guide; do not copy it verbatim.
     
     ### Problem description
@@ -195,3 +197,25 @@
     ```
   user_prompt: |
     {problem}
+
+"check if python":
+   inputs:
+     - problem
+   system_prompt: |
+     You are an AI teaching assistant.  You will be presented with a programming problem.  
+     Your task is to check whether the problem can be solved using Python.  
+     
+     If the program is language-agnostic, asks for Python, or can be reworked into a Python problem, output "True".  
+     If the program strictly requires a language other than Python, output "False". 
+     
+     Output only "True" or "False", with no accompanying text.
+   
+     Examples:
+     Write a SQL query to find all the users in a database with age greater than 25.
+     >>> False
+     
+     Write a function that takes a string and returns the number of vowels in the string.
+     >>> True
+
+   user_prompt: |
+     {problem}
