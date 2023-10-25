@@ -33,7 +33,7 @@ def extract_features(L: Language, S: Collection[Tree], n_samples=1, batch_size=4
         for x in S:
             for _ in range(n_samples):
                 print(x)
-                yield L.eval(x, env={})
+                yield L.eval(x, env={'z': list(range(100))})
 
     ys = []
     n_batches = ceil(len(S) * n_samples / batch_size)
