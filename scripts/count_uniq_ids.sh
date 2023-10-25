@@ -1,2 +1,6 @@
-n=$(grep -oE '"id": "[^ ]*"'  "$1" | uniq | wc -l)
-echo "$n unique ids found"
+for file in "$@"
+do
+    n=$(grep -oE '"id": "[^ ]*"'  "$file" | uniq | wc -l)
+    echo "$file:"
+    echo "  $n unique ids"
+done
