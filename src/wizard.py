@@ -11,6 +11,8 @@ import pandas as pd
 from sklearn import preprocessing, random_projection
 from sklearn.manifold import MDS
 from sklearn.neighbors import NearestNeighbors
+
+import prompts
 import wandb
 import langchain
 from langchain import LLMChain
@@ -56,168 +58,22 @@ def simple_chat_prompt(system_prompt: str, user_prompt: str) -> ChatPromptTempla
     ])
 
 
-def propose_name(chat: ChatOpenAI, text: str) -> str:
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "Come up with a name for the following programming problem.  "
-            "The name should contain no more than 5 words.  "
-            "Your response should contain no formatting.  "
-            "Each word in the name should be separated by a space."
-        ),
-        user_prompt="{input}",
+def propose_name(chat: ChatOpenAI, problem: str) -> str:
+    return prompts.run_saved_prompt(
+        chat,
+        key="name problem",
+        problem=problem,
     )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(input=text)
 
 
 def mutate_problem(chat: ChatOpenAI, problem: str, mutator: str) -> str:
     """Use the LLM to mutate the given programming problem"""
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "Please increase the difficulty of the given programming test question a bit. "
-            "You can increase the difficulty using, but not limited to, the following methods: {mutator}"
-            "Your response should consist of a new programming test question that is entirely self-contained: "
-            "it should be solvable without "
-            "(a) knowing the original question, "
-            "(b) having a network connection, or"
-            "(c) using any system calls. "
-            "Output only the new programming question, with no additional text."
-        ),
-        user_prompt="{input}",
+    return prompts.run_saved_prompt(
+        chat,
+        key="mutate problem",
+        problem=problem,
+        mutator=mutator,
     )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    output = chain.run(mutator=mutator, input=problem)
-    return output
-
-
-def filter_problem(chat: ChatOpenAI, problem: str) -> Optional[bool]:
-    """Use the LLM to filter out programming problems that are not self-contained"""
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "Please determine whether the following programming test question is valid. "
-            "A programming test question is valid if it is entirely self-contained, i.e., "
-            "it is solvable without "
-            "(a) referencing an 'original question', "
-            "(b) having a network connection, or"
-            "(c) using any system calls. "
-            "Output only True or False, with no additional text."
-        ),
-        user_prompt="{input}",
-    )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    output = chain.run(input=problem)
-    if output == "True":
-        return True
-    elif output == "False":
-        return False
-    else:
-        return None
-
-
-def propose_solution(chat: ChatOpenAI, problem: str) -> str:
-    """Prompt the LLM to solve a programming problem"""
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "Solve the following programming problem using Python and its standard library.  "
-            "Even if the problem itself says that you may use any language or libraries, "
-            "stick to Python and its standard library.  "
-            "You may write multiple functions, but organize your code so that a function called "
-            "`solution` may be run with any required arguments to fully solve the problem.  "
-            "Output only code, with no accompanying text."
-        ),
-        user_prompt="{input}"
-    )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(input=problem)
-
-
-def propose_multiple_solutions(chat: ChatOpenAI, n: int, problem: str, entry_point: str) -> str:
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "You are an AI programming assistant.  "
-            "Propose exactly {n} code solutions to the following programming problem.  "
-            "Solve the problem using Python and its standard library.  "
-            "You may write multiple functions; however, the main function that solves the problem "
-            "must be called {entry_point}.  "
-            "Output only code, with no accompanying text.  "
-            "Ensure that all solutions you propose have distinct approaches to the problem.  "
-            "You must output your solutions in the following format:\n"
-            "```python\n"
-            "<code for solution 1>\n"
-            "```\n"
-            "```python\n"
-            "<code for solution 2>\n"
-            "```\n"
-            "....\n"
-            "```python\n"
-            "<code for solution {n}>\n"
-            "```,\n"
-        ),
-        user_prompt="{input}"
-    )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(input=problem, n=n, entry_point=entry_point)
-
-
-def demo_multiple_solutions():
-    problems = [
-        ("""
-        Design a class called "Triangle" that represents a triangle. The "Triangle" class should have the following attributes:
-        - "side1" (an integer) - The length of side 1 of the triangle.
-        - "side2" (an integer) - The length of side 2 of the triangle.
-        - "side3" (an integer) - The length of side 3 of the triangle.
-
-        The "Triangle" class should also have the following methods:
-
-        - "__init__" - Initializes a new instance of the "Triangle" class with the given lengths of all sides.
-        - "get_perimeter" - Returns the perimeter of the triangle, which is calculated by adding all three side lengths together.
-        - "get_area" - Returns the area of the triangle, which is calculated using Heron's formula: 
-        area = sqrt(s * (s - a) * (s - b) * (s - c)), where s is the semiperimeter of the triangle and a, b, and c are the lengths of the sides.
-
-        Implement the "Triangle" class in Python. Make sure to include a sample usage of the "Triangle" class to demonstrate its functionality.
-
-        For example:
-
-        t1 = Triangle(3, 4, 5)
-        print(t1.get_perimeter())  # Output: 12
-        print(t1.get_area())  # Output: 6.0
-        """, ""),
-        """
-        Write a function `multiplyArrays(arr1, arr2)` that takes in two arrays `arr1` and `arr2` of equal length, and returns an array `result` where each element `result[i]` is the product of `arr1[i]` and `arr2[i]`. 
-        For example, given `arr1 = [2, 3, 4]` and `arr2 = [5, 6, 7]`, the function should return `[10, 18, 28]` since `10 = 2 * 5`, `18 = 3 * 6`, and `28 = 4 * 7`. 
-        Your implementation should have a time complexity of O(n), where n is the length of the input arrays.
-        """,
-        """
-        Given a binary tree, validate if it is a binary search tree (BST).
-
-        A BST is defined as follows:
-        - The left subtree of a node contains only nodes with keys less than the node's key.
-        - The right subtree of a node contains only nodes with keys greater than the node's key.
-        - Both the left and right subtrees must also be binary search trees.
-        
-        For example, given the following tree:
-        
-                5
-               / \
-              3   7
-             / \
-            1   4
-        
-        The output should be `true` since this tree satisfies the BST property.
-        
-        Note:
-        - Assume that each node in the tree has a unique key value.
-        - The tree may be unbalanced.
-        """,
-    ]
-    for problem, entry_point in problems:
-        out = propose_multiple_solutions(
-            ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613"),
-            n=5,
-            problem=problem,
-            entry_point=entry_point
-        )
-        print(out)
 
 
 def wizard_solve(chat: ChatOpenAI, problem: str) -> str:
@@ -236,160 +92,23 @@ def wizard_solve(chat: ChatOpenAI, problem: str) -> str:
     return chain.run(instruction=problem)
 
 
-def propose_entry_point(chat: ChatOpenAI, problem: str) -> str:
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "You are an AI teaching assistant.  "
-            "You are testing students using the following programming problem.  "
-            "You have decided to run automated tests on student code solutions, but to do this "
-            "you will require all student solutions to have the same main function name.  "
-            "What is an appropriate function name for the given programming problem?  "
-            "The name should be appropriate for a Python function.  "
-            "For example, 'fibonacci', 'nearest_neighbor', and 'is_powerful' are good function names.  "
-            "Even if the problem itself asks for a specific function name, make sure that it is a "
-            "good name for our purposes.  "
-            "Provide only the name, with no accompanying text.  "
-        ),
-        user_prompt="{input}"
-    )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(input=problem)
-
-
-def propose_tests_from_text(chat: ChatOpenAI, problem: str, n_tests: int) -> str:
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "You are an AI teaching assistant.  "
-            "Your task is to produce test cases to evaluate student implementations of programming problems.  "
-            "Produce {n} test cases for the following problem.  "
-            "Your test cases should be boolean functions that return True when the student implementation passes the test, and False otherwise.  "
-            "Try to provide a variety of tests that can give an accurate assessment of a student solution's correctness.  "
-            "Where possible, write your test cases in Python and stick to the standard library.  "
-            "You should output only code, with no accompanying text.  "
-            "Do not attempt to solve the problem.  "
-
-            # format guidelines
-            "You must output your tests in the following format.\n"
-            "```python\n"
-            "def test_1() -> bool:\n"
-            "    ...\n"
-            "```\n"
-            "```python\n"
-            "def test_2() -> bool:\n"
-            "    ...\n"
-            "```\n"
-            "....\n"
-            "```python\n"
-            "def test_{n}() -> bool:\n"
-            "    ....\n"
-            "```,\n"
-        ),
-        user_prompt="{input}"
-    )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(input=problem, n=n_tests)
-
-
-def propose_tests_from_text_and_solution(chat: ChatOpenAI, problem: str, solution: str, n_tests: int) -> str:
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "You are an AI teaching assistant.  "
-            "Your task is to produce test cases to evaluate student implementations of programming problems.  "
-            "Produce {n} test cases for the following problem and sample solution.  "
-            "Your test cases should be boolean functions that return True when the student implementation passes the test, and False otherwise.  "
-            "Try to provide a variety of tests that can give an accurate assessment of a student solution's correctness.  "
-            "Where possible, write your test cases in Python and stick to the standard library.  "
-            "You should output only code, with no accompanying text.  "
-            "Do not attempt to solve the problem.  "
-
-            # format guidelines
-            "You must output your tests in the following format.\n"
-            "```python\n"
-            "def test_1() -> bool:\n"
-            "    ...\n"
-            "```\n"
-            "```python\n"
-            "def test_2() -> bool:\n"
-            "    ...\n"
-            "```\n"
-            "....\n"
-            "```python\n"
-            "def test_{n}() -> bool:\n"
-            "    ....\n"
-            "```,\n"
-        ),
-        user_prompt=(
-            "###Problem"
-            "{problem}"
-            "###Sample solution"
-            "{soln}"
-        ),
-    )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(problem=problem, soln=solution, n=n_tests)
-
-
-def propose_checker(chat: ChatOpenAI, problem: str) -> str:
-    """
-    Prompt the LLM to write a checker for a programming problem.
-
-    A checker is a function f that takes in a proposed solution g
-    and returns True iff g is a correct solution to the problem:
-    """
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "Given a programming problem p, a checker for p is a function f that takes in a proposed solution function g "
-            "and returns True if and only if g is a correct solution to the problem. "
-            "A simple example of a checker is a function that tests g against a set of input-output pairs. "
-            "In cases where generating these input-output pairs is more difficult, a checker may instead sample outputs from g"
-            "and verify that they satisfy the problem's constraints."
-            "Please write a deterministic checker in Python for the following programming problem. "
-            "Do not include a solution to the programming problem in your response. "
-            "Output only the checker, with no additional text. "
-        ),
-        user_prompt="{input}",
-    )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(input=problem)
-
-
 def check_problem_novel(chat: ChatOpenAI, src_problem: str, dst_problem: str) -> str:
     """Check that a problem is sufficiently different from its parent"""
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "The following is an output from a language model. "
-            "The language model was asked to produce a mutated version of a programming problem. "
-            "Did the model output a new problem that isn't trivially the same problem?  "
-            "Answer True/False, with no punctuation or extra text. "
-        ),
-        user_prompt=(
-            "Original problem:\n"
-            "{src_problem}\n\n"
-            "New problem:\n"
-            "{dst_problem}"
-        ),
+    return prompts.run_saved_prompt(
+        chat,
+        key="check novelty",
+        src_problem=src_problem,
+        dst_problem=dst_problem,
     )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(src_problem=src_problem, dst_problem=dst_problem)
 
 
 def check_problem_solvable(chat: ChatOpenAI, problem: str) -> str:
     """Check that a problem can be solved by LLM"""
-    prompt = simple_chat_prompt(
-        system_prompt=(
-            "Given the complexity and breadth of the given problem, can you provide a complete and functional "
-            "code solution, meeting all the specified requirements? "
-            "Answer True/False, with no punctuation or extra text. "
-            "You should only answer 'True' when you are able to follow up with a full solution. "
-            "If you can only provide an outline, you should respond with 'False'."
-        ),
-        user_prompt=(
-            "Programming problem:\n"
-            "{input}"
-        ),
+    return prompts.run_saved_prompt(
+        chat,
+        key="check solvable",
+        problem=problem,
     )
-    chain = LLMChain(llm=chat, prompt=prompt)
-    return chain.run(input=problem)
 
 
 # generate a dataset using Evol-Instruct from the WizardLM paper
@@ -410,8 +129,6 @@ def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutator
                 "mutator": None,
                 "name": root_name,
                 "text": text,
-                "solution": propose_solution(chat, text),
-                "checker": propose_checker(chat, text),
             }
             parent_id = root_id
             parent_name = root_name
@@ -428,8 +145,6 @@ def evol_instruct(chat: ChatOpenAI, iters: int, seed_dataset: List[str], mutator
                     "mutator": mutator_name(mutator),
                     "text": text,
                     "name": name,
-                    "solution": propose_solution(chat, text),
-                    "checker": propose_checker(chat, text),
                 }
                 log_table.add_data(root_name, gen, parent_name, name, text)
                 wandb.log({
@@ -482,8 +197,6 @@ def novel_instruct(chat: ChatOpenAI,
             "mutator": None,
             "name": propose_name(chat, text),
             "text": text,
-            # "solution": propose_solution(chat, text),
-            # "checker": propose_checker(chat, text),
             "score": None,
             "rank": None,
             "chosen?": True,
@@ -504,8 +217,6 @@ def novel_instruct(chat: ChatOpenAI,
             "mutator": mutator_name(m),
             "name": propose_name(chat, text),
             "text": text,
-            # "solution": propose_solution(chat, text),
-            # "checker": propose_checker(chat, text),
             "score": None,
             "rank": None,
             "chosen?": None,

@@ -199,23 +199,81 @@
     {problem}
 
 "check if python":
-   inputs:
-     - problem
-   system_prompt: |
-     You are an AI teaching assistant.  You will be presented with a programming problem.  
-     Your task is to check whether the problem can be solved using Python.  
-     
-     If the program is language-agnostic, asks for Python, or can be reworked into a Python problem, output "True".  
-     If the program strictly requires a language other than Python, output "False". 
-     
-     Output only "True" or "False", with no accompanying text.
-   
-     Examples:
-     Write a SQL query to find all the users in a database with age greater than 25.
-     >>> False
-     
-     Write a function that takes a string and returns the number of vowels in the string.
-     >>> True
+  inputs:
+    - problem
+  system_prompt: |
+    You are an AI teaching assistant.  You will be presented with a programming problem.  
+    Your task is to check whether the problem can be solved using Python.  
+    
+    If the program is language-agnostic, asks for Python, or can be reworked into a Python problem, output "True".  
+    If the program strictly requires a language other than Python, output "False". 
+    
+    Output only "True" or "False", with no accompanying text.
+    
+    Examples:
+    Write a SQL query to find all the users in a database with age greater than 25.
+    >>> False
+    
+    Write a function that takes a string and returns the number of vowels in the string.
+    >>> True
 
-   user_prompt: |
-     {problem}
+  user_prompt: |
+    {problem}
+
+"mutate problem":
+  inputs:
+    - problem
+    - mutator
+  system_prompt: |
+    Please increase the difficulty of the given programming test question a bit.  You can increase the difficulty using, but not limited to, the following methods: 
+    {mutator}
+    
+    Your response should consist of a new programming test question that is entirely self-contained.  It should be solvable without 
+      (a) knowing the original question,
+      (b) having a network connection, or
+      (c) using any system calls. 
+    
+    Output only the new programming question, with no additional text.
+  user_prompt: |
+    {problem}
+
+"name problem":
+  inputs:
+    - problem
+  system_prompt: |
+    Come up with a name for the following programming problem.  
+    The name should contain no more than 5 words.  
+    Your response should contain no formatting.  
+    Each word in the name should be separated by a space.
+  user_prompt: |
+    {problem}
+
+"check novelty":
+  inputs:
+    - src_problem
+    - dst_problem
+  system_prompt: |
+    You are an AI teaching assistant.  You will be presented with two programming problems, where the second problem is a modified version of the first.
+    
+    Your task is to determine whether the new problem is non-trivially different from the original problem.
+    
+    Answer True/False, with no punctuation or extra text.
+  user_prompt: |
+    Original problem:
+    {src_problem}
+    
+    Modified problem:
+    {dst_problem}
+
+"check solvable":
+  inputs:
+    - problem
+  system_prompt: |
+    Given the complexity and breadth of the given problem, can you provide a complete and functional code solution, meeting all the specified requirements?
+    
+    If you are able to follow up with a full solution, answer True.  If you can only provide an outline, answer False.
+    
+    Answer True/False, with no punctuation or extra text.
+  user_prompt: |
+    {problem}
+    
