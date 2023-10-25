@@ -2,6 +2,7 @@
 Collect prompts here
 """
 import os
+import sys
 from pprint import pp
 from typing import List, Generator, Union, Tuple, Optional, Iterator, Iterable
 import random
@@ -130,12 +131,14 @@ def gen_solns_and_tests(chat: ChatOpenAI, problems: Iterable[Tuple[int, str]]) -
 
 def gen_solns_and_tests_dict(chat: ChatOpenAI, problems: List[dict]) -> Generator[dict, None, None]:
     problems = [(d["id"], d["text"]) for d in problems]
-    for id, key, val in gen_solns_and_tests(chat, problems):
-        yield {
-            "id": id,
-            "key": key,
-            "value": val,
-        }
+    with get_openai_callback() as cb:
+        for id, key, val in gen_solns_and_tests(chat, problems):
+            yield {
+                "id": id,
+                "key": key,
+                "value": val,
+                "cost": cb.total_cost,
+            }
 
 
 if __name__ == "__main__":
