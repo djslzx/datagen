@@ -37,15 +37,13 @@ class Blocks(Language):
         "minus": ["Int", "Int", "Int"],
         "times": ["Int", "Int", "Int"],
         "if": ["Bool", "Int", "Int", "Int"],
-        # lit
-        "lit": ["Const", "LiteralInt"],
         # bool
         "nil": ["Bool"],
         "not": ["Bool", "Bool"],
         "and": ["Bool", "Bool", "Bool"],
         "lt": ["Int", "Int", "Bool"],
     }
-    types.update({k: ["Const"] for k in range(10)})
+    types.update({k: ["LiteralInt"] for k in range(10)})
 
     parser_grammar = r"""        
         bmp: "(" "line" point point int ")" -> line
@@ -58,20 +56,19 @@ class Blocks(Language):
                  | "(" "compose" transform transform ")" -> compose
                  | "(" "repeat" transform int ")"        -> repeat
         point: "(" "point" int int ")"     -> point
-        int: n                             -> int
+        int: _n                             -> int
            | "xmax"                        -> xmax
            | "ymax"                        -> ymax
-           | "(" "z" n ")"                 -> z
+           | "(" "z" _n ")"                 -> z
            | "(" "plus" int int ")"        -> plus
            | "(" "minus" int int ")"       -> minus
            | "(" "times" int int ")"       -> times
            | "(" "if" bool int int ")"     -> if
-        n: NUMBER                          -> lit
+        _n: NUMBER
         bool: "nil"                        -> nil
             | "(" "not" bool ")"           -> not
             | "(" "and" bool bool ")"      -> and
             | "(" "lt" int int ")"         -> lt
-
         
         %import common.WS
         %import common.NUMBER
@@ -102,14 +99,15 @@ class Blocks(Language):
                 return grammar.XMax()
             elif t.value == "ymax":
                 return grammar.YMax()
+            elif t.value == "nil":
+                return grammar.Nil()
             raise ValueError(f"Unexpected leaf: {t}")
-        elif t.value == "lit":
-            return int(t.children[0].value)
         elif t.value == "int":
-            c = t.children[0]
-            return grammar.Num(self._to_obj(c, env))
-        elif t.value == "nil":
-            return grammar.Nil()
+            n = int(t.children[0].value)
+            return grammar.Num(n)
+        elif t.value == "z":
+            i = int(t.children[0].value)
+            return grammar.Z(i)
         elif t.value == "not":
             c = t.children[0]
             return grammar.Not(self._to_obj(c, env))
@@ -119,9 +117,6 @@ class Blocks(Language):
         elif t.value == "and":
             a, b = t.children
             return grammar.And(self._to_obj(a, env), self._to_obj(b, env))
-        elif t.value == "z":
-            c = t.children[0]
-            return grammar.Z(self._to_obj(c, env))
         elif t.value == "plus":
             a, b = t.children
             return grammar.Plus(self._to_obj(a, env), self._to_obj(b, env))
@@ -165,19 +160,18 @@ class Blocks(Language):
             f, g = t.children
             return grammar.Compose(self._to_obj(f, env), self._to_obj(g, env))
 
-    def eval(self, t: Tree, env: Dict[str, Any] = None):
+    def eval(self, t: Tree, env: Dict[str, Any] = None) -> np.ndarray:
         env = ChainMap(self.env, env)
         try:
             o = self._to_obj(t, env)
         except ValueError:
             raise ValueError(f"Failed to evaluate expression {t.to_sexp()}")
 
-        evaluator = grammar.Eval(env=env, height=16, width=16)
+        evaluator = grammar.Eval(env=env, height=self.height, width=self.width)
         try:
-            bmp = o.accept(evaluator).numpy().astype(np.uint8)
-            return ein.repeat(bmp, "h w -> h w c", c=3)
+            return o.accept(evaluator).numpy().astype(np.uint8)
         except AssertionError:
-            return np.zeros((self.height, self.width, 3), dtype=np.uint8)
+            return np.zeros((self.height, self.width), dtype=np.uint8)
 
     @property
     def str_semantics(self) -> Dict:
@@ -220,23 +214,30 @@ if __name__ == "__main__":
         # "(seq (line (point 1 2) (point 3 4) 1) "
         # "     (rect (point 1 2) (point 1 2) 1))",
         # "(apply hflip (line (point 1 2) (point 1 4) 1))",
-        "(rect (point 1 1) (point (z 1) (z 2)) 1)"
+        "(rect (point 1 1) (point (z 1) (z 2)) 1)",
+        "(rect (point 0 0) (point 4 4) 1)",
     ]
     for x in examples:
         t = b.parse(x)
         print(t.to_sexp())
         print(b.to_str(t))
-        print()
-        # img = b.eval(t, )
-        # plt.imshow(img)
-        # plt.show()
 
-    b.fit(corpus=[b.parse(s) for s in examples], alpha=0.01)
-    for i in range(10):
+        img = b.eval(t)
+        print(img)
+        plt.imshow(img)
+        plt.show()
+
+    b.fit(corpus=[b.parse(s) for s in examples], alpha=0.001)
+    for i in range(100):
         t = b.sample()
         print(t.to_sexp())
         print(b.to_str(t))
         print()
-    #     img = b.eval(t)
-    #     plt.imshow(img)
-    #     plt.show()
+        img = b.eval(t)
+        # if all 0
+        if not np.any(img):
+            print("all zeros")
+        else:
+            print(img)
+            plt.imshow(img)
+            plt.show()
