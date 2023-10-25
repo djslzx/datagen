@@ -1,15 +1,15 @@
 """
 ns without the evo
 """
+import json
 from math import ceil
 from pprint import pp
-from typing import List, Callable, Collection, Dict
+from typing import List, Callable, Collection, Dict, Iterator, TextIO, Tuple, Union
 import csv
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import directed_hausdorff
 from scipy.special import softmax
@@ -20,10 +20,11 @@ from tqdm import tqdm
 
 from featurizers import ResnetFeaturizer
 from lang.tree import Language, Tree, ParseError
-from lang import lindenmayer, point
+from lang import lindenmayer, point, arc
 import util
 
 Distance = Callable[[np.ndarray, np.ndarray], float]
+
 
 def extract_features(L: Language, S: Collection[Tree], n_samples=1, batch_size=4, load_bar=False) -> np.ndarray:
     # take samples from programs in S, then batch them and feed them through
@@ -31,7 +32,9 @@ def extract_features(L: Language, S: Collection[Tree], n_samples=1, batch_size=4
     def samples():
         for x in S:
             for _ in range(n_samples):
+                print(x)
                 yield L.eval(x, env={})
+
     ys = []
     n_batches = ceil(len(S) * n_samples / batch_size)
     batches = util.batched(samples(), batch_size=batch_size)
@@ -49,17 +52,24 @@ def extract_features(L: Language, S: Collection[Tree], n_samples=1, batch_size=4
     out = rearrange(out, "(s samples) features -> s (samples features)", s=len(S), samples=n_samples)
     return out
 
+
 def take_samples(L: Language, n_samples: int, length_cap: int, simplify=False) -> np.ndarray:
     out = []
     while len(out) < n_samples:
-        x = L.sample()
+        try:
+            x = L.sample()
+        except RecursionError:
+            continue  # retry
         if simplify:
-            try: x = L.simplify(x)
-            except ParseError: continue  # retry
+            try:
+                x = L.simplify(x)
+            except ParseError:
+                continue  # retry
         if len(x) <= length_cap:
             out.append(x)
         # log failures?
     return np.array(out, dtype=object)
+
 
 def select_indices(kind: str, dists: np.ndarray, n: int):
     if kind == "strict":
@@ -69,16 +79,20 @@ def select_indices(kind: str, dists: np.ndarray, n: int):
     else:
         raise ValueError(f"Unknown selection kind: {kind}")
 
+
 def make_dist(d: Distance, k: int) -> Distance:
     """
     Takes a distance that operates on sets and makes it operate on 1D vectors,
     where the vectors are interpreted as the concatenation of a set of k n-dimensional vectors.
     """
+
     def dist(v1: np.ndarray, v2: np.ndarray) -> float:
         X = rearrange(v1, "(k n) -> k n", k=k)
         Y = rearrange(v2, "(k n) -> k n", k=k)
         return d(X, Y)
+
     return dist
+
 
 def chamfer(X: np.ndarray, Y: np.ndarray) -> float:
     # todo: make this much faster
@@ -86,8 +100,10 @@ def chamfer(X: np.ndarray, Y: np.ndarray) -> float:
     return (sum(min(np.dot(x - y, x - y) for y in Y) for x in X) +
             sum(min(np.dot(x - y, x - y) for x in X) for y in Y))
 
+
 def hausdorff(X: np.ndarray, Y: np.ndarray) -> float:
     return directed_hausdorff(X, Y)[0]
+
 
 def log_best_and_worst(k: int, L: Language, samples: np.ndarray, scores: np.ndarray) -> Dict:
     def summarize(indices):
@@ -102,10 +118,10 @@ def log_best_and_worst(k: int, L: Language, samples: np.ndarray, scores: np.ndar
     return {"best": summarize(i_best),
             "worst": summarize(i_worst)}
 
+
 def evo_search(L: Language,
                init_popn: List[Tree],
-               holdout: List[Tree],
-               d: Distance,
+               d: Union[Distance, str],
                select: str,
                max_popn_size: int,
                samples_per_program: int,
@@ -113,14 +129,13 @@ def evo_search(L: Language,
                keep_per_iter: int,
                alpha: float,
                iters: int,
-               save_to: str,
                archive_early=False,
                length_cap=1000,
                length_penalty_type="additive",
                length_penalty_additive_coeff=0.1,
                length_penalty_inverse_coeff=10,
                ablate_mutator=False,
-               simplify=False):
+               simplify=False) -> Iterator[dict]:
     assert samples_ratio >= 2, \
         "Number of samples taken should be significantly larger than number of samples kept"
     assert len(init_popn) >= 5, \
@@ -133,104 +148,83 @@ def evo_search(L: Language,
     def update_archive(A, E_A, S, E_S):
         # just take the first `keep_per_iter` instead of random sampling?
         # samples are generated randomly and are effectively unordered, so it should be fine?
-        I_A = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
-        A.extend(S[I_A])
-        E_A.extend(E_S[I_A])
-
-    def log_data(t: int, dA, S, I, dists, lengths, scores):
-        """
-        Save one generation of evolved programs:
-        - t: time step
-        - dA: new programs in archive
-        - S: new program samples
-        - I: indices of programs selected for next generation from S
-        - dists: dists_i = novelty distance for S_i
-        - lengths: lengths_i = length(S_i)
-        """
-        assert len(S) == len(dists) == len(lengths)
-        with open(f"{save_to}.csv", "a") as f:
-            writer = csv.writer(f)
-            for x in dA:
-                writer.writerow((t, L.to_str(x), "A", None, len(x), None, None))
-            for i, (x, dist, length, score) in enumerate(zip(S, dists, lengths, scores)):
-                writer.writerow((t, L.to_str(x), "S", dist, length, score, i in I))
-
-    ## prep data files
-    # write metadata
-    with open(f"{save_to}.metadata", "w") as f:
-        pp(wandb.run.config.as_dict(), stream=f)
-
-    # write column headers
-    with open(f"{save_to}.csv", "w") as f:
-        writer = csv.writer(f)
-        writer.writerow(["step", "program", "kind", "dist", "length", "score", "chosen"])
+        I = np.random.choice(samples_per_iter, size=keep_per_iter, replace=False)
+        A.extend(S[I])
+        E_A.extend(E_S[I])
 
     samples_per_iter = samples_ratio * max_popn_size
     archive = []
     popn = init_popn
     e_archive = []
     e_popn = embed(popn)
-    e_hold_out = embed(holdout)
-    metric = make_dist(d=d, k=samples_per_program) if samples_per_program > 1 else "minkowski"
-    holdout_knn = NearestNeighbors(metric=metric)
-    holdout_knn.fit(e_hold_out)
+
+    # choose metric
+    if isinstance(d, str):
+        metric = d
+    elif samples_per_program > 1:
+        metric = make_dist(d=d, k=samples_per_program)
+    else:
+        metric = "minkowski"
+
     knn = NearestNeighbors(metric=metric)
     for t in range(iters):
-        with util.Timing(f"Iteration {t}") as timer:
-            if not ablate_mutator:
-                L.fit(popn, alpha=alpha)
-            samples = take_samples(L, samples_per_iter, length_cap=length_cap, simplify=simplify)  # todo: weight by recency/novelty
-            e_samples = embed(samples)
-            if archive_early: update_archive(archive, e_archive, samples, e_samples)
+        if not ablate_mutator:
+            L.fit(popn, alpha=alpha)
+        # todo: weight by recency/novelty
+        samples = take_samples(L, samples_per_iter, length_cap=length_cap, simplify=simplify)
+        e_samples = embed(samples)
+        if archive_early:
+            update_archive(archive, e_archive, samples, e_samples)
 
-            # score samples wrt archive + popn
-            knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
-            dists, _ = knn.kneighbors(e_samples)
-            dists = np.sum(dists, axis=1)
-            len_samples = np.array([len(x) for x in samples])
-            if length_penalty_type == "additive":
-                scores = dists - length_penalty_additive_coeff * len_samples  # add penalty term for length
-            else:
-                scores = dists / (len_samples + length_penalty_inverse_coeff)
+        # score samples wrt archive + popn
+        knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
+        dists, _ = knn.kneighbors(e_samples)
+        dists = np.sum(dists, axis=1)
+        len_samples = np.array([len(x) for x in samples])
+        if length_penalty_type == "additive":
+            scores = dists - length_penalty_additive_coeff * len_samples  # add penalty term for length
+        else:
+            scores = dists / (len_samples + length_penalty_inverse_coeff)
 
-            # select samples to carry over to next generation
-            i_popn = select_indices(select, scores, max_popn_size)
-            if not archive_early: update_archive(archive, e_archive, samples, e_samples)
-            log_data(t=t, dA=archive[-keep_per_iter:], S=samples, I=i_popn, dists=dists, lengths=len_samples, scores=scores)
-            popn = samples[i_popn]
-            e_popn = e_samples[i_popn]
+        # select samples to carry over to next generation
+        i_popn = select_indices(select, scores, max_popn_size)
+        if not archive_early:
+            update_archive(archive, e_archive, samples, e_samples)
 
-        # distance from hold_out set
-        # fixme: this finds kNN(samples, book-examples), but we want kNN(book-examples, samples)
-        sample_holdout_dists, _ = holdout_knn.kneighbors(e_samples)
-        sample_holdout_dists = np.sum(sample_holdout_dists, axis=1)
-        select_holdout_dists = sample_holdout_dists[i_popn]
+        # log data
+        for x in archive[-keep_per_iter:]:
+            yield {
+                "kind": "data",
+                "payload": {"t": t, "program": L.to_str(x), "kind": "archive", "length": len(x)},
+            }
+        for i, (x, dist, length, score) in enumerate(zip(samples, dists, len_samples, scores)):
+            yield {
+                "kind": "data",
+                "payload": {"t": t, "program": L.to_str(x), "kind": "samples", "length": length,
+                            "dist": dist, "score": score, "chosen?": i in i_popn},
+            }
 
-        log = {"scores": wandb.Histogram(scores[i_popn]),
-               "sample lengths": wandb.Histogram(len_samples),
-               "chosen lengths": wandb.Histogram(len_samples[i_popn]),
-               "sample holdout dists": wandb.Histogram(sample_holdout_dists),
-               "selected holdout dists": wandb.Histogram(select_holdout_dists),
-               "dists": wandb.Histogram(dists),
-               "avg score": np.mean(scores),
-               "avg length": np.mean(len_samples),
-               "avg dist": np.mean(dists),
-               "avg sample holdout dist": np.mean(sample_holdout_dists),
-               "avg selected holdout dist": np.mean(select_holdout_dists),
-               "runtime": timer.time()}
+        yield {
+            "kind": "log",
+            "payload": {
+                "t": t,
+                "samples": samples,
+                "scores": scores,
+                "chosen scores": scores[i_popn],
+                "sample lengths": len_samples,
+                "chosen lengths": len_samples[i_popn],
+                "dists": dists,
+                "avg score": np.mean(scores),
+                "avg length": np.mean(len_samples),
+                "avg dist": np.mean(dists),
+            },
+        }
 
-        if t > 0 and isinstance(L, lindenmayer.LSys):
-            log.update(log_best_and_worst(5, L, samples, scores))
+        popn = samples[i_popn]
+        e_popn = e_samples[i_popn]
 
-            # exit early if 'best' samples are actually terrible
-            MIN_LENGTH = 10  # length of F;F~F
-            i_best = np.argsort(-scores)[:5]
-            if np.all(len_samples[i_best] == MIN_LENGTH):
-                break
 
-        wandb.log(log)
-
-def run_on_real_points() -> str:
+def run_on_real_points():
     lang = point.RealPoint()
     train_data = [
         lang.parse("(0, 0)"),
@@ -252,8 +246,11 @@ def run_on_real_points() -> str:
         "alpha": 1,
     }
     wandb.init(project="novelty", config=config)
-    evo_search(**config, save_to=f"../out/simple_ns/{wandb.run.id}")
-    return wandb.run.id
+    util.incrementally_save_jsonl(
+        (d["payload"] for d in evo_search(**config) if d["kind"] == "data"),
+        filename=f"../out/ns/z2-{wandb.run.id}",
+    )
+
 
 def run_on_nat_points(id: str):
     lang = point.NatPoint()
@@ -277,10 +274,15 @@ def run_on_nat_points(id: str):
         "alpha": 1,
     }
     wandb.init(project="novelty", config=config)
-    evo_search(**config, save_to=f"../out/simple_ns/{id}-z2-strict.out",)
+    util.incrementally_save_jsonl(
+        (d["payload"] for d in evo_search(**config) if d["kind"] == "data"),
+        filename=f"../out/simple_ns/nat2-{id}-{wandb.run.id}",
+    )
+
 
 def lsystem_sweep():
     run_on_lsystems('configs/simple-config.yaml')
+
 
 def run_on_lsystems(filename: str):
     with open(filename) as file:
@@ -294,14 +296,45 @@ def run_on_lsystems(filename: str):
         **config.render,
     )
     train_data = [lang.parse(x) for x in config.train_data]
-    holdout_data = [lang.parse(x) for x in config.holdout_data]
-    evo_search(**config.search,
-               L=lang,
-               init_popn=train_data,
-               holdout=holdout_data,
-               d=hausdorff,
-               simplify=config.simplify,
-               save_to=f"../out/ns/{wandb.run.id}")
+    # holdout_data = [lang.parse(x) for x in config.holdout_data]
+    with open(f"../out/ns/lsys-{wandb.run.id}", "w") as f, util.Timing(f"LSystem search") as timer:
+        for d in evo_search(
+                **config.search,
+                L=lang,
+                init_popn=train_data,
+                d=hausdorff,
+                simplify=config.simplify
+        ):
+            kind = d["kind"]
+            payload = d["payload"]
+
+            if kind == "data":
+                s = json.dumps(payload, indent=None)
+                print(s)
+                f.write(s + "\n")
+            elif kind == "log":
+                log = {
+                    "scores": wandb.Histogram(payload["scores"]),
+                    "chosen scores": wandb.Histogram(payload["chosen scores"]),
+                    "sample lengths": wandb.Histogram(payload["sample lengths"]),
+                    "chosen lengths": wandb.Histogram(payload["chosen lengths"]),
+                    "dists": wandb.Histogram(payload["dists"]),
+                    "avg score": payload["avg score"],
+                    "avg length": payload["avg length"],
+                    "avg dist": payload["avg dist"],
+                }
+                if payload["t"] > 0:
+                    log.update(log_best_and_worst(5, lang, payload["samples"], payload["scores"]))
+                wandb.log(log)
+
+                # exit early if best samples are actually terrible
+                MIN_LENGTH = 10  # length of F;F~F
+                i_best = np.argsort(-payload["scores"])[:5]
+                if np.all(payload["sample lengths"][i_best] == MIN_LENGTH):
+                    break
+            else:
+                raise ValueError(f"Unknown kind: {kind} with payload: {payload}")
+
 
 def viz_real_points_results(path: str):
     data = pd.read_csv(path)
@@ -313,12 +346,44 @@ def viz_real_points_results(path: str):
     sns.scatterplot(data, x="x", y="y", hue="step", markers="kind")
     plt.show()
 
+
+def run_on_arc():
+    wandb.init(project="arc-novelty")
+    featurizer = ResnetFeaturizer(sigma=0)
+    lang = arc.Blocks(featurizer=featurizer, gram=2)
+    seed = [
+        "(rect (point 1 2) (point 1 2) 1)",
+        "(rect (point 1 1) (point xmax ymax) 1)",
+        "(line (point 1 2) (point 3 4) 1)",
+        "(seq (line (point 1 2) (point 3 4) 1) "
+        "     (rect (point 1 2) (point 1 2) 1))",
+        "(apply hflip (line (point 1 2) (point 1 4) 1))",
+    ]
+    with open(f"../out/ns/arc", "w") as f, util.Timing(f"ARC-NS") as timer:
+        for d in evo_search(
+                L=lang,
+                init_popn=[lang.parse(s) for s in seed],
+                d="minkowski",
+                samples_per_program=1,
+                iters=10,
+                select="strict",
+                alpha=0.01,
+                max_popn_size=100,
+                samples_ratio=3,
+                keep_per_iter=10,
+        ):
+            kind = d["kind"]
+            payload = d["payload"]
+
+            print(payload)
+
+
 if __name__ == '__main__':
     # run_id = run_on_real_points()
     # viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
     # viz_real_points_results(f"../out/simple_ns/7hea21on.csv")
     # run_on_nat_points()
-    run_on_lsystems(filename="configs/static-config.yaml")
-    pass
+    # run_on_lsystems(filename="configs/static-config.yaml")
+    run_on_arc()
 
 # lsystem_sweep()
