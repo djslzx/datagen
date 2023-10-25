@@ -15,11 +15,19 @@ class Blocks(Language):
     Defines the ARC domain as a language for novelty search.
     """
     types = {
-        # bool
-        "nil": ["Bool"],
-        "not": ["Bool", "Bool"],
-        "lt": ["Int", "Int", "Bool"],
-        "and": ["Bool", "Bool", "Bool"],
+        # bitmaps
+        "line": ["Point", "Point", "Int", "Bmp"],
+        "rect": ["Point", "Point", "Int", "Bmp"],
+        "seq": ["Bmp", "Bmp", "Bmp"],
+        "apply": ["Transform", "Bmp", "Bmp"],
+        # transforms
+        "hflip": ["Transform"],
+        "vflip": ["Transform"],
+        "translate": ["Int", "Int", "Transform"],
+        "compose": ["Transform", "Transform", "Transform"],
+        "repeat": ["Transform", "Int", "Transform"],
+        # points
+        "point": ["Int", "Int", "Point"],
         # int
         "int": ["LiteralInt", "Int"],
         "xmax": ["Int"],
@@ -29,48 +37,41 @@ class Blocks(Language):
         "minus": ["Int", "Int", "Int"],
         "times": ["Int", "Int", "Int"],
         "if": ["Bool", "Int", "Int", "Int"],
-        # points
-        "point": ["Int", "Int", "Point"],
-        # color
-        "color": ["LiteralInt", "Color"],
-        # bitmaps
-        "line": ["Point", "Point", "Color", "Bmp"],
-        "rect": ["Point", "Point", "Color", "Bmp"],
-        # transforms
-        "seq": ["Bmp", "Bmp", "Bmp"],
-        "apply": ["Transform", "Bmp", "Bmp"],
-        "repeat": ["Transform", "Int", "Transform"],
-        "hflip": ["Transform"],
-        "vflip": ["Transform"],
-        "translate": ["Int", "Int", "Transform"],
-        "compose": ["Transform", "Transform", "Transform"],
+        # lit
+        "lit": ["Const", "LiteralInt"],
+        # bool
+        "nil": ["Bool"],
+        "not": ["Bool", "Bool"],
+        "and": ["Bool", "Bool", "Bool"],
+        "lt": ["Int", "Int", "Bool"],
     }
-    types.update({k: ["LiteralInt"] for k in range(10)})
-    metagrammar = r"""
-        bmp: "(" "seq" bmp bmp ")"            -> seq
-           | "(" "apply" transform bmp ")"    -> apply
-           | "(" "line" point point color ")" -> line
-           | "(" "rect" point point color ")" -> rect
+    types.update({k: ["Const"] for k in range(10)})
+
+    parser_grammar = r"""        
+        bmp: "(" "line" point point int ")" -> line
+           | "(" "rect" point point int ")" -> rect
+           | "(" "seq" bmp bmp ")"          -> seq
+           | "(" "apply" transform bmp ")"  -> apply
         transform: "hflip"                               -> hflip
                  | "vflip"                               -> vflip
                  | "(" "translate" int int ")"           -> translate
                  | "(" "compose" transform transform ")" -> compose
                  | "(" "repeat" transform int ")"        -> repeat
-        color: n                           -> color
+        point: "(" "point" int int ")"     -> point
         int: n                             -> int
            | "xmax"                        -> xmax
            | "ymax"                        -> ymax
            | "(" "z" n ")"                 -> z
-           | "(" "if" bool int int ")"     -> if
            | "(" "plus" int int ")"        -> plus
            | "(" "minus" int int ")"       -> minus
            | "(" "times" int int ")"       -> times
+           | "(" "if" bool int int ")"     -> if
+        n: NUMBER                          -> lit
         bool: "nil"                        -> nil
             | "(" "not" bool ")"           -> not
             | "(" "and" bool bool ")"      -> and
             | "(" "lt" int int ")"         -> lt
-        point: "(" "point" int int ")"     -> point
-        n: NUMBER                          -> lit
+
         
         %import common.WS
         %import common.NUMBER
@@ -81,7 +82,7 @@ class Blocks(Language):
         assert gram in {1, 2}
         model = Grammar.from_components(Blocks.types, gram=gram)
         super().__init__(
-            parser_grammar=Blocks.metagrammar,
+            parser_grammar=Blocks.parser_grammar,
             parser_start="bmp",
             root_type="Bmp",
             model=model,
@@ -104,7 +105,7 @@ class Blocks(Language):
             raise ValueError(f"Unexpected leaf: {t}")
         elif t.value == "lit":
             return int(t.children[0].value)
-        elif t.value == "int" or t.value == "color":
+        elif t.value == "int":
             c = t.children[0]
             return grammar.Num(self._to_obj(c, env))
         elif t.value == "nil":
@@ -168,7 +169,7 @@ class Blocks(Language):
         env = ChainMap(self.env, env)
         try:
             o = self._to_obj(t, env)
-        except ValueError as e:
+        except ValueError:
             raise ValueError(f"Failed to evaluate expression {t.to_sexp()}")
 
         evaluator = grammar.Eval(env=env, height=16, width=16)
@@ -181,8 +182,8 @@ class Blocks(Language):
     @property
     def str_semantics(self) -> Dict:
         semantics = {
-            "int": lambda n: str(n),
-            "color": lambda n: str(n),
+            "int": lambda n: f"(int {n})",
+            "lit": lambda n: f"<{n}>",
             "nil": lambda: "nil",
             "not": lambda x: f"(not {x})",
             "lt": lambda x, y: f"(lt {x} {y})",
@@ -206,7 +207,6 @@ class Blocks(Language):
             "translate": lambda x, y: f"(translate {x} {y})",
             "compose": lambda t1, t2: f"(compose {t1} {t2})",
         }
-        semantics.update({k: lambda: str(k) for k in range(10)})
         return semantics
 
 
@@ -226,14 +226,17 @@ if __name__ == "__main__":
         t = b.parse(x)
         print(t.to_sexp())
         print(b.to_str(t))
-        img = b.eval(t, )
-        print(img)
+        print()
+        # img = b.eval(t, )
+        # plt.imshow(img)
+        # plt.show()
 
     b.fit(corpus=[b.parse(s) for s in examples], alpha=0.01)
     for i in range(10):
         t = b.sample()
         print(t.to_sexp())
         print(b.to_str(t))
-        img = b.eval(t)
-        plt.imshow(img)
-        plt.show()
+        print()
+    #     img = b.eval(t)
+    #     plt.imshow(img)
+    #     plt.show()
