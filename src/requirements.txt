@@ -45,3 +45,4 @@ tabulate
 trl  # transformer rl
 # codellama
 ribs[visualize]  # pyribs - quality diversity
+protobuf<=3.20.1  # fix wandb error
