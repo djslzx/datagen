@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional
 from collections import ChainMap
 import numpy as np
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
 import einops as ein
 
 from lang.tree import Language, Tree, Grammar
@@ -43,7 +43,6 @@ class Blocks(Language):
         "and": ["Bool", "Bool", "Bool"],
         "lt": ["Int", "Int", "Bool"],
     }
-    types.update({k: ["LiteralInt"] for k in range(10)})
 
     parser_grammar = r"""        
         bmp: "(" "line" point point int ")" -> line
@@ -75,8 +74,10 @@ class Blocks(Language):
         %ignore WS
     """
 
-    def __init__(self, gram: int, featurizer: Featurizer, env: Optional[Dict] = None, height=16, width=16):
+    def __init__(self, gram: int, featurizer: Featurizer, env: Optional[Dict] = None, height=16, width=16, n_ints=10):
         assert gram in {1, 2}
+        Blocks.types.update({k: ["LiteralInt"] for k in range(n_ints)})  # add literals to grammar
+
         model = Grammar.from_components(Blocks.types, gram=gram)
         super().__init__(
             parser_grammar=Blocks.parser_grammar,
@@ -88,6 +89,7 @@ class Blocks(Language):
         self.env = {} if env is None else env
         self.height = height
         self.width = width
+        self.n_ints = n_ints
 
     def _to_obj(self, t: Tree, env: Dict[str, Any] = None):
         if t.is_leaf():
@@ -169,9 +171,18 @@ class Blocks(Language):
 
         evaluator = grammar.Eval(env=env, height=self.height, width=self.width)
         try:
-            return o.accept(evaluator).numpy().astype(np.uint8)
+            bmp = o.accept(evaluator).numpy().astype(np.uint8)
+            return self._bmp_to_img(bmp)
         except AssertionError:
-            return np.zeros((self.height, self.width), dtype=np.uint8)
+            return np.zeros((self.height, self.width, 3), dtype=np.uint8)
+
+    def _bmp_to_img(self, bmp: np.ndarray) -> np.ndarray:
+        assert bmp.ndim == 2, f"Expected 2D bitmap, got {bmp.ndim}D"
+
+        # normalize bitmap to 0-1 range
+        normed_bmp = bmp / self.n_ints
+
+        return ein.repeat(normed_bmp, "h w -> h w c", c=3)
 
     @property
     def str_semantics(self) -> Dict:
@@ -228,7 +239,7 @@ if __name__ == "__main__":
         plt.show()
 
     b.fit(corpus=[b.parse(s) for s in examples], alpha=0.001)
-    for i in range(100):
+    for i in range(20):
         t = b.sample()
         print(t.to_sexp())
         print(b.to_str(t))
