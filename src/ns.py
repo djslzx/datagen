@@ -33,7 +33,7 @@ def extract_features(L: Language, S: Collection[Tree], n_samples=1, batch_size=4
         for x in S:
             for _ in range(n_samples):
                 print(x)
-                yield L.eval(x, env={'z': list(range(100))})
+                yield L.eval(x)
 
     ys = []
     n_batches = ceil(len(S) * n_samples / batch_size)
@@ -352,7 +352,7 @@ def viz_real_points_results(path: str):
 def run_on_arc():
     wandb.init(project="arc-novelty")
     feat = ResnetFeaturizer(sigma=1)
-    lang = arc.Blocks(featurizer=feat, gram=2)
+    lang = arc.Blocks(featurizer=feat, gram=2, env={'z': list(range(100))})
     seed = [
         "(rect (point 1 2) (point 1 2) 1)",
         "(rect (point 1 1) (point xmax ymax) 1)",
@@ -377,7 +377,26 @@ def run_on_arc():
             kind = d["kind"]
             payload = d["payload"]
 
-            print(payload)
+            if kind == "data":
+                s = json.dumps(payload, indent=None)
+                print(s)
+                f.write(s + "\n")
+            elif kind == "log":
+                log = {
+                    "scores": wandb.Histogram(payload["scores"]),
+                    "chosen scores": wandb.Histogram(payload["chosen scores"]),
+                    "sample lengths": wandb.Histogram(payload["sample lengths"]),
+                    "chosen lengths": wandb.Histogram(payload["chosen lengths"]),
+                    "dists": wandb.Histogram(payload["dists"]),
+                    "avg score": payload["avg score"],
+                    "avg length": payload["avg length"],
+                    "avg dist": payload["avg dist"],
+                }
+                if payload["t"] > 0:
+                    log.update(log_best_and_worst(5, lang, payload["samples"], payload["scores"]))
+                wandb.log(log)
+            else:
+                raise ValueError(f"Unknown kind: {kind} with payload: {payload}")
 
 
 if __name__ == '__main__':
