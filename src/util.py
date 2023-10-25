@@ -4,6 +4,7 @@ from math import floor, sqrt, ceil
 from pprint import pp
 import re
 import numpy as np
+import pandas as pd
 import torch as T
 import itertools as it
 from typing import *
@@ -18,6 +19,17 @@ from adjustText import adjust_text
 from datetime import datetime
 
 
+def incrementally_save_jsonl(it, filename: str) -> pd.DataFrame:
+    with open(filename + ".jsonl", "w") as f:
+        for x in it:
+            line = json.dumps(x, indent=None)
+            print(line)
+            f.write(line + "\n")
+    df = pd.read_json(filename + ".jsonl", lines=True)
+    df.to_csv(filename + ".csv")
+    return df
+
+
 def pad_list(xs: List, n: int, nil: Any) -> List:
     """
     Make xs into a list of length n.  Remove entries if len(xs) > n, add nils if len(xs) < n.
@@ -26,6 +38,28 @@ def pad_list(xs: List, n: int, nil: Any) -> List:
         return xs + [nil] * (n - len(xs))
     else:
         return xs[:n]
+
+
+def split_tests(text: str):
+    """Split a code block full of test functions into a list of test functions"""
+    text = strip_markdown(text)
+
+    # split by decls
+    blocks = ["def test_" + x
+              for x in text.split("def test_")[1:]
+              if x.strip()]
+    out = []
+    # only keep indented lines; stop at first non-indented line
+    for block in blocks:
+        lines = block.split("\n")
+        block_text = lines[0] + "\n"
+        for line in lines[1:]:
+            if line.startswith("    "):
+                block_text += line + "\n"
+            else:
+                break
+        out.append(block_text)
+    return out
 
 
 def split_py_markdown(text: str) -> List[str]:
@@ -58,6 +92,13 @@ def test_strip_markdown():
          """,
          "         x + 1"),
         ("""
+         
+         ```python
+         x + 1
+         ```
+         """,
+         "         x + 1"),
+        ("""
          ```
          x + 2
          ```
@@ -65,6 +106,7 @@ def test_strip_markdown():
          
          """,
          "         x + 2"),
+        ("x", "x"),
     ]
     for x, y in cases:
         out = strip_markdown(x)

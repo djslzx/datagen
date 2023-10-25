@@ -25,6 +25,10 @@ def _unsafe_execute(program: str, timeout: float, result: List):
             result.append(f"failed: dangerous code containing `{x}`")
             return
 
+    # remove print statements
+    program = "\n".join([line for line in program.split("\n")
+                         if not line.strip().startswith("print")])
+
     with create_tempdir():
         # These system calls are needed when cleaning up tempdir.
         import os

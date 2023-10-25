@@ -2,8 +2,11 @@
 Collect prompts here
 """
 import os
-from typing import List, Generator, Union, Tuple, Optional, Iterator
+import sys
+from pprint import pp
+from typing import List, Generator, Union, Tuple, Optional, Iterator, Iterable
 import random
+import yaml
 import numpy as np
 import pandas as pd
 import langchain
@@ -14,7 +17,7 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
 )
-from langchain.callbacks import get_openai_callback  # track token usage
+from langchain.callbacks import get_openai_callback
 from langchain.cache import SQLiteCache
 
 import featurizers as feat
@@ -26,81 +29,150 @@ langchain.llm_cache = SQLiteCache(database_path=".langchain.db")
 # fetch api key from env
 API_KEY = os.getenv("OPENAI_API_KEY")
 
+# fetch prompts from prompt file
+PROMPTS = yaml.load(open("../datasets/prompts/prompts.yaml", "r"), Loader=yaml.FullLoader)
+print(f"Loaded prompts: {list(PROMPTS.keys())}")
 
-def run_chain(chat: ChatOpenAI, sys_prompt: str, user_prompt: str, **kwargs) -> str:
+
+def run_prompt(chat: ChatOpenAI, system_prompt: str, user_prompt: str, **kwargs) -> str:
     prompt = ChatPromptTemplate.from_messages([
-        SystemMessagePromptTemplate.from_template(sys_prompt),
+        SystemMessagePromptTemplate.from_template(system_prompt),
         HumanMessagePromptTemplate.from_template(user_prompt),
     ])
     chain = LLMChain(llm=chat, prompt=prompt)
     return chain.run(**kwargs)
 
 
-def cover_story_problem(chat: ChatOpenAI, stories: List[str], concepts: List[str]) -> str:
-    s_stories = ", ".join([f"'{story}'" for story in random.choices(population=stories, k=3)])
-    s_concepts = ", ".join([f"'{concept}'" for concept in random.choices(population=concepts, k=3)])
-    prompt = """
-You are an AI teaching assistant for a computer science department, where your job is to construct programming problems to teach students at varying levels of competency.  A programming problem consists of a "cover story", a "key concept", and a "specification".  The cover story motivates the problem; the key concept is the idea from computer science that the problem seeks to teach or test; and the specification gives guidelines about how solutions to the problem should be structured.  Propose a novel problem consisting of a cover story, a concept, and a specification.  
+def run_saved_prompt(chat: ChatOpenAI, key: str, **kwargs) -> str:
+    prompt = PROMPTS[key]
+    inputs = set(kwargs.keys())
+    expected_inputs = set(prompt["inputs"])
+    assert inputs == expected_inputs, \
+        f"Mismatched inputs: {inputs} vs {expected_inputs}"
 
-You MUST the following format; it is critical that the headings are indicated with three hashes (###), as your responses will be automatically parsed.
+    system_prompt = prompt["system_prompt"]
+    user_prompt = prompt["user_prompt"]
 
-### Cover story
-e.g. {stories}
-
-### Concept
-e.g. {concepts}
-
-### Problem description
-Specify the problem.  The problem should be motivated by the cover story.
-
-### Specification
-If the problem can be solved with a function, state the function's signature in Python, with type annotations.
-
-If the problem uses classes and methods, state the class name and the methods that will be tested in Python, with type annotations.
-
-### Example
-An input-output example.
-"""
-    return run_chain(chat, sys_prompt=prompt, user_prompt="", stories=s_stories, concepts=s_concepts)
+    return run_prompt(
+        chat,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        **kwargs,
+    )
 
 
-def evolve_with_hole(chat: ChatOpenAI, problem: str, hole_fill: str) -> str:
-    prompt = """
-You are an AI teaching assistant.  Produce a new, more {hole} programming problem, using the following problem as inspiration.  Make sure to keep the format the same!
-    """
-    return run_chain(chat, sys_prompt=prompt, user_prompt="{problem}", hole=hole_fill, problem=problem)
+def make_problem(chat: ChatOpenAI) -> str:
+    return run_saved_prompt(
+        chat,
+        key="new coverless",
+    )
+
+
+def restyle_problem(chat: ChatOpenAI, problem: str) -> str:
+    return run_saved_prompt(
+        chat,
+        key="restyle as coverless",
+        problem=problem,
+    )
+
+
+def n_solns(chat: ChatOpenAI, problem: str, n: int) -> str:
+    return run_saved_prompt(
+        chat,
+        key="n solutions",
+        problem=problem,
+        n=n,
+    )
+
+
+def n_tests(chat: ChatOpenAI, problem: str, n: int) -> str:
+    return run_saved_prompt(
+        chat,
+        key="n tests",
+        problem=problem,
+        n=n,
+    )
+
+
+def check_if_python(chat: ChatOpenAI, problem: str) -> str:
+    return run_saved_prompt(
+        chat,
+        key="check if python",
+        problem=problem,
+    )
+
+
+def gen_solns_and_tests(chat: ChatOpenAI, problems: Iterable[Tuple[int, str]]) -> Generator[
+    Tuple[int, str, str], None, None]:
+    for id, problem in problems:
+        yield id, "original problem", problem
+
+        # # skip SQL problems, web scraping problems, etc.
+        # pythonable = check_if_python(chat, problem=problem)
+        # yield id, "pythonable", pythonable
+        # if pythonable == "False":
+        #     continue
+
+        restyled = restyle_problem(chat, problem=problem)
+        yield id, "restyled problem", restyled
+
+        restyled_solns = n_solns(chat, problem=restyled, n=3)
+        yield id, "solutions", restyled_solns
+
+        for i, soln in enumerate(util.split_py_markdown(restyled_solns)):
+            yield id, f"solution {i}", soln
+
+        restyled_tests = n_tests(chat, problem=restyled, n=3)
+        yield id, "tests", restyled_tests
+
+        for i, test in enumerate(util.split_tests(restyled_tests)):
+            yield id, f"test {i}", test
+
+
+def gen_solns_and_tests_dict(chat: ChatOpenAI, problems: List[dict]) -> Generator[dict, None, None]:
+    problems = [(d["id"], d["text"]) for d in problems]
+    with get_openai_callback() as cb:
+        for id, key, val in gen_solns_and_tests(chat, problems):
+            yield {
+                "id": id,
+                "key": key,
+                "value": val,
+                "cost": cb.total_cost,
+            }
 
 
 if __name__ == "__main__":
-    CHAT = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613")
-    STORIES = [
-        "You are a bank manager...",
-        "You are a bank robber...",
-        "Fibonacci numbers are...",
-        "A perfect number is...",
-        "You wake up in a strange room...",
-        "It is the year 1963...",
+    PROBLEMS = [
+        """
+        Design a class called "Triangle" that represents a triangle.  The "Triangle" class should also have the following methods:
+        - "__init__" - Initializes a new instance of the "Triangle" class with the given lengths of all sides.
+        - "get_perimeter" - Returns the perimeter of the triangle, which is calculated by adding all three side lengths together.
+        - "get_area" - Returns the area of the triangle, which is calculated using Heron's formula: 
+        area = sqrt(s * (s - a) * (s - b) * (s - c)), where s is the semiperimeter of the triangle and a, b, and c are the lengths of the sides.
+        """,
+        """
+        Write a function `multiplyArrays(arr1, arr2)` that takes in two arrays `arr1` and `arr2` of equal length, and returns an array `result` where each element `result[i]` is the product of `arr1[i]` and `arr2[i]`. 
+        For example, given `arr1 = [2, 3, 4]` and `arr2 = [5, 6, 7]`, the function should return `[10, 18, 28]` since `10 = 2 * 5`, `18 = 3 * 6`, and `28 = 4 * 7`. 
+        """,
+        """
+        Given a binary tree, validate if it is a binary search tree (BST).
+        """,
+        """
+        Write a SQL query to find all the users in a database with age greater than 25.
+        """,
+        """
+        Write a function in Java that takes an integer N as input and generates the modified Fibonacci sequence up to N numbers.
+        """
     ]
-    CONCEPTS = [
-        "Recursion",
-        "Trie data structure",
-        "Stack programs",
-        "Lisp interpreter",
-        "Parallel computation",
-        "Graph theory",
-        "Knot theory",
-        "Greedy algorithm",
-    ]
-    FUN_ADJS = ['bubbly', 'zesty', 'giddy', 'wacky', 'cheeky', 'spunky',
-                'frolicsome', 'sprightly', 'pizzazzy', 'snazzy']
+    CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
+    for problem in PROBLEMS:
+        restyled = restyle_problem(CHAT, problem)
+        print(
+            problem,
+            restyled,
+            check_if_python(CHAT, problem=problem),
+            check_if_python(CHAT, problem=restyled)
+        )
 
-    problems = []
-    for i in range(1):
-        problem = cover_story_problem(CHAT, stories=STORIES, concepts=CONCEPTS)
-        print(problem)
-        problems.append(problem)
-
-    print("fun!")
-    for adj in FUN_ADJS:
-        print(f"##A {adj} extension:")
-        print(evolve_with_hole(CHAT, problems[0], adj))
+    for x in gen_solns_and_tests(CHAT, enumerate(PROBLEMS)):
+        print(x)

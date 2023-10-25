@@ -1,3 +1,4 @@
+import re
 import json
 from pprint import pp
 from tqdm import tqdm
@@ -15,6 +16,7 @@ from langchain.chat_models import ChatOpenAI
 import featurizers as feat
 import util
 import wizard
+import prompts
 
 
 def load_json_as_df(filename: str) -> pd.DataFrame:
@@ -273,42 +275,6 @@ def add_extras(df: pd.DataFrame, extras: List[Tuple[str, Callable]], saveto: str
     return df
 
 
-def add_predicate_cols(chat: ChatOpenAI, df: pd.DataFrame, saveto: str) -> pd.DataFrame:
-    return add_extras(
-        df=df,
-        extras=[
-            ("solvable?", lambda row: wizard.check_problem_solvable(chat, row['text'])),
-            ("novel?", lambda row: wizard.check_problem_novel(chat, row['text'], row['parent text'])),
-        ],
-        saveto=saveto,
-    )
-
-
-def add_solution_cols(chat: ChatOpenAI, df: pd.DataFrame, saveto: str, n=1):
-    # produce multiple solutions with a single prompt, then parse out and turn into separate columns
-    df = add_extras(
-        df=df,
-        extras=[("solutions", lambda row: wizard.propose_multiple_solutions(chat, n=n, problem=row["text"]))],
-        saveto=saveto
-    )
-    # parse out solutions into separate columns
-    df[[f"soln-{i}" for i in range(n)]] = [
-        util.pad_list(util.split_py_markdown(val), n, "")
-        for val in df["solutions"]
-    ]
-    return df
-
-
-def add_entry_point_col(chat: ChatOpenAI, df: pd.DataFrame, saveto: str):
-    assert "solution" in df.columns, f"Missing 'solution' column in columns={df.columns}"
-    assert "text" in df.columns, f"Missing 'text' column in columns={df.columns}"
-    return add_extras(
-        df=df,
-        extras=[("entry_point", lambda row: wizard.propose_entry_point(chat, row["text"], row["solution"]))],
-        saveto=saveto,
-    )
-
-
 def analyze_datasets(filenames: Dict[str, str]):
     data = {
         shortname: {
@@ -452,60 +418,121 @@ def analyze_extras(df: pd.DataFrame):
 
 
 def read_problems(filenames: Dict[str, str]) -> pd.DataFrame:
-    full_df: Optional[pd.DataFrame] = None
+    rows = []
     for shortname, filename in filenames.items():
         df = pd.read_json(f"{filename}.jsonl", lines=True)
-        df = df[["text"]]
         df["source file"] = shortname
-        full_df = df if full_df is None else pd.concat([full_df, df], ignore_index=True)
-    return full_df
+
+        # add id column if it doesn't exist
+        if "id" not in df.columns:
+            df["id"] = range(1, len(df) + 1)
+
+        df = df[["id", "source file", "text"]]
+        rows.extend(df.to_records(index=False))
+    return pd.DataFrame.from_records(rows, columns=["id", "source file", "text"])
 
 
-def make_extras(df: pd.DataFrame, n_samples: int, n_solns: int, n_tests_per_soln: int) -> pd.DataFrame:
-    lo_temp_chat = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
-    hi_temp_chat = ChatOpenAI(temperature=0.8, model_name="gpt-3.5-turbo-16k-0613")
-    df = sample_problems(df, n=n_samples)
-    df = add_solution_cols(hi_temp_chat, df, n=n_solns, saveto=f"../datasets/sample-solutions-{timestamp}")
-    df = add_extras(
-        df,
-        saveto=f"../datasets/sample-tests-{timestamp}",
-        extras=[
-                   ("tests(text)",
-                    lambda row: wizard.propose_tests_from_text(lo_temp_chat, row["text"], n_tests_per_soln)),
-               ] + [
-                   (f"tests(text, soln_{i})",
-                    lambda row: wizard.propose_tests_from_text_and_solution(
-                        lo_temp_chat, row["text"], row[f"soln-{i}"], n_tests_per_soln
-                    ))
-                   for i in range(n_solns)
-               ],
-    )
-    return df
+# Analyze results from running tests on solutions
+def analyze_test_results(df: pd.DataFrame):
+    print("columns:", df.columns)
+    print("source files:", df["source file"].unique())
+
+    # source/id analysis
+    sdf = df.groupby("source file").size().to_frame(name="n triples")
+    sdf["n unique ids"] = df.groupby("source file")["id"].nunique()
+    sdf["avg triple size"] = sdf["n triples"] / sdf["n unique ids"]
+    print(sdf.to_markdown())
+
+    patterns = {
+        r"test_.+ did not pass": "test did not pass",
+        r"name '.+' is not defined": "name is not defined",
+        r"indentation error (.+)": "indentation error",
+        r"invalid syntax (.+)": "invalid syntax",
+        r"'return' outside function (.+)": "return outside function",
+        r"'.+' object has no attribute '.+'": "object has no attribute",
+        r"No module named": "module not found",
+        r"\[Errno 2\] No such file or directory: '.+'": "file not found",
+        r"module not found '.+'": "module not found",
+        r"expected an indented block (.+)": "expected an indented block",
+    }
+
+    # group together patterns using regex match
+    for pattern, label in patterns.items():
+        df["result"] = df["result"].str.replace(pattern, label, regex=True)
+
+    print(df["result"].value_counts().to_markdown())
+
+    # wrap result text to 30 chars
+    df["result"] = df["result"].apply(lambda x: '\n'.join(textwrap.wrap(x, width=30)))
+
+    # group together results that account for less than 1% as "other"
+    counts = df["result"].value_counts()
+    df["result"] = df["result"].apply(lambda x: x if counts[x] / len(df) > 0.01 else "other")
+
+    # make a pie chart of result type
+    plt.pie(df["result"].value_counts(), labels=df["result"].value_counts().index)
+    plt.show()
+
+    # make a bar chart of result type by source file
+    sns.countplot(data=df, x="source file", hue="result")
+    plt.gcf().set_size_inches(12, 6)
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.tight_layout()
+    plt.show()
+
+    # print a nice table of counts with totals by source file
+    print("Results by source file:")
+    print(df.groupby(["source file"]).size().to_markdown())
+
+    # evaluate solutions: what is the average number of tests passed per solution?
+    tdf = df.groupby(["source file", "id"], as_index=False).agg({"passed": ["sum", "count"]})
+    tdf["% passed"] = tdf["passed"]["sum"] / tdf["passed"]["count"]
+    print(tdf)
+
+    # plot distribution of % passed
+    sns.displot(data=tdf, x="% passed", hue="source file", kind="kde")
+    plt.gcf().set_size_inches(12, 6)
+    plt.show()
+
+    # evaluate tests: what is the average number of solutions that pass each test?
+    pass
 
 
 if __name__ == "__main__":
-    # pd.set_option("display.max_columns", None)
-    # pd.set_option("display.min_rows", 50)
-    # pd.set_option('display.max_colwidth', 40)
+    pd.set_option("display.max_rows", None)
+    pd.set_option("display.min_rows", 50)
+    pd.set_option("display.max_columns", None)
+    pd.set_option('display.max_colwidth', 40)
     timestamp = util.timestamp()
 
+    CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     filenames = {
-        "NS": "../datasets/novel-instruct-200x80-2023-09-01T15:50:12.708593",
-        "NS-euler": "../datasets/novel-instruct-euler-2023-09-07T13:34:54.519254",
-        "Wiz-wide": "../datasets/evol-instruct-20kx3-2023-08-29T18:39:47.555169",
-        "Wiz-deep": "../datasets/evol-instruct-1000x100-2023-08-25T12:36:17.752098",
-        "CA 1K": "../datasets/code_alpaca_1k",
-        # "CA 20K": "../datasets/code_alpaca_20k",
+        "NS": "../datasets/wiz/novel-instruct-1k",
+        "NS-euler": "../datasets/wiz/novel-instruct-euler-1k",
+        "Wiz-wide": "../datasets/wiz/wiz-wide-1k",
+        "Wiz-deep": "../datasets/wiz/wiz-deep-1k",
+        "CA-1K": "../datasets/wiz/code_alpaca_1k",
     }
     df = read_problems(filenames)
     df.to_csv(f"../datasets/all-runs-{timestamp}.csv")
-    df = make_extras(df=df,
-                     n_samples=1,
-                     n_solns=3,
-                     n_tests_per_soln=5)
-    # df = pd.read_json("../datasets/sampling-tests-2023-10-02T22:52:58.129383.jsonl", lines=True)
-    # df = pd.read_json("../datasets/sampling-tests-2023-10-03T00:51:02.288607.jsonl", lines=True)
-    # analyze_extras(df)
+
+    # choose 1 problem for each source file
+    df = df.groupby("source file").sample(n=1)
+    print(df)
+
+    # generate solutions and tests for sample
+    df["id"] = df.apply(
+        lambda row: f"{row['source file']}:{row['id']}",
+        axis=1
+    )
+    problems = df[["id", "text"]].to_dict(orient="records")
+    df = util.incrementally_save_jsonl(
+        prompts.gen_solns_and_tests_dict(CHAT, problems),
+        filename=f"../datasets/prompts/prompts-{timestamp}"
+    )
+
+    # df = pd.read_json("../datasets/evaluated-2023-10-13T01:25:05.868620.jsonl", lines=True)
+    # analyze_test_results(df)
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
