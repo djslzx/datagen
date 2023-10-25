@@ -367,12 +367,17 @@ def run_on_arc():
                 init_popn=[lang.parse(s) for s in seed],
                 d="minkowski",
                 samples_per_program=1,
-                iters=10,
+                iters=100,
                 select="strict",
                 alpha=0.01,
-                max_popn_size=100,
-                samples_ratio=3,
+                max_popn_size=200,
+                samples_ratio=10,
                 keep_per_iter=10,
+                length_cap=100,
+                length_penalty_type="additive",
+                length_penalty_additive_coeff=0.1,
+                ablate_mutator=False,
+                archive_early=False,
         ):
             kind = d["kind"]
             payload = d["payload"]
