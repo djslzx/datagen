@@ -200,8 +200,8 @@ def evo_search(L: Language,
         for i, (x, dist, length, score) in enumerate(zip(samples, dists, len_samples, scores)):
             yield {
                 "kind": "data",
-                "payload": {"t": t, "program": L.to_str(x), "kind": "samples", "length": length,
-                            "dist": dist, "score": score, "chosen?": i in i_popn},
+                "payload": {"t": t, "program": L.to_str(x), "kind": "samples", "length": int(length),
+                            "dist": float(dist), "score": float(score), "chosen?": i in i_popn},
             }
 
         yield {
@@ -297,7 +297,7 @@ def run_on_lsystems(filename: str):
     )
     train_data = [lang.parse(x) for x in config.train_data]
     # holdout_data = [lang.parse(x) for x in config.holdout_data]
-    with open(f"../out/ns/lsys-{wandb.run.id}", "w") as f, util.Timing(f"LSystem search") as timer:
+    with open(f"../out/ns/lsys-{wandb.run.id}", "w") as f, util.Timing(f"LSys-NS") as timer:
         for d in evo_search(
                 **config.search,
                 L=lang,
@@ -383,7 +383,7 @@ if __name__ == '__main__':
     # viz_real_points_results(f"../out/simple_ns/{run_id}.csv")
     # viz_real_points_results(f"../out/simple_ns/7hea21on.csv")
     # run_on_nat_points()
-    # run_on_lsystems(filename="configs/static-config.yaml")
+    # run_on_lsystems(filename="configs/tiny-lsys-config.yaml")
     run_on_arc()
 
 # lsystem_sweep()
