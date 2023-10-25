@@ -514,11 +514,11 @@ if __name__ == "__main__":
         "CA-1K": "../datasets/wiz/code_alpaca_1k",
     }
     df = read_problems(filenames)
-    df.to_csv(f"../datasets/all-runs-{timestamp}.csv")
+    df.to_csv(f"../datasets/master-1k-{timestamp}.csv")
 
-    # choose 1 problem for each source file
-    df = df.groupby("source file").sample(n=1)
-    print(df)
+    # choose 1k problems for each source file
+    df = df.groupby("source file").sample(n=1000)
+    # print(df)
 
     # generate solutions and tests for sample
     df["id"] = df.apply(
@@ -528,7 +528,7 @@ if __name__ == "__main__":
     problems = df[["id", "text"]].to_dict(orient="records")
     df = util.incrementally_save_jsonl(
         prompts.gen_solns_and_tests_dict(CHAT, problems),
-        filename=f"../datasets/prompts/prompts-{timestamp}"
+        filename=f"../datasets/wiz/solved-1k-{timestamp}"
     )
 
     # df = pd.read_json("../datasets/evaluated-2023-10-13T01:25:05.868620.jsonl", lines=True)
