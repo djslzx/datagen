@@ -187,8 +187,7 @@ class Blocks(Language):
     @property
     def str_semantics(self) -> Dict:
         semantics = {
-            "int": lambda n: f"(int {n})",
-            "lit": lambda n: f"<{n}>",
+            "int": lambda n: f"{n}",
             "nil": lambda: "nil",
             "not": lambda x: f"(not {x})",
             "lt": lambda x, y: f"(lt {x} {y})",
