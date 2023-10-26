@@ -43,7 +43,6 @@ class Blocks(Language):
         "and": ["Bool", "Bool", "Bool"],
         "lt": ["Int", "Int", "Bool"],
     }
-
     parser_grammar = r"""        
         bmp: "(" "line" point point int ")" -> line
            | "(" "rect" point point int ")" -> rect
@@ -74,13 +73,15 @@ class Blocks(Language):
         %ignore WS
     """
 
-    def __init__(self, gram: int, featurizer: Featurizer, env: Optional[Dict] = None, height=16, width=16, n_ints=10):
+    def __init__(self, gram: int, featurizer: Featurizer, env: Optional[Dict] = None, height=16, width=16, max_int=10,
+                 types=None, grammar=None):
         assert gram in {1, 2}
-        Blocks.types.update({k: ["LiteralInt"] for k in range(n_ints)})  # add literals to grammar
-
-        model = Grammar.from_components(Blocks.types, gram=gram)
+        types = Blocks.types if types is None else types
+        types.update({k: ["LiteralInt"] for k in range(max_int + 1)})  # add literals to grammar
+        grammar = Blocks.parser_grammar if grammar is None else grammar
+        model = Grammar.from_components(types, gram=gram)
         super().__init__(
-            parser_grammar=Blocks.parser_grammar,
+            parser_grammar=grammar,
             parser_start="bmp",
             root_type="Bmp",
             model=model,
@@ -89,7 +90,7 @@ class Blocks(Language):
         self.env = {} if env is None else env
         self.height = height
         self.width = width
-        self.n_ints = n_ints
+        self.max_int = max_int
 
     def _to_obj(self, t: Tree, env: Dict[str, Any] = None):
         if t.is_leaf():
@@ -180,7 +181,7 @@ class Blocks(Language):
         assert bmp.ndim == 2, f"Expected 2D bitmap, got {bmp.ndim}D"
 
         # normalize bitmap to 0-1 range
-        normed_bmp = bmp / self.n_ints
+        normed_bmp = bmp / self.max_int
 
         return ein.repeat(normed_bmp, "h w -> h w c", c=3)
 
@@ -214,8 +215,67 @@ class Blocks(Language):
         return semantics
 
 
+class SimpleBlocks(Blocks):
+    """
+    Blocks with only basic operations
+    """
+    types = {
+        "line": ["Point", "Point", "Bmp"],
+        "rect": ["Point", "Point", "Bmp"],
+        "seq": ["Bmp", "Bmp", "Bmp"],
+        "point": ["Int", "Int", "Point"],
+        "int": ["LiteralInt", "Int"],
+        "xmax": ["Int"],
+        "ymax": ["Int"],
+        "plus": ["Int", "Int", "Int"],
+    }
+    parser_grammar = r"""
+        bmp: "(" "line" point point ")" -> line
+           | "(" "rect" point point ")" -> rect
+           | "(" "seq" bmp bmp ")"      -> seq
+        point: "(" "point" int int ")"  -> point
+        int: _n                         -> int
+           | "xmax"                     -> xmax
+           | "ymax"                     -> ymax
+           | "(" "plus" int int ")"     -> plus
+        _n: NUMBER
+        
+        %import common.WS
+        %import common.NUMBER
+        %ignore WS
+    """
+
+    def __init__(self, gram: int, featurizer: Featurizer, height=16, width=16, max_int=16):
+        super().__init__(gram=gram, featurizer=featurizer, height=height, width=width, max_int=max_int,
+                         types=SimpleBlocks.types, grammar=SimpleBlocks.parser_grammar, env={"z": []})
+
+    def _to_obj(self, t: Tree, env: Dict[str, Any] = None):
+        if t.value == "line":
+            p1, p2 = t.children
+            x1, y1 = self._to_obj(p1)
+            x2, y2 = self._to_obj(p2)
+            return grammar.CornerLine(x1, y1, x2, y2, grammar.Num(self.max_int))
+        elif t.value == "rect":
+            p1, p2 = t.children
+            x1, y1 = self._to_obj(p1)
+            x2, y2 = self._to_obj(p2)
+            return grammar.CornerRect(x1, y1, x2, y2, grammar.Num(self.max_int))
+        else:
+            return super()._to_obj(t, env={})
+
+    @property
+    def str_semantics(self) -> Dict:
+        semantics = super().str_semantics
+        semantics.update({
+            "line": lambda p1, p2: f"(line {p1} {p2})",
+            "rect": lambda p1, p2: f"(rect {p1} {p2})",
+        })
+        return semantics
+
+
 if __name__ == "__main__":
     b = Blocks(featurizer=ResnetFeaturizer(), gram=2, env={"z": list(range(10))})
+    sb = SimpleBlocks(featurizer=ResnetFeaturizer(), gram=2)
     examples = [
         # "(rect (point 1 2) (point 1 2) 1)",
         # "(rect (point 1 1) (point xmax ymax) 1)",
@@ -224,26 +284,28 @@ if __name__ == "__main__":
         # "(seq (line (point 1 2) (point 3 4) 1) "
         # "     (rect (point 1 2) (point 1 2) 1))",
         # "(apply hflip (line (point 1 2) (point 1 4) 1))",
-        "(rect (point 1 1) (point (z 1) (z 2)) 1)",
-        "(rect (point 0 0) (point 4 4) 1)",
+        # "(rect (point 1 1) (point (z 1) (z 2)) 1)",
+        "(rect (point 0 0) (point 4 4))",
+        "(line (point 0 0) (point 4 4))",
     ]
+    g = sb
     for x in examples:
-        t = b.parse(x)
+        t = g.parse(x)
         print(t.to_sexp())
-        print(b.to_str(t))
+        print(g.to_str(t))
 
-        img = b.eval(t)
+        img = g.eval(t)
         print(img)
         plt.imshow(img)
         plt.show()
 
-    b.fit(corpus=[b.parse(s) for s in examples], alpha=0.001)
+    g.fit(corpus=[g.parse(s) for s in examples], alpha=0.001)
     for i in range(20):
-        t = b.sample()
+        t = g.sample()
         print(t.to_sexp())
-        print(b.to_str(t))
+        print(g.to_str(t))
         print()
-        img = b.eval(t)
+        img = g.eval(t)
         # if all 0
         if not np.any(img):
             print("all zeros")

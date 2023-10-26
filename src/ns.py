@@ -152,12 +152,6 @@ def evo_search(L: Language,
         A.extend(S[I])
         E_A.extend(E_S[I])
 
-    samples_per_iter = samples_ratio * max_popn_size
-    archive = []
-    popn = init_popn
-    e_archive = []
-    e_popn = embed(popn)
-
     # choose metric
     if isinstance(d, str):
         metric = d
@@ -166,7 +160,13 @@ def evo_search(L: Language,
     else:
         metric = "minkowski"
 
+    samples_per_iter = samples_ratio * max_popn_size
+    archive = []
+    popn = init_popn
+    e_archive = []
+    e_popn = embed(popn)
     knn = NearestNeighbors(metric=metric)
+
     for t in range(iters):
         if not ablate_mutator:
             L.fit(popn, alpha=alpha)
@@ -352,7 +352,8 @@ def viz_real_points_results(path: str):
 def run_on_arc():
     wandb.init(project="arc-novelty")
     feat = ResnetFeaturizer(sigma=1)
-    lang = arc.Blocks(featurizer=feat, gram=2, env={'z': list(range(100))})
+    # lang = arc.Blocks(featurizer=feat, gram=2, env={'z': list(range(100))})
+    lang = arc.SimpleBlocks(gram=2, featurizer=feat, height=32, width=32, int_max=32)
     seed = [
         "(rect (point 1 2) (point 1 2) 1)",
         "(rect (point 1 1) (point xmax ymax) 1)",
