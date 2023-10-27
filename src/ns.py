@@ -428,11 +428,11 @@ def run_on_arc():
             L=lang,
             init_popn=[lang.parse(s) for s in seed],
             d="minkowski",
-            iters=2,
+            iters=100,
             select="strict",
-            max_popn_size=10,
+            max_popn_size=200,
             samples_per_program=1,
-            samples_ratio=2,
+            samples_ratio=10,
             alpha=0.01,
         )
         for d in search:
