@@ -387,13 +387,13 @@ def run_on_arc():
     # feat = ResnetFeaturizer(sigma=1)
     # lang = arc.Blocks(featurizer=feat, gram=2, env={'z': list(range(100))})
     feat = RawFeaturizer(32, 32)
-    lang = arc.SimpleBlocks(gram=2, featurizer=feat, height=32, width=32, max_int=32)
+    lang = arc.SimpleBlocks(gram=2, featurizer=feat, height=32, width=32, max_int=10)
     seed = [
         "(rect (point 0 0) (point 2 2))",
         "(line (point 0 0) (point xmax ymax))",
         "(seq (rect (point 0 0) (point 2 2))"
         "     (line (point 0 0) (point xmax ymax)))",
-        "(rect (point 0 0) (point (plus 5 2) 7))",
+        "(rect (point 0 0) (point (plus 5 10) (times 2 10)))",
         "(seq (line (point 1 2) (point 3 4)) "
         "     (rect (point 1 2) (point 1 2)))",
         # "(rect (point 1 1) (point xmax ymax) 1)",
@@ -407,35 +407,37 @@ def run_on_arc():
         print(f"  parsed to {lang.parse(x)}")
 
     filename = f"../out/ns/arc-{wandb.run.id}"
+    evo_ns = evo_search(
+        L=lang,
+        init_popn=[lang.parse(s) for s in seed],
+        d="minkowski",
+        samples_per_program=1,
+        iters=100,
+        select="strict",
+        alpha=0.01,
+        max_popn_size=200,
+        samples_ratio=10,
+        keep_per_iter=10,
+        length_cap=100,
+        length_penalty_type="additive",
+        length_penalty_additive_coeff=0.1,
+        ablate_mutator=False,
+        archive_early=False,
+    )
+    simple_ns = simple_search(
+        L=lang,
+        init_popn=[lang.parse(s) for s in seed],
+        d="minkowski",
+        iters=100,
+        select="strict",
+        max_popn_size=200,
+        samples_per_program=1,
+        samples_ratio=10,
+        alpha=0.01,
+    )
+
+    search = simple_ns
     with open(f"{filename}.jsonl", "w") as f, util.Timing(f"ARC-NS") as timer:
-        # search = evo_search(
-        #         L=lang,
-        #         init_popn=[lang.parse(s) for s in seed],
-        #         d="minkowski",
-        #         samples_per_program=1,
-        #         iters=100,
-        #         select="strict",
-        #         alpha=0.01,
-        #         max_popn_size=200,
-        #         samples_ratio=10,
-        #         keep_per_iter=10,
-        #         length_cap=100,
-        #         length_penalty_type="additive",
-        #         length_penalty_additive_coeff=0.1,
-        #         ablate_mutator=False,
-        #         archive_early=False,
-        # )
-        search = simple_search(
-            L=lang,
-            init_popn=[lang.parse(s) for s in seed],
-            d="minkowski",
-            iters=100,
-            select="strict",
-            max_popn_size=200,
-            samples_per_program=1,
-            samples_ratio=10,
-            alpha=0.01,
-        )
         for d in search:
             kind = d["kind"]
             payload = d["payload"]
