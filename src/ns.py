@@ -401,24 +401,37 @@ def run_on_arc():
         print(f"Parsing {x}...")
         print(f"  parsed to {lang.parse(x)}")
 
-    with open(f"../out/ns/arc", "w") as f, util.Timing(f"ARC-NS") as timer:
-        for d in evo_search(
-                L=lang,
-                init_popn=[lang.parse(s) for s in seed],
-                d="minkowski",
-                samples_per_program=1,
-                iters=100,
-                select="strict",
-                alpha=0.01,
-                max_popn_size=200,
-                samples_ratio=10,
-                keep_per_iter=10,
-                length_cap=100,
-                length_penalty_type="additive",
-                length_penalty_additive_coeff=0.1,
-                ablate_mutator=False,
-                archive_early=False,
-        ):
+    filename = f"../out/ns/arc-{wandb.run.id}"
+    with open(f"{filename}.jsonl", "w") as f, util.Timing(f"ARC-NS") as timer:
+        # search = evo_search(
+        #         L=lang,
+        #         init_popn=[lang.parse(s) for s in seed],
+        #         d="minkowski",
+        #         samples_per_program=1,
+        #         iters=100,
+        #         select="strict",
+        #         alpha=0.01,
+        #         max_popn_size=200,
+        #         samples_ratio=10,
+        #         keep_per_iter=10,
+        #         length_cap=100,
+        #         length_penalty_type="additive",
+        #         length_penalty_additive_coeff=0.1,
+        #         ablate_mutator=False,
+        #         archive_early=False,
+        # )
+        search = simple_search(
+            L=lang,
+            init_popn=[lang.parse(s) for s in seed],
+            d="minkowski",
+            iters=2,
+            select="strict",
+            max_popn_size=10,
+            samples_per_program=1,
+            samples_ratio=2,
+            alpha=0.01,
+        )
+        for d in search:
             kind = d["kind"]
             payload = d["payload"]
 
@@ -442,6 +455,9 @@ def run_on_arc():
                 wandb.log(log)
             else:
                 raise ValueError(f"Unknown kind: {kind} with payload: {payload}")
+
+    df = pd.read_json(f"{filename}.jsonl", lines=True)
+    df.to_csv(f"{filename}.csv", index=False)
 
 
 if __name__ == '__main__':
