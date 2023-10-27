@@ -182,6 +182,9 @@ class RawFeaturizer(Featurizer):
         return self.n_rows * self.n_cols
 
     def apply(self, batch: np.ndarray) -> np.ndarray:
+        if isinstance(batch, List):
+            batch = np.stack(batch)
+
         assert batch.ndim == 4, f"Expected batch of shape [b h w c] but got {batch.shape}"
         assert batch.shape[1:] == (self.n_rows, self.n_cols, 3), \
             f"Expected batch of shape [b {self.n_rows} {self.n_cols} 3] but got {batch.shape}"
