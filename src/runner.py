@@ -33,26 +33,45 @@ def make_programs(solns: List[str], tests: List[str]) -> Generator[Dict, None, N
 
 
 def eval_dataset(filename: str, n_samples: int, timeout: float) -> Generator[Dict, None, None]:
-    def isnan(x):
-        try:
-            return np.isnan(x)
-        except TypeError:
-            return False
+    df = pd.read_csv(filename, usecols=["id", "key", "value"])
+    n_orig = len(df.groupby("id"))
 
-    df = pd.read_csv(filename)
+    solns = (
+        df[df["key"].str.startswith("solution ")]
+        .groupby("id").agg({"value": list})
+        .rename(columns={"value": "solutions"})
+    )
+    tests = (
+        df[df["key"].str.startswith("test ")]
+        .groupby("id").agg({"value": list})
+        .rename(columns={"value": "tests"})
+    )
+
+    df = pd.concat([solns, tests], axis=1)
+    df = df[(~df["tests"].isna()) & (~df["solutions"].isna())]
+
+    print(f"Found {len(df)} rows from {n_orig} ({len(df)/n_orig * 100}% retained) with at least 1 soln/test")
+
+    # split source file and local id from global id
+    df["id"] = df.index
+    df["source file"] = df["id"].apply(lambda s: s.split(":")[0])
+    df["local id"] = df["id"].apply(lambda s: int(s.split(":")[1]))
+
+    # take subset of rows of size n_samples
     if n_samples is None:
         view = df
+        print(f"Keeping full dataset of size {len(df)}...")
     else:
-        indices = np.random.choice(len(df), size=n_samples, replace=False)
-        view = df.iloc[indices]
-    for i, row in view.iterrows():
-        solns = [row[f"soln-{i}"] for i in range(3)]
-        solns = [x for x in solns if x and not isnan(x)]
+        view = df.groupby("source file").sample(n=n_samples, replace=False)
+        print(f"Sampled {n_samples} rows from each source file, yielding dataset of size {len(view)}...")
 
-        tests = [util.strip_markdown(row[f"tests(text, soln_{i})"]) for i in range(3)]
-        tests = [test for x in tests
-                 if x and not isnan(x)
-                 for test in util.split_tests(x)]
+    print(view)
+
+    # run soln/test pairs
+    print("Running soln/test pairs...")
+    for i, row in view.iterrows():
+        solns = row["solutions"]
+        tests = row["tests"]
 
         for d in make_programs(solns, tests):
             program = d["program"]
@@ -77,10 +96,9 @@ if __name__ == "__main__":
     ts = util.timestamp()
     util.incrementally_save_jsonl(
         it=eval_dataset(
-            filename="../datasets/sample-tests-2023-10-04T13:11:58.134555.csv",
-            # "../datasets/sample-tests-2023-10-04T14:24:11.544966.csv"
+            filename="../datasets/wiz/solved-1k-2023-10-25T15:16:13.113059.csv",
             n_samples=None,
             timeout=10,
         ),
-        filename=f"../datasets/evaluated-{ts}",
+        filename=f"../datasets/wiz/evaluated-{ts}",
     )
