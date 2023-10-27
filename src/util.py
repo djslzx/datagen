@@ -19,6 +19,13 @@ from adjustText import adjust_text
 from datetime import datetime
 
 
+def isnan(x):
+    try:
+        return np.isnan(x)
+    except TypeError:
+        return False
+
+
 def incrementally_save_jsonl(it, filename: str) -> pd.DataFrame:
     with open(filename + ".jsonl", "w") as f:
         for x in it:
