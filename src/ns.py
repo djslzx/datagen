@@ -353,15 +353,25 @@ def run_on_arc():
     wandb.init(project="arc-novelty")
     feat = ResnetFeaturizer(sigma=1)
     # lang = arc.Blocks(featurizer=feat, gram=2, env={'z': list(range(100))})
-    lang = arc.SimpleBlocks(gram=2, featurizer=feat, height=32, width=32, int_max=32)
+    lang = arc.SimpleBlocks(gram=2, featurizer=feat, height=32, width=32, max_int=32)
     seed = [
-        "(rect (point 1 2) (point 1 2) 1)",
-        "(rect (point 1 1) (point xmax ymax) 1)",
-        "(line (point 1 2) (point 3 4) 1)",
-        "(seq (line (point 1 2) (point 3 4) 1) "
-        "     (rect (point 1 2) (point 1 2) 1))",
-        "(apply hflip (line (point 1 2) (point 1 4) 1))",
+        "(rect (point 0 0) (point 2 2))",
+        "(line (point 0 0) (point xmax ymax))",
+        "(seq (rect (point 0 0) (point 2 2))"
+        "     (line (point 0 0) (point xmax ymax)))",
+        "(rect (point 0 0) (point (plus 5 2) 7))",
+        "(seq (line (point 1 2) (point 3 4)) "
+        "     (rect (point 1 2) (point 1 2)))",
+        # "(rect (point 1 1) (point xmax ymax) 1)",
+        # "(line (point 1 2) (point 3 4) 1)",
+        # "(seq (line (point 1 2) (point 3 4) 1) "
+        # "     (rect (point 1 2) (point 1 2) 1))",
+        # "(apply hflip (line (point 1 2) (point 1 4) 1))",
     ]
+    for x in seed:
+        print(f"Parsing {x}...")
+        print(f"  parsed to {lang.parse(x)}")
+
     with open(f"../out/ns/arc", "w") as f, util.Timing(f"ARC-NS") as timer:
         for d in evo_search(
                 L=lang,
