@@ -172,18 +172,18 @@ class Blocks(Language):
 
         evaluator = grammar.Eval(env=env, height=self.height, width=self.width)
         try:
-            bmp = o.accept(evaluator).numpy().astype(np.uint8)
-            return self._bmp_to_img(bmp)
+            bmp = o.accept(evaluator).numpy()
+            return self._bmp_to_img(bmp).astype(np.uint8)
         except AssertionError:
             return np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
     def _bmp_to_img(self, bmp: np.ndarray) -> np.ndarray:
         assert bmp.ndim == 2, f"Expected 2D bitmap, got {bmp.ndim}D"
 
-        # normalize bitmap to 0-1 range
-        normed_bmp = bmp / self.max_int
+        # normalize bitmap color by max_int, then scale back up
+        normed_bmp = bmp / self.max_int * 255
 
-        return ein.repeat(normed_bmp, "h w -> h w c", c=3)
+        return ein.repeat(normed_bmp, "h w -> h w c", c=3).astype(np.uint8)
 
     @property
     def str_semantics(self) -> Dict:
@@ -228,6 +228,7 @@ class SimpleBlocks(Blocks):
         "xmax": ["Int"],
         "ymax": ["Int"],
         "plus": ["Int", "Int", "Int"],
+        "times": ["Int", "Int", "Int"],
     }
     parser_grammar = r"""
         bmp: "(" "line" point point ")" -> line
@@ -238,6 +239,7 @@ class SimpleBlocks(Blocks):
            | "xmax"                     -> xmax
            | "ymax"                     -> ymax
            | "(" "plus" int int ")"     -> plus
+           | "(" "times" int int ")"    -> times
         _n: NUMBER
         
         %import common.WS
