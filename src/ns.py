@@ -119,6 +119,33 @@ def log_best_and_worst(k: int, L: Language, samples: np.ndarray, scores: np.ndar
             "worst": summarize(i_worst)}
 
 
+def simple_search(
+        L: Language,
+        init_popn: List[Tree],
+        d: Union[Distance, str],
+        select: str,
+        max_popn_size: int,
+        samples_per_program: int,
+        samples_ratio: int,
+        alpha: float,
+        iters: int,
+        **kwargs,
+):
+    return evo_search(
+        L=L,
+        init_popn=init_popn,
+        d=d,
+        select=select,
+        max_popn_size=max_popn_size,
+        samples_per_program=samples_per_program,
+        samples_ratio=samples_ratio,
+        alpha=alpha,
+        iters=iters,
+        keep_per_iter=max_popn_size * samples_ratio,
+        **kwargs
+    )
+
+
 def evo_search(L: Language,
                init_popn: List[Tree],
                d: Union[Distance, str],
@@ -180,6 +207,8 @@ def evo_search(L: Language,
         knn.fit(np.concatenate((e_archive, e_popn), axis=0) if archive else e_popn)
         dists, _ = knn.kneighbors(e_samples)
         dists = np.sum(dists, axis=1)
+
+        # apply length penalty (todo: make this a function)
         len_samples = np.array([len(x) for x in samples])
         if length_penalty_type == "additive":
             scores = dists - length_penalty_additive_coeff * len_samples
