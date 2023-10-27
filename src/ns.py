@@ -18,7 +18,7 @@ import wandb
 import yaml
 from tqdm import tqdm
 
-from featurizers import ResnetFeaturizer
+from featurizers import ResnetFeaturizer, RawFeaturizer
 from lang.tree import Language, Tree, ParseError
 from lang import lindenmayer, point, arc
 import util
@@ -384,8 +384,9 @@ def viz_real_points_results(path: str):
 
 def run_on_arc():
     wandb.init(project="arc-novelty")
-    feat = ResnetFeaturizer(sigma=1)
+    # feat = ResnetFeaturizer(sigma=1)
     # lang = arc.Blocks(featurizer=feat, gram=2, env={'z': list(range(100))})
+    feat = RawFeaturizer(32, 32)
     lang = arc.SimpleBlocks(gram=2, featurizer=feat, height=32, width=32, max_int=32)
     seed = [
         "(rect (point 0 0) (point 2 2))",

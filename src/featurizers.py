@@ -169,6 +169,7 @@ class RawFeaturizer(Featurizer):
     """
     Treat each input image as a feature vector
     """
+
     def __init__(self, n_rows: int, n_cols: int):
         self.n_rows = n_rows
         self.n_cols = n_cols
@@ -181,14 +182,13 @@ class RawFeaturizer(Featurizer):
         return self.n_rows * self.n_cols
 
     def apply(self, batch: np.ndarray) -> np.ndarray:
-        assert batch.shape == (self.n_rows, self.n_cols), \
-            f"Found image of shape {batch.shape}, but expected [{self.n_rows}, {self.n_cols}]"
+        assert batch.ndim == 4, f"Expected batch of shape [b h w c] but got {batch.shape}"
+        assert batch.shape[1:] == (self.n_rows, self.n_cols, 3), \
+            f"Expected batch of shape [b {self.n_rows} {self.n_cols} 3] but got {batch.shape}"
+        assert batch.dtype == np.uint8, f"Expected batch of type uint8 but got {batch.dtype}"
 
-        # reshape x to column vector
-        vec = batch.reshape(self.n_rows * self.n_cols)
-
-        # map values to [0, 1]
-        return vec / 255
+        # reshape x to column vector and map to [0, 1]
+        return rearrange(batch, "b h w c -> b (h w c)") / 255
 
 
 class DummyFeaturizer(Featurizer):
