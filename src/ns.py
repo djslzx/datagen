@@ -328,7 +328,8 @@ def run_on_lsystems(filename: str):
     )
     train_data = [lang.parse(x) for x in config.train_data]
     # holdout_data = [lang.parse(x) for x in config.holdout_data]
-    with open(f"../out/ns/lsys-{wandb.run.id}", "w") as f, util.Timing(f"LSys-NS") as timer:
+    filename = f"../out/ns/lsys-{wandb.run.id}"
+    with open(f"{filename}.jsonl", "w") as f, util.Timing(f"LSys-NS") as timer:
         for d in evo_search(
                 **config.search,
                 L=lang,
@@ -365,6 +366,9 @@ def run_on_lsystems(filename: str):
                     break
             else:
                 raise ValueError(f"Unknown kind: {kind} with payload: {payload}")
+
+    df = pd.read_json(f"{filename}.jsonl", lines=True)
+    df.to_csv(f"{filename}.csv", index=False)
 
 
 def viz_real_points_results(path: str):
