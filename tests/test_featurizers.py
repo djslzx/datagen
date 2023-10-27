@@ -59,7 +59,8 @@ def check_resnet_with_images(dirpath: str):  # pragma: no cover
         plot_image_grid(imgs=[img[0]], shape=(1, 1), labels=["\n".join(labels)])
 
 
-def check_featurizer(featurizer: Featurizer, popn: List[Tuple[S0LSystem, float]], n_samples: int, n_neighbors: int):  # pragma: no cover
+def check_featurizer(featurizer: Featurizer, popn: List[Tuple[S0LSystem, float]], n_samples: int,
+                     n_neighbors: int):  # pragma: no cover
     """
     Make sure that the k nearest neighbors of each L-system look reasonable
     """
@@ -77,6 +78,16 @@ def check_featurizer(featurizer: Featurizer, popn: List[Tuple[S0LSystem, float]]
                         imgs=all_imgs,
                         shape=(n_samples, n_neighbors + 1),
                         labels=[""] + [f"{x:.4e}" for x in np.repeat(distances, n_samples).tolist()])
+
+
+def test_raw_featurizer():
+    images = np.random.randint(0, 255, size=(10, 128, 128, 3), dtype=np.uint8)
+    featurizer = RawFeaturizer(128, 128)
+    features = featurizer.apply(images)
+    assert features.shape == (10, 128 * 128 * 3), f"Expected shape (10, 128 * 128 * 3), but got {features.shape}"
+
+    rearranged = rearrange(images, "b h w c -> b (h w c)", b=10, h=128, w=128, c=3)
+    assert np.all(features == rearranged / 255), "Expected features to be equal to images"
 
 
 if __name__ == '__main__':  # pragma: no cover
