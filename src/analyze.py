@@ -514,7 +514,7 @@ if __name__ == "__main__":
         "CA-1K": "../datasets/wiz/code_alpaca_1k",
     }
     df = read_problems(filenames)
-    df.to_csv(f"../datasets/master-1k-{timestamp}.csv")
+    df.to_csv(f"../datasets/wiz/master-1k-{timestamp}.csv")
 
     # choose 1k problems for each source file
     df = df.groupby("source file").sample(n=1000)
