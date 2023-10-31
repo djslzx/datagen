@@ -263,7 +263,7 @@ class SimpleBlocks(Blocks):
             x2, y2 = self._to_obj(p2)
             return grammar.CornerRect(x1, y1, x2, y2, grammar.Num(self.max_int))
         else:
-            return super()._to_obj(t, env={})
+            return super()._to_obj(t, env=env)
 
     @property
     def str_semantics(self) -> Dict:
