@@ -492,6 +492,9 @@ def analyze_test_results(df: pd.DataFrame):
     plt.pie(df["result type"].value_counts(), labels=df["result type"].value_counts().index)
     plt.show()
 
+    # temporarily hide NS
+    df = df[df["source file"] != "NS"]
+
     # make a bar chart of result type by source file
     sns.countplot(data=df, x="source file", hue="result type")
     plt.gcf().set_size_inches(12, 6)
@@ -513,9 +516,9 @@ def analyze_test_results(df: pd.DataFrame):
     pass
 
 
-def gen_solns_and_tests(files: Dict[str, str], n_samples: int) -> pd.DataFrame:
+def gen_solns_and_tests(chat: ChatOpenAI, files: Dict[str, str], n_samples: int) -> pd.DataFrame:
     df = read_problems(files)
-    df.to_csv(f"../datasets/wiz/master-{n_samples}-{timestamp}.csv")
+    # df.to_csv(f"../datasets/wiz/master-{n_samples}-{timestamp}.csv")
 
     # sample problems from each source file
     df = df.groupby("source file").sample(n=n_samples)
@@ -527,8 +530,37 @@ def gen_solns_and_tests(files: Dict[str, str], n_samples: int) -> pd.DataFrame:
     )
     problems = df[["id", "text"]].to_dict(orient="records")
     df = util.incrementally_save_jsonl(
-        prompts.gen_solns_and_tests_dict(CHAT, problems),
+        prompts.gen_solns_and_tests_dict(chat, problems),
         filename=f"../datasets/wiz/solved-{n_samples}-{timestamp}"
+    )
+    return df
+
+
+def subset_by_id(all_df: pd.DataFrame, ids: List[str]) -> pd.DataFrame:
+    all_df["id"] = all_df.apply(
+        lambda row: f"{row['source file']}:{row['id']}",
+        axis=1
+    )
+    return all_df[all_df["id"].isin(ids)]
+
+
+def rate_difficulty(chat: ChatOpenAI, df: pd.DataFrame, files: Dict[str, str]) -> pd.DataFrame:
+    all_df = read_problems(files)
+    entries = subset_by_id(all_df, df["id"].to_list())
+    problems = entries[["source file", "id", "text"]].to_dict(orient="records")
+
+    def gen_ratings():
+        for problem in problems:
+            rating = prompts.rate_difficulty(chat, problem["text"])
+            yield {
+                "id": problem["id"],
+                "text": problem["text"],
+                "rating": rating,
+            }
+
+    df = util.incrementally_save_jsonl(
+        gen_ratings(),
+        filename=f"../datasets/wiz/ratings-{timestamp}"
     )
     return df
 
@@ -543,16 +575,14 @@ if __name__ == "__main__":
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     filenames = {
         "NS": "../datasets/wiz/novel-instruct",
-        # "NS-euler": "../datasets/wiz/novel-instruct-euler",
-        # "Wiz-wide": "../datasets/wiz/wiz-wide",
-        # "Wiz-deep": "../datasets/wiz/wiz-deep",
-        # "CA-1K": "../datasets/wiz/code-alpaca",
+        "NS-euler": "../datasets/wiz/novel-instruct-euler",
+        "Wiz-wide": "../datasets/wiz/wiz-wide",
+        "Wiz-deep": "../datasets/wiz/wiz-deep",
+        "CA-1K": "../datasets/wiz/code-alpaca",
     }
-    df = gen_solns_and_tests(filenames, n_samples=1_000)
-    # df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
-    # analyze_test_results(df)
-
-    # df = pd.read_json("../datasets/evaluated-2023-10-13T01:25:05.868620.jsonl", lines=True)
+    # df = gen_solns_and_tests(CHAT, filenames, n_samples=1_000)
+    df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
+    df = rate_difficulty(CHAT, df, filenames)
     # analyze_test_results(df)
 
     # # find outputs with "sorry"
