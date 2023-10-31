@@ -475,16 +475,25 @@ def analyze_test_results(df: pd.DataFrame):
     # wrap result text to 30 chars
     df["result"] = df["result"].apply(lambda x: '\n'.join(textwrap.wrap(x, width=30)))
 
-    # group together results that account for less than 1% as "other"
-    counts = df["result"].value_counts()
-    df["result"] = df["result"].apply(lambda x: x if counts[x] / len(df) > 0.01 else "other")
+    # group together errors
+    def error_map(x: str) -> str:
+        if x == "failed: test did not pass":
+            return "test failed"
+        elif x == "passed":
+            return "passed"
+        else:
+            return "error"
+
+    print(df["result"].unique())
+
+    df["result type"] = df["result"].apply(error_map)
 
     # make a pie chart of result type
-    plt.pie(df["result"].value_counts(), labels=df["result"].value_counts().index)
+    plt.pie(df["result type"].value_counts(), labels=df["result type"].value_counts().index)
     plt.show()
 
     # make a bar chart of result type by source file
-    sns.countplot(data=df, x="source file", hue="result")
+    sns.countplot(data=df, x="source file", hue="result type")
     plt.gcf().set_size_inches(12, 6)
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.tight_layout()
@@ -504,13 +513,12 @@ def analyze_test_results(df: pd.DataFrame):
     pass
 
 
-def gen_solns_and_tests(files: Dict[str, str]) -> pd.DataFrame:
+def gen_solns_and_tests(files: Dict[str, str], n_samples: int) -> pd.DataFrame:
     df = read_problems(files)
     df.to_csv(f"../datasets/wiz/master-1k-{timestamp}.csv")
 
     # choose 1k problems for each source file
-    df = df.groupby("source file").sample(n=1000)
-    # print(df)
+    df = df.groupby("source file").sample(n=n_samples)
 
     # generate solutions and tests for sample
     df["id"] = df.apply(
@@ -534,11 +542,11 @@ if __name__ == "__main__":
 
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     filenames = {
-        "NS": "../datasets/wiz/novel-instruct-1k",
-        "NS-euler": "../datasets/wiz/novel-instruct-euler-1k",
-        "Wiz-wide": "../datasets/wiz/wiz-wide-1k",
-        "Wiz-deep": "../datasets/wiz/wiz-deep-1k",
-        "CA-1K": "../datasets/wiz/code_alpaca_1k",
+        "NS": "../datasets/wiz/novel-instruct",
+        "NS-euler": "../datasets/wiz/novel-instruct-euler",
+        "Wiz-wide": "../datasets/wiz/wiz-wide",
+        "Wiz-deep": "../datasets/wiz/wiz-deep",
+        "CA-1K": "../datasets/wiz/code_alpaca",
     }
     # df = gen_solns_and_tests(filenames)
     df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
