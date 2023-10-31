@@ -515,9 +515,9 @@ def analyze_test_results(df: pd.DataFrame):
 
 def gen_solns_and_tests(files: Dict[str, str], n_samples: int) -> pd.DataFrame:
     df = read_problems(files)
-    df.to_csv(f"../datasets/wiz/master-1k-{timestamp}.csv")
+    df.to_csv(f"../datasets/wiz/master-{n_samples}-{timestamp}.csv")
 
-    # choose 1k problems for each source file
+    # sample problems from each source file
     df = df.groupby("source file").sample(n=n_samples)
 
     # generate solutions and tests for sample
@@ -528,7 +528,7 @@ def gen_solns_and_tests(files: Dict[str, str], n_samples: int) -> pd.DataFrame:
     problems = df[["id", "text"]].to_dict(orient="records")
     df = util.incrementally_save_jsonl(
         prompts.gen_solns_and_tests_dict(CHAT, problems),
-        filename=f"../datasets/wiz/solved-1k-{timestamp}"
+        filename=f"../datasets/wiz/solved-{n_samples}-{timestamp}"
     )
     return df
 
@@ -548,9 +548,9 @@ if __name__ == "__main__":
         "Wiz-deep": "../datasets/wiz/wiz-deep",
         "CA-1K": "../datasets/wiz/code_alpaca",
     }
-    # df = gen_solns_and_tests(filenames)
-    df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
-    analyze_test_results(df)
+    df = gen_solns_and_tests(filenames, n_samples=1_000)
+    # df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
+    # analyze_test_results(df)
 
     # df = pd.read_json("../datasets/evaluated-2023-10-13T01:25:05.868620.jsonl", lines=True)
     # analyze_test_results(df)
