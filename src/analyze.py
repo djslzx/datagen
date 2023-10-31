@@ -543,10 +543,10 @@ if __name__ == "__main__":
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     filenames = {
         "NS": "../datasets/wiz/novel-instruct",
-        "NS-euler": "../datasets/wiz/novel-instruct-euler",
-        "Wiz-wide": "../datasets/wiz/wiz-wide",
-        "Wiz-deep": "../datasets/wiz/wiz-deep",
-        "CA-1K": "../datasets/wiz/code_alpaca",
+        # "NS-euler": "../datasets/wiz/novel-instruct-euler",
+        # "Wiz-wide": "../datasets/wiz/wiz-wide",
+        # "Wiz-deep": "../datasets/wiz/wiz-deep",
+        # "CA-1K": "../datasets/wiz/code-alpaca",
     }
     df = gen_solns_and_tests(filenames, n_samples=1_000)
     # df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
