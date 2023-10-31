@@ -276,4 +276,15 @@
     Answer True/False, with no punctuation or extra text.
   user_prompt: |
     {problem}
+
+"rate difficulty":
+  inputs:
+    - problem
+  system_prompt: |
+    You are an AI teaching assistant.  You will be presented with a programming problem.
     
+    Your task is to rate the difficulty of the problem on a scale of 1 to 5, where 1 is the easiest and 5 is the hardest.
+    
+    You must respond with only your numerical rating, with no punctuation or extra text.
+  user_prompt: |
+    {problem}

@@ -102,6 +102,14 @@ def check_if_python(chat: ChatOpenAI, problem: str) -> str:
     )
 
 
+def rate_difficulty(chat: ChatOpenAI, problem: str) -> str:
+    return run_saved_prompt(
+        chat,
+        key="rate difficulty",
+        problem=problem,
+    )
+
+
 def gen_solns_and_tests(chat: ChatOpenAI, problems: Iterable[Tuple[int, str]]) -> Generator[
     Tuple[int, str, str], None, None]:
     for id, problem in problems:
@@ -170,9 +178,9 @@ if __name__ == "__main__":
         print(
             problem,
             restyled,
-            check_if_python(CHAT, problem=problem),
-            check_if_python(CHAT, problem=restyled)
+            # restyled,
+            # check_if_python(CHAT, problem=problem),
+            # check_if_python(CHAT, problem=restyled),
+            rate_difficulty(CHAT, problem=problem),
+            rate_difficulty(CHAT, problem=restyled),
         )
-
-    for x in gen_solns_and_tests(CHAT, enumerate(PROBLEMS)):
-        print(x)
