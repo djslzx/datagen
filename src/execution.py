@@ -22,7 +22,7 @@ def _unsafe_execute(program: str, timeout: float, result: List):
     ]
     for x in forbidden:
         if x in program:
-            result.append(f"failed: dangerous code containing `{x}`")
+            result.append(f"failed:forbidden code:{x}")
             return
 
     # remove print statements
@@ -48,9 +48,9 @@ def _unsafe_execute(program: str, timeout: float, result: List):
                     exec(program, exec_globals)
             result.append("passed")
         except TimeoutException:
-            result.append("timed out")
+            result.append(f"failed:timed out:after {timeout} seconds")
         except BaseException as e:
-            result.append(f"failed: {type(e).__name__}: {e}")
+            result.append(f"failed:{type(e).__name__}:{e}")
 
         # Needed for cleaning up.
         shutil.rmtree = rmtree
