@@ -437,12 +437,19 @@ def analyze_test_results(df: pd.DataFrame):
     print("columns:", df.columns)
     print("source files:", df["source file"].unique())
 
-    # source/id analysis
-    sdf = df.groupby("source file").size().to_frame(name="n triples")
-    sdf["n unique ids"] = df.groupby("source file")["id"].nunique()
-    sdf["avg triple size"] = sdf["n triples"] / sdf["n unique ids"]
-    print(sdf.to_markdown())
+    # how many unique solns and tests per problem?
+    n_solns = df.groupby(["id", "source file"]).agg({"soln": "nunique"})
+    n_tests = df.groupby(["id", "source file"]).agg({"test": "nunique"})
 
+    # plot stacked histogram of both n solns and n tests
+    sns.histplot(data=n_solns, x="soln", hue="source file", multiple="stack", binwidth=1, discrete=True)
+    plt.title("Number of unique solutions per problem")
+    plt.show()
+    sns.histplot(data=n_tests, x="test", hue="source file", multiple="stack", binwidth=1, discrete=True)
+    plt.title("Number of unique tests per problem")
+    plt.show()
+
+    # document failure modes
     patterns = {
         r"test_.+ did not pass": "test did not pass",
         r"name '.+' is not defined": "name is not defined",
@@ -453,7 +460,10 @@ def analyze_test_results(df: pd.DataFrame):
         r"No module named": "module not found",
         r"\[Errno 2\] No such file or directory: '.+'": "file not found",
         r"module not found '.+'": "module not found",
-        r"expected an indented block (.+)": "expected an indented block",
+        r"expected an indented block (.+)": "indentation error",
+        r"EOF while scanning triple-quoted string literal (.+)": "EOF while scanning triple-quoted string literal",
+        r"import of .+ halted": "import failure",
+        r"cannot import name '.+' from .+": "import failure"
     }
 
     # group together patterns using regex match
@@ -485,17 +495,34 @@ def analyze_test_results(df: pd.DataFrame):
     print(df.groupby(["source file"]).size().to_markdown())
 
     # evaluate solutions: what is the average number of tests passed per solution?
-    tdf = df.groupby(["source file", "id"], as_index=False).agg({"passed": ["sum", "count"]})
-    tdf["% passed"] = tdf["passed"]["sum"] / tdf["passed"]["count"]
-    print(tdf)
+    pass
 
     # plot distribution of % passed
-    sns.displot(data=tdf, x="% passed", hue="source file", kind="kde")
-    plt.gcf().set_size_inches(12, 6)
-    plt.show()
+    pass
 
     # evaluate tests: what is the average number of solutions that pass each test?
     pass
+
+
+def gen_solns_and_tests(files: Dict[str, str]) -> pd.DataFrame:
+    df = read_problems(files)
+    df.to_csv(f"../datasets/wiz/master-1k-{timestamp}.csv")
+
+    # choose 1k problems for each source file
+    df = df.groupby("source file").sample(n=1000)
+    # print(df)
+
+    # generate solutions and tests for sample
+    df["id"] = df.apply(
+        lambda row: f"{row['source file']}:{row['id']}",
+        axis=1
+    )
+    problems = df[["id", "text"]].to_dict(orient="records")
+    df = util.incrementally_save_jsonl(
+        prompts.gen_solns_and_tests_dict(CHAT, problems),
+        filename=f"../datasets/wiz/solved-1k-{timestamp}"
+    )
+    return df
 
 
 if __name__ == "__main__":
@@ -513,23 +540,9 @@ if __name__ == "__main__":
         "Wiz-deep": "../datasets/wiz/wiz-deep-1k",
         "CA-1K": "../datasets/wiz/code_alpaca_1k",
     }
-    df = read_problems(filenames)
-    df.to_csv(f"../datasets/wiz/master-1k-{timestamp}.csv")
-
-    # choose 1k problems for each source file
-    df = df.groupby("source file").sample(n=1000)
-    # print(df)
-
-    # generate solutions and tests for sample
-    df["id"] = df.apply(
-        lambda row: f"{row['source file']}:{row['id']}",
-        axis=1
-    )
-    problems = df[["id", "text"]].to_dict(orient="records")
-    df = util.incrementally_save_jsonl(
-        prompts.gen_solns_and_tests_dict(CHAT, problems),
-        filename=f"../datasets/wiz/solved-1k-{timestamp}"
-    )
+    # df = gen_solns_and_tests(filenames)
+    df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
+    analyze_test_results(df)
 
     # df = pd.read_json("../datasets/evaluated-2023-10-13T01:25:05.868620.jsonl", lines=True)
     # analyze_test_results(df)
