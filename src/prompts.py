@@ -115,12 +115,6 @@ def gen_solns_and_tests(chat: ChatOpenAI, problems: Iterable[Tuple[int, str]]) -
     for id, problem in problems:
         yield id, "original problem", problem
 
-        # # skip SQL problems, web scraping problems, etc.
-        # pythonable = check_if_python(chat, problem=problem)
-        # yield id, "pythonable", pythonable
-        # if pythonable == "False":
-        #     continue
-
         restyled = restyle_problem(chat, problem=problem)
         yield id, "restyled problem", restyled
 
