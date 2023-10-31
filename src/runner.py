@@ -50,7 +50,7 @@ def eval_dataset(filename: str, n_samples: int, timeout: float) -> Generator[Dic
     df = pd.concat([solns, tests], axis=1)
     df = df[(~df["tests"].isna()) & (~df["solutions"].isna())]
 
-    print(f"Found {len(df)} rows from {n_orig} ({len(df)/n_orig * 100}% retained) with at least 1 soln/test")
+    print(f"Found {len(df)} rows from {n_orig} ({len(df) / n_orig * 100}% retained) with at least 1 soln/test")
 
     # split source file and local id from global id
     df["id"] = df.index
@@ -78,6 +78,7 @@ def eval_dataset(filename: str, n_samples: int, timeout: float) -> Generator[Dic
             yield {
                 "id": row["id"],
                 "source file": row["source file"],
+                "local id": row["local id"],
                 **ex.unsafe_check(program=program, timeout=timeout),
                 "functions": find_fns(program),
                 **d,
