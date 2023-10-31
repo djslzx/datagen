@@ -50,7 +50,7 @@ def _unsafe_execute(program: str, timeout: float, result: List):
         except TimeoutException:
             result.append("timed out")
         except BaseException as e:
-            result.append(f"failed: {e}")
+            result.append(f"failed: {type(e).__name__}: {e}")
 
         # Needed for cleaning up.
         shutil.rmtree = rmtree
