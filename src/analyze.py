@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import List, Union, Optional, Dict, Tuple, Callable
+from typing import List, Union, Optional, Dict, Tuple, Callable, Set
 import textwrap
 import regex as re
 from langchain.chat_models import ChatOpenAI
@@ -544,12 +544,11 @@ def subset_by_id(all_df: pd.DataFrame, ids: List[str]) -> pd.DataFrame:
     return all_df[all_df["id"].isin(ids)]
 
 
-def rate_difficulty(chat: ChatOpenAI, df: pd.DataFrame, files: Dict[str, str]) -> pd.DataFrame:
-    all_df = read_problems(files)
-    entries = subset_by_id(all_df, df["id"].to_list())
-    problems = entries[["source file", "id", "text"]].to_dict(orient="records")
+def rate_difficulty(chat: ChatOpenAI, df: pd.DataFrame) -> pd.DataFrame:
+    assert all(col in df.columns for col in ["source file", "id", "text"]), \
+        f"Expected to have columns ['source file', 'id', 'text'], got {df.columns}"
 
-    def gen_ratings():
+    def gen_ratings(problems):
         for problem in problems:
             rating = prompts.rate_difficulty(chat, problem["text"])
             yield {
@@ -558,18 +557,44 @@ def rate_difficulty(chat: ChatOpenAI, df: pd.DataFrame, files: Dict[str, str]) -
                 "rating": rating,
             }
 
-    df = util.incrementally_save_jsonl(
-        gen_ratings(),
+    return util.incrementally_save_jsonl(
+        gen_ratings(problems=df[["source file", "id", "text"]].to_dict(orient="records")),
         filename=f"../datasets/wiz/ratings-{timestamp}"
     )
-    return df
+
+
+def try_float(s: str) -> float:
+    try:
+        return float(s)
+    except ValueError:
+        return np.nan
+
+
+def load_master(files: Dict[str, str], extras: List[str], ids: Set[str]) -> pd.DataFrame:
+    """
+    Loads the full datasets specified by `files`, a map from source file names to
+    file paths, and adds extra annotations in `supplements`.
+    """
+    master = read_problems(files)
+    master["id"] = master.apply(lambda row: f"{row['source file']}:{row['id']}", axis=1)
+    master = master[master["id"].isin(ids)]
+
+    for x in extras:
+        df = pd.read_json(x, lines=True)
+        df.drop(columns=["text"], inplace=True)
+        master = pd.merge(left=master, right=df, on="id", how="inner")
+
+    if "rating" in master.columns:
+        master["rating"] = master["rating"].apply(try_float)
+
+    return master
 
 
 if __name__ == "__main__":
-    pd.set_option("display.max_rows", None)
+    # pd.set_option("display.max_rows", None)
     pd.set_option("display.min_rows", 50)
     pd.set_option("display.max_columns", None)
-    pd.set_option('display.max_colwidth', 40)
+    pd.set_option('display.max_colwidth', 20)
     timestamp = util.timestamp()
 
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
@@ -578,12 +603,20 @@ if __name__ == "__main__":
         "NS-euler": "../datasets/wiz/novel-instruct-euler",
         "Wiz-wide": "../datasets/wiz/wiz-wide",
         "Wiz-deep": "../datasets/wiz/wiz-deep",
-        "CA-1K": "../datasets/wiz/code-alpaca",
+        "CA-1K": "../datasets/wiz/code-alpaca-1k",
     }
+    extras = [
+        "../datasets/wiz/ratings-2023-10-31T16:51:38.999519.jsonl",
+    ]
     # df = gen_solns_and_tests(CHAT, filenames, n_samples=1_000)
+    # df = rate_difficulty(CHAT, df, filenames)
     df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
-    df = rate_difficulty(CHAT, df, filenames)
-    # analyze_test_results(df)
+    ids = set(df["id"].unique())
+    master = load_master(filenames, extras, ids)
+    print(master)
+    exit(0)
+
+    analyze_test_results(master, df)
 
     # # find outputs with "sorry"
     # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
