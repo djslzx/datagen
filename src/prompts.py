@@ -76,7 +76,7 @@ def restyle_problem(chat: ChatOpenAI, problem: str) -> str:
     )
 
 
-def n_solns(chat: ChatOpenAI, problem: str, n: int) -> str:
+def make_n_solns(chat: ChatOpenAI, problem: str, n: int) -> str:
     return run_saved_prompt(
         chat,
         key="n solutions",
@@ -85,7 +85,7 @@ def n_solns(chat: ChatOpenAI, problem: str, n: int) -> str:
     )
 
 
-def n_tests(chat: ChatOpenAI, problem: str, n: int) -> str:
+def make_n_tests(chat: ChatOpenAI, problem: str, n: int) -> str:
     return run_saved_prompt(
         chat,
         key="n tests",
@@ -110,7 +110,7 @@ def rate_difficulty(chat: ChatOpenAI, problem: str) -> str:
     )
 
 
-def gen_solns_and_tests(chat: ChatOpenAI, problems: Iterable[Tuple[int, str]]) -> Generator[
+def gen_solns_and_tests(chat: ChatOpenAI, problems: Iterable[Tuple[int, str]], n_solns=3, n_tests=3) -> Generator[
     Tuple[int, str, str], None, None]:
     for id, problem in problems:
         yield id, "original problem", problem
@@ -118,13 +118,13 @@ def gen_solns_and_tests(chat: ChatOpenAI, problems: Iterable[Tuple[int, str]]) -
         restyled = restyle_problem(chat, problem=problem)
         yield id, "restyled problem", restyled
 
-        restyled_solns = n_solns(chat, problem=restyled, n=3)
+        restyled_solns = make_n_solns(chat, problem=restyled, n=n_solns)
         yield id, "solutions", restyled_solns
 
         for i, soln in enumerate(util.split_py_markdown(restyled_solns)):
             yield id, f"solution {i}", soln
 
-        restyled_tests = n_tests(chat, problem=restyled, n=3)
+        restyled_tests = make_n_tests(chat, problem=restyled, n=n_tests)
         yield id, "tests", restyled_tests
 
         for i, test in enumerate(util.split_tests(restyled_tests)):
