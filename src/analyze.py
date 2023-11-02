@@ -436,22 +436,11 @@ def read_problems(filenames: Dict[str, str]) -> pd.DataFrame:
 def analyze_test_results(df: pd.DataFrame):
     print("columns:", df.columns)
     print("source files:", df["source file"].unique())
+    print("file sizes:", df["source file"].value_counts())
 
-    # how many unique solns and tests per problem?
-    n_solns = df.groupby(["id", "source file"]).agg({"soln": "nunique"})
-    n_tests = df.groupby(["id", "source file"]).agg({"test": "nunique"})
-
-    # plot stacked histogram of both n solns and n tests
-    sns.histplot(data=n_solns, x="soln", hue="source file", multiple="stack", binwidth=1, discrete=True)
-    plt.title("Number of unique solutions per problem")
-    plt.show()
-    sns.histplot(data=n_tests, x="test", hue="source file", multiple="stack", binwidth=1, discrete=True)
-    plt.title("Number of unique tests per problem")
-    plt.show()
-
-    # document failure modes
+    # group together errors
     patterns = {
-        r"test_.+ did not pass": "test did not pass",
+        r"test_.+ did not pass": "test failed",
         r"name '.+' is not defined": "name is not defined",
         r"indentation error (.+)": "indentation error",
         r"invalid syntax (.+)": "invalid syntax",
@@ -470,41 +459,76 @@ def analyze_test_results(df: pd.DataFrame):
     for pattern, label in patterns.items():
         df["result"] = df["result"].str.replace(pattern, label, regex=True)
 
-    print(df["result"].value_counts().to_markdown())
-
-    # wrap result text to 30 chars
-    df["result"] = df["result"].apply(lambda x: '\n'.join(textwrap.wrap(x, width=30)))
-
-    # group together errors
     def error_map(x: str) -> str:
-        if x == "failed: test did not pass":
+        if x == "failed: test failed":
             return "test failed"
         elif x == "passed":
             return "passed"
         else:
             return "error"
 
-    print(df["result"].unique())
-
     df["result type"] = df["result"].apply(error_map)
+    df["error"] = df["result type"] == "error"
+    df["failed"] = df["result type"] == "test failed"
+
+    # how many unique solns and tests per problem?
+    ndf = df.groupby("id").agg({
+        "source file": "first",
+        "soln": "nunique",
+        "test": "nunique",
+        "passed": "mean",
+        "error": "mean",
+        "failed": "mean",
+        "rating": "mean",
+    })
+    ndf.rename(columns={"soln": "n_solns", "test": "n_tests"}, inplace=True)
+
+    # plot histogram of both n solns and n tests
+    sns.countplot(ndf, x="n_solns", hue="source file")
+    plt.title("Number of unique solutions by dataset")
+    plt.show()
+    sns.countplot(ndf, x="n_tests", hue="source file")
+    plt.title("Number of unique tests by dataset")
+    plt.show()
+
+    # plot histogram by difficulty rating
+    sumdf = ndf.groupby(["source file", "rating"], as_index=False).agg({"n_solns": "mean", "n_tests": "mean"})
+    sns.barplot(sumdf, x="rating", y="n_solns", hue="source file")
+    plt.title("Number of solutions by rating")
+    plt.show()
 
     # make a pie chart of result type
     plt.pie(df["result type"].value_counts(), labels=df["result type"].value_counts().index)
     plt.show()
 
-    # temporarily hide NS
-    df = df[df["source file"] != "NS"]
-
     # make a bar chart of result type by source file
     sns.countplot(data=df, x="source file", hue="result type")
-    plt.gcf().set_size_inches(12, 6)
-    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.gcf().set_size_inches(6, 6)
     plt.tight_layout()
     plt.show()
 
-    # print a nice table of counts with totals by source file
-    print("Results by source file:")
-    print(df.groupby(["source file"]).size().to_markdown())
+    # plot difficulty rating by source file
+    sns.displot(data=df, x="rating", hue="source file", multiple="stack", binwidth=1, discrete=True)
+    plt.title("Difficulty rating by source file")
+    plt.gcf().set_size_inches(6, 6)
+    plt.tight_layout()
+    plt.show()
+
+    # for each rating, show a stacked bar plot of the number of problems that failed, passed, or errored
+    sns.histplot(df, x="rating", hue="result type", multiple="stack", discrete=True, stat="percent")
+    plt.show()
+
+    # line plot of pass/fail/error percentages by difficulty rating
+    nndf = ndf.groupby("rating", as_index=False).agg({"passed": "mean", "error": "mean", "failed": "mean"})
+    nndf = nndf.melt(id_vars=["rating"], var_name="result type", value_name="percent")
+    sns.lineplot(data=nndf, x="rating", y="percent", hue="result type")
+    plt.show()
+
+    sns.displot(
+        df, x="rating", hue="result type", row="source file",
+        multiple="stack", discrete=True, stat="percent",
+    )
+    plt.show()
 
     # evaluate solutions: what is the average number of tests passed per solution?
     pass
@@ -516,10 +540,7 @@ def analyze_test_results(df: pd.DataFrame):
     pass
 
 
-def gen_solns_and_tests(chat: ChatOpenAI, files: Dict[str, str], n_samples: int) -> pd.DataFrame:
-    df = read_problems(files)
-    # df.to_csv(f"../datasets/wiz/master-{n_samples}-{timestamp}.csv")
-
+def gen_solns_and_tests(chat: ChatOpenAI, df: pd.DataFrame, n_samples: int) -> pd.DataFrame:
     # sample problems from each source file
     df = df.groupby("source file").sample(n=n_samples)
 
@@ -592,7 +613,7 @@ def load_master(files: Dict[str, str], extras: List[str], ids: Set[str]) -> pd.D
 
 if __name__ == "__main__":
     # pd.set_option("display.max_rows", None)
-    pd.set_option("display.min_rows", 50)
+    # pd.set_option("display.min_rows", 50)
     pd.set_option("display.max_columns", None)
     pd.set_option('display.max_colwidth', 20)
     timestamp = util.timestamp()
@@ -613,11 +634,9 @@ if __name__ == "__main__":
     df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
     ids = set(df["id"].unique())
     master = load_master(filenames, extras, ids)
-    print(master)
-    exit(0)
+    df = pd.merge(left=df, right=master)
 
-    analyze_test_results(master, df)
+    # temporarily hide NS
+    df = df[df["source file"] != "NS"]
 
-    # # find outputs with "sorry"
-    # sorry = df[df["sample.output.text"].str.lower().str.contains(["sorry", "apolog", "can't", "unable", "unfortunately"])]
-    # print(sorry)
+    analyze_test_results(df)
