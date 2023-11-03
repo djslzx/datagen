@@ -540,19 +540,16 @@ def analyze_test_results(df: pd.DataFrame):
     pass
 
 
-def gen_solns_and_tests(chat: ChatOpenAI, df: pd.DataFrame, n_samples: int) -> pd.DataFrame:
+def gen_solns_and_tests(chat: ChatOpenAI, df: pd.DataFrame, n_samples: Optional[int]) -> pd.DataFrame:
     # sample problems from each source file
-    df = df.groupby("source file").sample(n=n_samples)
+    if n_samples is not None:
+        df = df.groupby("source file").sample(n=n_samples)
 
     # generate solutions and tests for sample
-    df["id"] = df.apply(
-        lambda row: f"{row['source file']}:{row['id']}",
-        axis=1
-    )
     problems = df[["id", "text"]].to_dict(orient="records")
     df = util.incrementally_save_jsonl(
         prompts.gen_solns_and_tests_dict(chat, problems),
-        filename=f"../datasets/wiz/solved-{n_samples}-{timestamp}"
+        filename=f"../datasets/wiz/solns-and-tests-{n_samples}-{timestamp}"
     )
     return df
 
@@ -598,7 +595,8 @@ def load_master(files: Dict[str, str], extras: List[str], ids: Set[str]) -> pd.D
     """
     master = read_problems(files)
     master["id"] = master.apply(lambda row: f"{row['source file']}:{row['id']}", axis=1)
-    master = master[master["id"].isin(ids)]
+    if ids:
+        master = master[master["id"].isin(ids)]
 
     for x in extras:
         df = pd.read_json(x, lines=True)
@@ -614,8 +612,8 @@ def load_master(files: Dict[str, str], extras: List[str], ids: Set[str]) -> pd.D
 if __name__ == "__main__":
     # pd.set_option("display.max_rows", None)
     # pd.set_option("display.min_rows", 50)
-    pd.set_option("display.max_columns", None)
-    pd.set_option('display.max_colwidth', 20)
+    # pd.set_option("display.max_columns", None)
+    # pd.set_option('display.max_colwidth', 20)
     timestamp = util.timestamp()
 
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
@@ -624,19 +622,24 @@ if __name__ == "__main__":
         "NS-euler": "../datasets/wiz/novel-instruct-euler",
         "Wiz-wide": "../datasets/wiz/wiz-wide",
         "Wiz-deep": "../datasets/wiz/wiz-deep",
-        "CA-1K": "../datasets/wiz/code-alpaca-1k",
+        "CA": "../datasets/wiz/code-alpaca",
     }
     extras = [
         "../datasets/wiz/ratings-2023-10-31T16:51:38.999519.jsonl",
     ]
-    # df = gen_solns_and_tests(CHAT, filenames, n_samples=1_000)
+    master = load_master(filenames, [], set())
+    print(master)
+    print(master["source file"].value_counts())
+
+    df = gen_solns_and_tests(CHAT, master, n_samples=None)
+    print(df)
+
     # df = rate_difficulty(CHAT, df, filenames)
-    df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
-    ids = set(df["id"].unique())
-    master = load_master(filenames, extras, ids)
-    df = pd.merge(left=df, right=master)
-
-    # temporarily hide NS
-    df = df[df["source file"] != "NS"]
-
-    analyze_test_results(df)
+    # df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
+    # ids = set(df["id"].unique())
+    # df = pd.merge(left=df, right=master)
+    #
+    # # temporarily hide NS
+    # df = df[df["source file"] != "NS"]
+    #
+    # analyze_test_results(df)
