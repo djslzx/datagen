@@ -30,7 +30,8 @@ def make_programs(solns: List[str], tests: List[str]) -> Generator[SolnTestPair,
 
 
 def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: float) -> Generator[Dict, None, None]:
-    df = pd.read_csv(filename, usecols=["id", "key", "value"])
+    df = pd.read_json(filename, lines=True)
+    df = df[["id", "key", "value"]]
     n_orig = len(df.groupby("id"))
 
     solns = (
@@ -63,13 +64,15 @@ def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: floa
 
     # run soln/test pairs
     print("Running soln/test pairs...")
-    for i, row in view.iterrows():
+    for _, row in view.iterrows():
+        id = row["id"]
         solns = row["solutions"]
         tests = row["tests"]
 
         for d in make_programs(solns, tests):
             eval_out = ex.unsafe_check(program=d.program, timeout=timeout)
             out = {
+                "id": id,
                 "passed": eval_out.passed,
                 "result": eval_out.result,
                 "test": d.test,
@@ -92,9 +95,9 @@ if __name__ == "__main__":
     ts = util.timestamp()
     util.incrementally_save_jsonl(
         it=eval_dataset(
-            filename="../datasets/wiz/solns-and-tests/all-solns-and-tests.jsonl",
+            filename="../datasets/wiz/solved/all-solved-1k.jsonl",
             n_samples_per_file=1,
             timeout=10,
         ),
-        filename=f"../datasets/wiz/evaluated-{ts}",
+        filename=f"../datasets/wiz/evaluated-1k-{ts}",
     )
