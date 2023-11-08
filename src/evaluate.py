@@ -96,7 +96,7 @@ if __name__ == "__main__":
     util.incrementally_save_jsonl(
         it=eval_dataset(
             filename="../datasets/wiz/solved/all-solved-1k.jsonl",
-            n_samples_per_file=1,
+            n_samples_per_file=None,
             timeout=10,
         ),
         filename=f"../datasets/wiz/evaluated-1k-{ts}",
