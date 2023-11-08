@@ -11,6 +11,7 @@ import multiprocessing
 import platform
 import signal
 import tempfile
+from dc import Result
 
 
 def _unsafe_execute(program: str, timeout: float, result: List):
@@ -58,7 +59,7 @@ def _unsafe_execute(program: str, timeout: float, result: List):
         os.chdir = chdir
 
 
-def unsafe_check(program: str, timeout: float) -> Dict:
+def unsafe_check(program: str, timeout: float) -> Result:
     manager = multiprocessing.Manager()
     result = manager.list()
 
@@ -72,7 +73,7 @@ def unsafe_check(program: str, timeout: float) -> Dict:
     if not result:
         result.append("timed out")
 
-    return dict(
+    return Result(
         passed=result[0] == "passed",
         result=result[0],
     )

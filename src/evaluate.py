@@ -3,19 +3,20 @@ Evaluate LLM-generated code and tests.
 """
 
 import re
-import json
-from pprint import pp
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from typing import List, Union, Optional, Dict, Generator
+from typing import List, Optional, Dict, Generator
 
 import execution as ex
 import util
+from dc import SolnTestPair, KVItem
 
 
-def make_programs(solns: List[str], tests: List[str]) -> Generator[Dict, None, None]:
+def make_programs(solns: List[str], tests: List[str]) -> Generator[SolnTestPair, None, None]:
+    """
+    Given a list of solutions and a list of tests, produces programs that pair each
+    solution with each test.  Yields a dictionary with keys "soln", "test", and
+    "program".
+    """
     for soln in solns:
         for test in tests:
             test_names = find_tests(test)
@@ -25,14 +26,10 @@ def make_programs(solns: List[str], tests: List[str]) -> Generator[Dict, None, N
                 test_name = test_names[0]
                 tester = f"assert {test_name}(), '{test_name} did not pass'"
             program = "\n\n".join([soln, test, tester])
-            yield {
-                "soln": soln,
-                "test": test,
-                "program": program,
-            }
+            yield SolnTestPair(soln=soln, test=test, program=program)
 
 
-def eval_dataset(filename: str, n_samples: int, timeout: float) -> Generator[Dict, None, None]:
+def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: float) -> Generator[Dict, None, None]:
     df = pd.read_csv(filename, usecols=["id", "key", "value"])
     n_orig = len(df.groupby("id"))
 
@@ -54,18 +51,15 @@ def eval_dataset(filename: str, n_samples: int, timeout: float) -> Generator[Dic
 
     # split source file and local id from global id
     df["id"] = df.index
-    df["source file"] = df["id"].apply(lambda s: s.split(":")[0])
-    df["local id"] = df["id"].apply(lambda s: int(s.split(":")[1]))
 
     # take subset of rows of size n_samples
-    if n_samples is None:
+    if n_samples_per_file is None:
         view = df
         print(f"Keeping full dataset of size {len(df)}...")
     else:
-        view = df.groupby("source file").sample(n=n_samples, replace=False)
-        print(f"Sampled {n_samples} rows from each source file, yielding dataset of size {len(view)}...")
-
-    print(view)
+        df["source file"] = df["id"].apply(lambda s: s.split(":")[0])
+        view = df.groupby("source file").sample(n=n_samples_per_file, replace=False)
+        print(f"Sampled {n_samples_per_file} rows from each source file, yielding dataset of size {len(view)}...")
 
     # run soln/test pairs
     print("Running soln/test pairs...")
@@ -74,15 +68,16 @@ def eval_dataset(filename: str, n_samples: int, timeout: float) -> Generator[Dic
         tests = row["tests"]
 
         for d in make_programs(solns, tests):
-            program = d["program"]
-            yield {
-                "id": row["id"],
-                "source file": row["source file"],
-                "local id": row["local id"],
-                **ex.unsafe_check(program=program, timeout=timeout),
-                "functions": find_fns(program),
-                **d,
+            eval_out = ex.unsafe_check(program=d.program, timeout=timeout)
+            out = {
+                "passed": eval_out.passed,
+                "result": eval_out.result,
+                "test": d.test,
+                "solution": d.soln,
+                "functions": find_fns(d.program),
             }
+            for item in KVItem.from_dict(out):
+                yield item.to_dict()
 
 
 def find_fns(text: str) -> List[str]:
@@ -97,8 +92,8 @@ if __name__ == "__main__":
     ts = util.timestamp()
     util.incrementally_save_jsonl(
         it=eval_dataset(
-            filename="../datasets/wiz/solved-1k-2023-10-25T15:16:13.113059.csv",
-            n_samples=None,
+            filename="../datasets/wiz/solns-and-tests/all-solns-and-tests.jsonl",
+            n_samples_per_file=1,
             timeout=10,
         ),
         filename=f"../datasets/wiz/evaluated-{ts}",
