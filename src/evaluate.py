@@ -17,6 +17,10 @@ def make_programs(solns: List[str], tests: List[str]) -> Iterable[SolnTestPair]:
     solution with each test.  Yields a dictionary with keys "soln", "test", and
     "program".
     """
+    preamble = "\n".join([
+        "class TestFailed(Exception):",
+        "    pass",
+    ])
     for i, soln in enumerate(solns):
         for j, test in enumerate(tests):
             test_names = find_tests(test)
@@ -24,8 +28,11 @@ def make_programs(solns: List[str], tests: List[str]) -> Iterable[SolnTestPair]:
                 tester = "assert False, 'no tests found'"
             else:
                 test_name = test_names[0]
-                tester = f"assert {test_name}(), '{test_name} did not pass'"
-            program = "\n\n".join([soln, test, tester])
+                tester = "\n".join([
+                    f"if not {test_name}():",
+                    f"    raise TestFailed('failed {test_name}')",
+                ])
+            program = "\n\n".join([preamble, soln, test, tester])
             yield SolnTestPair(id=f"{i}:{j}", soln=soln, test=test, program=program)
 
 
