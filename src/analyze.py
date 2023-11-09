@@ -13,10 +13,14 @@ import textwrap
 import regex as re
 from langchain.chat_models import ChatOpenAI
 
+import sys
 import featurizers as feat
 import util
 import wizard
 import prompts
+
+
+TIMESTAMP = util.timestamp()
 
 
 def load_json_as_df(filename: str) -> pd.DataFrame:
@@ -549,7 +553,7 @@ def gen_solns_and_tests(chat: ChatOpenAI, df: pd.DataFrame, n_samples: Optional[
     problems = df[["id", "text"]].to_dict(orient="records")
     df = util.incrementally_save_jsonl(
         prompts.gen_solns_and_tests_dict(chat, problems),
-        filename=f"../datasets/wiz/solns-and-tests-{n_samples}-{timestamp}"
+        filename=f"../datasets/wiz/solns-and-tests-{n_samples}-{TIMESTAMP}"
     )
     return df
 
@@ -577,7 +581,7 @@ def rate_difficulty(chat: ChatOpenAI, df: pd.DataFrame) -> pd.DataFrame:
 
     return util.incrementally_save_jsonl(
         gen_ratings(problems=df[["source file", "id", "text"]].to_dict(orient="records")),
-        filename=f"../datasets/wiz/ratings-{timestamp}"
+        filename=f"../datasets/wiz/ratings-{TIMESTAMP}"
     )
 
 
@@ -614,7 +618,6 @@ if __name__ == "__main__":
     # pd.set_option("display.min_rows", 50)
     # pd.set_option("display.max_columns", None)
     # pd.set_option('display.max_colwidth', 20)
-    timestamp = util.timestamp()
 
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
     filenames = {
@@ -622,24 +625,33 @@ if __name__ == "__main__":
         "NS-euler": "../datasets/wiz/novel-instruct-euler",
         "Wiz-wide": "../datasets/wiz/wiz-wide",
         "Wiz-deep": "../datasets/wiz/wiz-deep",
-        "CA": "../datasets/wiz/code-alpaca",
+        "CA-20k": "../datasets/wiz/code-alpaca",
     }
-    extras = [
-        "../datasets/wiz/ratings-2023-10-31T16:51:38.999519.jsonl",
-    ]
     master = load_master(filenames, [], set())
-    print(master)
-    print(master["source file"].value_counts())
+    master["n"] = master["id"].apply(lambda x: int(x.split(":")[1]))
+    master = master[
+        # ((master["source file"] == "NS") & (master["n"] > 24741))
+        # ((master["source file"] == "NS-euler") & (master["n"] > 11026))
+        # ((master["source file"] == "CA-20k") & (master["n"] > 10777))
+        # ((master["source file"] == "Wiz-deep") & (master["n"] > 12183))
+        ((master["source file"] == "Wiz-wide") & (master["n"] > 14435))
+    ]
+    master.drop(columns="n", inplace=True)
+
+    print("Processing source file:")
+    print(master["source file"].unique())
 
     df = gen_solns_and_tests(CHAT, master, n_samples=None)
-    print(df)
 
-    # df = rate_difficulty(CHAT, df, filenames)
+    # df = pd.read_json("../datasets/wiz/evaluated/all-evaluated-1k-2023-11-01T15:31:06.413631.jsonl", lines=True)
+    # df = df[df["source file"] == "NS"]
+    # print(df)
+
     # df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
     # ids = set(df["id"].unique())
     # df = pd.merge(left=df, right=master)
-    #
-    # # temporarily hide NS
-    # df = df[df["source file"] != "NS"]
-    #
+
+    # print(df)
+
+    # df = rate_difficulty(CHAT, df)
     # analyze_test_results(df)
