@@ -23,7 +23,7 @@ def _unsafe_execute(program: str, timeout: float, result: List):
     ]
     for x in forbidden:
         if x in program:
-            result.append(f"failed:forbidden code:{x}")
+            result.append(f"failed:Forbidden:{x}")
             return
 
     # remove print statements
