@@ -8,6 +8,7 @@ class SolnTestPair:
     soln: str
     test: str
     program: str
+    id: Optional[str] = None
 
 
 @dataclass

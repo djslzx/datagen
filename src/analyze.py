@@ -1,7 +1,6 @@
 import re
 import json
 from pprint import pp
-from tqdm import tqdm
 import itertools as it
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
@@ -10,7 +9,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import List, Union, Optional, Dict, Tuple, Callable, Set
 import textwrap
-import regex as re
 from langchain.chat_models import ChatOpenAI
 
 import sys
@@ -388,39 +386,6 @@ def analyze_annotations(df: pd.DataFrame):
     # )
 
 
-def analyze_extras(df: pd.DataFrame):
-    """
-    - are the solutions all the same?
-    - are the tests all the same?
-    - how similar are the tests in test(text) to those in test(text, soln)?
-    - how many tests are runnable? how do we check this?
-      - failure modes:
-        - needs web connection
-        - needs functions to be defined
-        - needs external resources (run code in a container? but then too slow...)
-        - code is malformed
-        - etc
-    - how many solutions pass the tests?
-    """
-    # how many solutions are the same?
-    n_solns = len({c for c in df.columns if c.startswith("solution")})
-    print(f"n solns: {n_solns}")
-    df["n unique solns"] = df.apply(
-        lambda row: len({
-            row[f"soln-{i}"] for i in range(n_solns)
-        }),
-        axis=1
-    )
-    avg_n_uniq_solns = df["n unique solns"].mean()
-    print(f"Average number of unique solutions per row: {avg_n_uniq_solns}")
-
-    # how similar (SBert distance) are the solutions?
-    pass
-
-    # how similar are the tests?
-    pass
-
-
 def read_problems(filenames: Dict[str, str]) -> pd.DataFrame:
     rows = []
     for shortname, filename in filenames.items():
@@ -592,31 +557,10 @@ def try_float(s: str) -> float:
         return np.nan
 
 
-def load_master(files: Dict[str, str], extras: List[str], ids: Set[str]) -> pd.DataFrame:
-    """
-    Loads the full datasets specified by `files`, a map from source file names to
-    file paths, and adds extra annotations in `supplements`.
-    """
-    master = read_problems(files)
-    master["id"] = master.apply(lambda row: f"{row['source file']}:{row['id']}", axis=1)
-    if ids:
-        master = master[master["id"].isin(ids)]
-
-    for x in extras:
-        df = pd.read_json(x, lines=True)
-        df.drop(columns=["text"], inplace=True)
-        master = pd.merge(left=master, right=df, on="id", how="inner")
-
-    if "rating" in master.columns:
-        master["rating"] = master["rating"].apply(try_float)
-
-    return master
-
-
 if __name__ == "__main__":
     # pd.set_option("display.max_rows", None)
     # pd.set_option("display.min_rows", 50)
-    # pd.set_option("display.max_columns", None)
+    pd.set_option("display.max_columns", None)
     # pd.set_option('display.max_colwidth', 20)
 
     CHAT = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k-0613")
@@ -627,31 +571,39 @@ if __name__ == "__main__":
         "Wiz-deep": "../datasets/wiz/wiz-deep",
         "CA-20k": "../datasets/wiz/code-alpaca",
     }
-    master = load_master(filenames, [], set())
-    master["n"] = master["id"].apply(lambda x: int(x.split(":")[1]))
-    master = master[
-        # ((master["source file"] == "NS") & (master["n"] > 24741))
-        # ((master["source file"] == "NS-euler") & (master["n"] > 11026))
-        # ((master["source file"] == "CA-20k") & (master["n"] > 10777))
-        # ((master["source file"] == "Wiz-deep") & (master["n"] > 12183))
-        ((master["source file"] == "Wiz-wide") & (master["n"] > 14435))
+    extras = [
+        "../datasets/wiz/ratings/ratings-2023-10-31T16:51:38.999519.jsonl",
+        "../datasets/wiz/ratings/ratings-2023-10-31T16:51:38.999519.jsonl",
+        "../datasets/wiz/solns-and-tests/all-solns-and-tests.jsonl",
     ]
-    master.drop(columns="n", inplace=True)
 
-    print("Processing source file:")
-    print(master["source file"].unique())
 
-    df = gen_solns_and_tests(CHAT, master, n_samples=None)
+    def convert_ca(s: str) -> str:
+        if s.startswith("CA-"):
+            _, n = s.split(":")
+            return f"CA:{n}"
+        else:
+            return s
 
-    # df = pd.read_json("../datasets/wiz/evaluated/all-evaluated-1k-2023-11-01T15:31:06.413631.jsonl", lines=True)
-    # df = df[df["source file"] == "NS"]
+
+    df = pd.read_json("../datasets/wiz/solns-and-tests/all-solns-and-tests.jsonl", lines=True)
+    df["id"] = df["id"].apply(convert_ca)
+
+    ratings = pd.concat([
+        pd.read_json(filename, lines=True)
+        for filename in [
+            "../datasets/wiz/ratings/ratings-2023-10-31T16:51:38.999519.jsonl",
+            "../datasets/wiz/ratings/ratings-2023-10-31T16:51:38.999519.jsonl",
+        ]
+    ], ignore_index=True).drop_duplicates(subset="id")
+    ratings = ratings.melt(id_vars=["id"], value_vars=["rating"], var_name="key", value_name="value")
+    ratings["id"] = ratings["id"].apply(convert_ca)
+
+    df = pd.concat([df, ratings], axis=0)
+    df.sort_values(["id", "key"], inplace=True)
+    print(df)
+
+    # df = gen_solns_and_tests(CHAT, master, n_samples=None)
     # print(df)
 
-    # df = pd.read_json("../datasets/wiz/evaluated-2023-10-27T17:13:33.784822.jsonl", lines=True)
-    # ids = set(df["id"].unique())
-    # df = pd.merge(left=df, right=master)
-
-    # print(df)
-
-    # df = rate_difficulty(CHAT, df)
-    # analyze_test_results(df)
+    analyze_test_results(df)

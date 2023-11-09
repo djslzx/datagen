@@ -43,6 +43,6 @@ pygraphviz
 # graph_tool  # install using brew
 tabulate
 trl  # transformer rl
-# codellama
+peft  # parameter efficient fine-tuning
 ribs[visualize]  # pyribs - quality diversity
 protobuf<=3.20.1  # fix wandb error
