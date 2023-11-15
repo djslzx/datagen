@@ -51,6 +51,15 @@ def massage_solved_dataset(infile: str, outfile: str) -> pd.DataFrame:
     return df
     
 
+def load_dataset(filename: str) -> datasets.Dataset:
+    assert filename.endswith(".jsonl"), \
+        f"Expected jsonl file, but got filename={filename}"
+    
+    df = pd.read_json(filename, lines=True)
+    data = datasets.Dataset.from_pandas(df)
+    return data
+
+
 def demo_llama():
     model, tokenizer = load_llama()
     input_text = [
@@ -68,9 +77,5 @@ if __name__ == "__main__":
 
     # demo_llama()
     root = "/home/djl328/prob-repl/datasets/wiz"
-    massage_solved_dataset(
-        infile=f"{root}/all-solved-20k:30k.jsonl",
-        outfile=f"{root}/paired-20k:30k.jsonl"
-    )
-    # data = datasets.load_dataset("json", data_files=f"{root}/all-solved-20:30k.jsonl")
-    # print(data)
+    data = load_dataset(f"{root}/paired-20k:30k.jsonl")
+    print(data)
