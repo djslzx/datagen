@@ -23,6 +23,8 @@ tqdm
 # sentencepiece
 # sacremoses
 transformers
+git+https://github.com/huggingface/transformers.git@main
+accelerate
 datasets
 sentence-transformers
 
@@ -39,7 +41,7 @@ networkx
 palettable
 nltk
 py-readability-metrics
-pygraphviz
+# pygraphviz
 # graph_tool  # install using brew
 tabulate
 trl  # transformer rl
