@@ -52,12 +52,12 @@ def massage_solved_dataset(infile: str, outfile: str) -> pd.DataFrame:
             if row[soln]:
                 rows.append({
                     "id": f"{id}:{i}",
-                    "original problem": row["original problem"],
-                    "restyled problem": row["restyled problem"],
-                    "solution": row[soln]
+                    "original problem": "# Question:\n" + row["original problem"],
+                    "restyled problem": "# Question:\n" + row["restyled problem"],
+                    "solution": "# Answer:\n" + row[soln]
                 })
-                df = pd.DataFrame.from_records(rows)
-                df.to_json(outfile, orient="records", lines=True)
+    df = pd.DataFrame.from_records(rows)
+    df.to_json(outfile, orient="records", lines=True)
     return df
 
 
@@ -99,6 +99,13 @@ def format_prompts(x) -> List[str]:
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.max_colwidth", 20)
+
+    # root = "/home/djl328/prob-repl/datasets/wiz"
+    root = "../../datasets/wiz"
+
+    # # massage dataset
+    # massage_solved_dataset(f"{root}/all-solved-1k.jsonl",
+    #                        f"{root}/paired-1k.jsonl")
 
     # demo_llama()
     root = "/home/djl328/prob-repl/datasets/wiz"
