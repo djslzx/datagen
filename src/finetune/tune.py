@@ -6,9 +6,12 @@ from math import isnan
 import pandas as pd
 import numpy as np
 import torch as T
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
-import datasets
 from tqdm import tqdm
+
+# hugging face
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
+from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+import datasets
 
 
 def load_llama() -> Tuple[AutoModel, AutoTokenizer]:
@@ -17,6 +20,13 @@ def load_llama() -> Tuple[AutoModel, AutoTokenizer]:
     model = AutoModelForCausalLM.from_pretrained(model_name)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.padding_side = "right"
+    return model, tokenizer
+
+
+def load_dummy_model() -> Tuple[AutoModel, AutoTokenizer]:
+    model_name = "Salesforce/codegen-350M-mono"
+    model = AutoModelForCausalLM.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     return model, tokenizer
 
 
@@ -46,10 +56,10 @@ def massage_solved_dataset(infile: str, outfile: str) -> pd.DataFrame:
                     "restyled problem": row["restyled problem"],
                     "solution": row[soln]
                 })
-    df = pd.DataFrame.from_records(rows)
-    df.to_json(outfile, orient="records", lines=True)
+                df = pd.DataFrame.from_records(rows)
+                df.to_json(outfile, orient="records", lines=True)
     return df
-    
+
 
 def load_dataset(filename: str) -> datasets.Dataset:
     assert filename.endswith(".jsonl"), \
@@ -71,11 +81,51 @@ def demo_llama():
     print(tokenizer.decode(output[0], skip_special_tokens=True))
 
 
+def tuning():
+    model, tokenizer = load_llama()
+    
+
+def format_prompts(x) -> List[str]:
+    outputs = []
+    problems, solutions = x["restyled problem"], x["solution"]
+    assert len(problems) == len(solutions), \
+        (f"Expected to have the same number of problems and solutions, but got "
+         f"|problems|={len(problems)}, |solutions|={len(solutions)}")
+    for problem, solution in zip(problems, solutions):
+        outputs.append(f"# Question:\n{problem}\n# Answer:\n{solution}")
+    return outputs
+
+
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.max_colwidth", 20)
 
     # demo_llama()
     root = "/home/djl328/prob-repl/datasets/wiz"
-    data = load_dataset(f"{root}/paired-20k:30k.jsonl")
-    print(data)
+    dataset = load_dataset(f"{root}/paired-20k:30k.jsonl")
+    print(dataset)
+
+    # model, tokenizer = load_llama()
+    model, tokenizer = load_dummy_model()
+    print(
+        f"eos token id: {tokenizer.eos_token_id}\n"
+        f"eos token: {tokenizer.eos_token}\n"
+        f"pad token id: {tokenizer.pad_token_id}\n"
+        f"pad token: {tokenizer.pad_token}"
+    )
+
+    if not tokenizer.pad_token:
+        tokenizer.pad_token = "<|pad|>"
+
+    response_template = "# Answer:"
+    collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+
+    trainer = SFTTrainer(
+        model,
+        train_dataset=dataset,
+        formatting_func=format_prompts,
+        data_collator=collator,
+        dataset_text_field="solution",
+        max_seq_length=8000,
+    )
+    trainer.train()
