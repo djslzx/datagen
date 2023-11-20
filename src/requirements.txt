@@ -6,10 +6,12 @@ torch
 torchvision
 lightning
 scikit-learn
-scikit-image
+# scikit-image
 Levenshtein
 lark     # parser
 maturin  # build rust
+pandas
+tabulate
 
 # egraphs-good
 # ./eggy/target/wheels/eggy-0.1.0-cp37-abi3-macosx_11_0_arm64.whl
@@ -17,12 +19,6 @@ maturin  # build rust
 
 # pretrained LLMs + deps
 tqdm
-# boto3
-# requests
-# regex
-# sentencepiece
-# sacremoses
-transformers
 git+https://github.com/huggingface/transformers.git@main
 accelerate
 datasets
@@ -30,21 +26,24 @@ sentence-transformers
 
 openai
 wandb
-opencv-python
+protobuf<=3.20.1  # fix wandb error
 langchain
-typing-inspect==0.8.0
-typing_extensions==4.5.0
-func_timeout
+
+# opencv-python
+
+# typing-inspect==0.8.0
+# typing_extensions==4.5.0
+# func_timeout
 huggingface_hub
-adjustText
-networkx
-palettable
-nltk
-py-readability-metrics
+
+# adjustText
+# networkx
+# palettable
+# nltk
+# py-readability-metrics
 # pygraphviz
 # graph_tool  # install using brew
-tabulate
+
 trl  # transformer rl
 peft  # parameter efficient fine-tuning
-ribs[visualize]  # pyribs - quality diversity
-protobuf<=3.20.1  # fix wandb error
+# ribs[visualize]  # pyribs - quality diversity
