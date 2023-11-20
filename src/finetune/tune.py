@@ -112,7 +112,7 @@ def tune_once(model: AutoModel,
               problem_key = "restyled problem",
 ):
     def format_prompt(q: str, a: str) -> str:
-        return f"# Question: {q}\n# Answer: {a}"
+        return f"# Question: {q}\n# Answer: {a}\n#DONE#"
 
     def format_prompts(x) -> List[str]:
         """
