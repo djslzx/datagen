@@ -8,6 +8,7 @@ import numpy as np
 import torch as T
 from tqdm import tqdm
 import wandb
+import sys
 
 # hugging face
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, TrainingArguments
@@ -31,35 +32,54 @@ def load_dummy_model() -> Tuple[AutoModel, AutoTokenizer]:
     return model, tokenizer
 
 
-def massage_solved_dataset(infile: str, outfile: str) -> pd.DataFrame:
+def massage_solved_dataset(infile: str, outfile_prefix: str):
     def soln_cols(n: int) -> List[str]:
         return [f"solution {i}" for i in range(n)]
 
-    assert infile.endswith(".jsonl") and outfile.endswith(".jsonl"), \
-        f"Expected jsonl files, but got infile={infile} and outfile={outfile}"
+    assert infile.endswith(".jsonl"), f"Expected jsonl file, but got infile={infile}"
+
+    # remap source names
+    def rename(s_id: str) -> str:
+        name_map = {
+            "CA-20k": "CA",
+            "NS-euler": "NSE",
+            "NS": "NSCA",
+            "Wiz-deep": "WD",
+            "Wiz-wide": "WW",
+        }
+        s_src, s_num = s_id.split(":")
+        s_src = name_map[s_src] if s_src in name_map else s_src
+        return f"{s_src}:{s_num}"
+
     df = pd.read_json(infile, lines=True)
     df = df[["id", "key", "value"]]
+    df["id"] = df["id"].apply(rename)
     df = df[df["key"].isin(["id", "original problem", "restyled problem"] + soln_cols(3))]
     df = df.drop_duplicates(subset=["id", "key"], keep="first")
     df = df.pivot(index="id", columns="key", values="value")
     df = df.where(pd.notnull(df), None)
+    df["source"] = df.index.map(lambda x: x.split(":")[0])
 
     # split solns into separate rows: each id should be `file:problem-id:soln-id`
     # fixme: for now, we make the simplifying assumption that all solutions
     #   are good, so use any problem/solution pair to fine-tune
-    rows = []
-    for id, row in tqdm(df.iterrows(), total=len(df)):
-        for i, soln in enumerate(soln_cols(3)):
-            if row[soln]:
-                rows.append({
-                    "id": f"{id}:{i}",
-                    "original problem": "# Question:\n" + row["original problem"],
-                    "restyled problem": "# Question:\n" + row["restyled problem"],
-                    "solution": "# Answer:\n" + row[soln]
-                })
-    df = pd.DataFrame.from_records(rows)
-    df.to_json(outfile, orient="records", lines=True)
-    return df
+
+    # split each source file into its own dataset
+    for source in df["source"].unique():
+        data = df[df["source"] == source]
+        rows = []
+        for id, row in tqdm(data.iterrows(), total=len(data), desc=f"Massaging dataset={source}"):
+            for i, soln in enumerate(soln_cols(3)):
+                if row[soln]:
+                    rows.append({
+                        "id": f"{id}:{i}",
+                        "source": source,
+                        "original problem": row["original problem"],
+                        "restyled problem": row["restyled problem"],
+                        "solution": row[soln],
+                    })
+        out = pd.DataFrame.from_records(rows)
+        out.to_json(f"{outfile_prefix}-{source}.jsonl", orient="records", lines=True)
 
 
 def load_dataset(filename: str) -> datasets.Dataset:
@@ -74,7 +94,7 @@ def load_dataset(filename: str) -> datasets.Dataset:
 def demo_llama():
     model, tokenizer = load_llama()
     input_text = [
-        "#PROBLEM\nTry solving this programming problem:  Write a function in Python to generate the first n Fibonacci numbers.\n",
+        "#PROBLEM\Write a function in Python to generate the first n Fibonacci numbers.\n",
         "#SOLUTION\n",
     ]
     input_tokens = tokenizer.encode(input_text, return_tensors="pt")
@@ -82,8 +102,12 @@ def demo_llama():
     print(tokenizer.decode(output[0], skip_special_tokens=True))
 
 
-def tuning():
-    model, tokenizer = load_llama()
+def tuning(model: AutoModel, tokenizer: AutoTokenizer, dataset: datasets.Dataset):
+    """
+    Train on X = {WW, WD, CA, NSCA, NSE}
+    and test on Y = union X {HumanEval, DS1000, APPS, MBPP}
+    """
+    pass
     
 
 def format_prompts(x) -> List[str]:
@@ -105,28 +129,25 @@ if __name__ == "__main__":
     root = "/home/djl328/prob-repl/datasets/wiz"
     # root = "../../datasets/wiz"
 
-    # # massage dataset
-    # massage_solved_dataset(f"{root}/all-solved-20k:30k.jsonl",
-    #                        f"{root}/paired-plus-20k:30k.jsonl")
+    # massage dataset
+    massage_solved_dataset(f"{root}/all-solved-20k:30k.jsonl",
+                           f"{root}/paired-20k:30k")
 
     # demo_llama()
     dataset = load_dataset(f"{root}/paired-plus-20k:30k.jsonl")
-    print(dataset)
 
     # model, tokenizer = load_llama()
     model, tokenizer = load_dummy_model()
-    print(
-        f"eos token id: {tokenizer.eos_token_id}\n"
-        f"eos token: {tokenizer.eos_token}\n"
-        f"pad token id: {tokenizer.pad_token_id}\n"
-        f"pad token: {tokenizer.pad_token}"
-    )
 
+    # fixme: not sure if this is the right pad token to use, as the original tokenizer has no padding token
     if not tokenizer.pad_token:
+        print("WARNING: no pad token defined by tokenizer, setting to default value", file=sys.stderr)
         tokenizer.pad_token = "<|pad|>"
 
-    response_template = "# Answer:"
-    collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+    # Compensate for lack of context in response template 
+    response_template_w_context = "\n# Answer:"
+    response_template_ids = tokenizer.encode(response_template_w_context, add_special_tokens=False)[2:]
+    collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
     args = TrainingArguments(
         output_dir="output",
         per_device_train_batch_size=2,
@@ -137,9 +158,9 @@ if __name__ == "__main__":
         model,
         train_dataset=dataset,
         data_collator=collator,
-        dataset_text_field="solution",
+        formatting_func=format_prompts,
         args=args,
         max_seq_length=2048,
     )
     trainer.train()
-    
+    trainer.save_model("output/ft-model")
