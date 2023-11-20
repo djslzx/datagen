@@ -21,6 +21,36 @@ def timestamp():
     return datetime.now().isoformat()
 
 
+def split_by_percentages(xs: List, ps: Dict[str, float]) -> Dict[str, List]:
+    """
+    Given a list and dictionary of names/weights,
+    split the list by weights and return the named splits.
+    """
+    assert abs(1 - sum(ps.values())) <= 1e-6, "Split percentages must add up to 1"
+    outs = {}
+    start = 0
+    n = len(xs)
+    for key, p in ps.items():
+        step = int(p * n)
+        outs[key] = xs[start:start + step]
+        start += step
+    return outs
+
+
+def test_split_by_percentages():
+    cases = [
+        [1,2,3], {"a": 1/3, "b": 1/3, "c": 1/3},
+        {"a": [1], "b": [2], "c": [3]},
+        [1] * 80 + [2] * 10 + [3] * 10, {"train": 0.8, "validate": 0.1, "test": 0.1},
+        {"train": [1] * 80,
+         "validate": [2] * 10,
+         "test": [3] * 10},
+    ]
+    for xs, ps, y in zip(cases[0::3], cases[1::3], cases[2::3]):
+        out = split_by_percentages(xs, ps)
+        assert out == y, f"Expected {y} but got {out}"
+    
+
 def load_llama() -> Tuple[AutoModel, AutoTokenizer]:
     # model_name = "codellama/CodeLlama-7b-Python-hf"
     model_name = "codellama/CodeLLama-7b-instruct-hf"
@@ -37,14 +67,23 @@ def load_dummy_model() -> Tuple[AutoModel, AutoTokenizer]:
     return model, tokenizer
 
 
-def massage_solved_dataset(infile: str, outfile_prefix: str):
-    def soln_cols(n: int) -> List[str]:
-        return [f"solution {i}" for i in range(n)]
+def massage_solved_dataset(
+        in_file: str, 
+        out_dir: str,
+        name_map: Dict[str, str] = None,
+        split: Dict[str, float] = None,
+):
+    """
+    Clean up datasets consisting of problems, solutions, and checkers.
+    - pivot from kv to columnar form
+    - rename datasets, e.g. CA-20k to CA
+    - extract source from id
+    - split into separate output files by source
+    - train/validation/test split
+    """
+    assert in_file.endswith(".jsonl"), f"Expected jsonl file, but got in_file={in_file}"
 
-    assert infile.endswith(".jsonl"), f"Expected jsonl file, but got infile={infile}"
-
-    # remap source names
-    def rename(s_id: str) -> str:
+    if not name_map:
         name_map = {
             "CA-20k": "CA",
             "NS-euler": "NSE",
@@ -52,11 +91,23 @@ def massage_solved_dataset(infile: str, outfile_prefix: str):
             "Wiz-deep": "WD",
             "Wiz-wide": "WW",
         }
+
+    if not split:
+        split = {
+            "train": 0.8,
+            "validation": 0.1,
+            "test": 0.1,
+        }
+
+    def soln_cols(n: int) -> List[str]:
+        return [f"solution {i}" for i in range(n)]
+
+    def rename(s_id: str) -> str:
         s_src, s_num = s_id.split(":")
         s_src = name_map[s_src] if s_src in name_map else s_src
         return f"{s_src}:{s_num}"
 
-    df = pd.read_json(infile, lines=True)
+    df = pd.read_json(in_file, lines=True)
     df = df[["id", "key", "value"]]
     df["id"] = df["id"].apply(rename)
     df = df[df["key"].isin(["id", "original problem", "restyled problem"] + soln_cols(3))]
@@ -69,6 +120,9 @@ def massage_solved_dataset(infile: str, outfile_prefix: str):
     # split solns into separate rows: each id should be `file:problem-id:soln-id`
     # fixme: for now, we make the simplifying assumption that all solutions
     #   are good, so use any problem/solution pair to fine-tune
+
+    # shuffle data
+    df = df.sample(frac=1)
 
     # split each source file into its own dataset
     for source in df["source"].unique():
@@ -84,8 +138,10 @@ def massage_solved_dataset(infile: str, outfile_prefix: str):
                         "restyled problem": row["restyled problem"],
                         "solution": row[soln],
                     })
-        out = pd.DataFrame.from_records(rows)
-        out.to_json(f"{outfile_prefix}-{source}.jsonl", orient="records", lines=True)
+        # train/validate/test split
+        for name, subset in split_by_percentages(rows, split).items():
+            out = pd.DataFrame.from_records(subset)
+            out.to_json(f"{out_dir}/{source}/{name}.jsonl", orient="records", lines=True)
 
 
 def load_json_dataset(filename: str) -> datasets.Dataset:
@@ -178,6 +234,7 @@ def tune_once(model: AutoModel,
     
 
 if __name__ == "__main__":
+    # test_split_by_percentages()
     pd.set_option("display.max_columns", None)
     pd.set_option("display.max_colwidth", 20)
 
@@ -185,11 +242,12 @@ if __name__ == "__main__":
     assert len(args) == 2, f"Expected name, filename but got {args}"
     name, filename = args
 
-    # # massage dataset
-    # root = "/home/djl328/prob-repl/datasets/wiz"
+    # massage dataset
+    root = "/home/djl328/prob-repl/datasets/wiz"
     # root = "../../datasets/wiz"
-    # massage_solved_dataset(f"{root}/all-solved-20k:30k.jsonl",
-    #                        f"{root}/paired-20k:30k")
+    massage_solved_dataset(in_file=f"{root}/all-solved-20k:30k.jsonl",
+                           out_dir=f"{root}/paired-20k:30k")
+    exit(0)
 
     dataset = load_json_dataset(filename)
     model, tokenizer = load_dummy_model()
