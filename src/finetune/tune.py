@@ -7,9 +7,10 @@ import pandas as pd
 import numpy as np
 import torch as T
 from tqdm import tqdm
+import wandb
 
 # hugging face
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, TrainingArguments
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 import datasets
 
@@ -92,7 +93,8 @@ def format_prompts(x) -> List[str]:
         (f"Expected to have the same number of problems and solutions, but got "
          f"|problems|={len(problems)}, |solutions|={len(solutions)}")
     for problem, solution in zip(problems, solutions):
-        outputs.append(f"# Question:\n{problem}\n# Answer:\n{solution}")
+        outputs.append(f"# Question: {problem}\n "
+                       f"# Answer: {solution}")
     return outputs
 
 
@@ -100,16 +102,15 @@ if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.max_colwidth", 20)
 
-    # root = "/home/djl328/prob-repl/datasets/wiz"
-    root = "../../datasets/wiz"
+    root = "/home/djl328/prob-repl/datasets/wiz"
+    # root = "../../datasets/wiz"
 
     # # massage dataset
-    # massage_solved_dataset(f"{root}/all-solved-1k.jsonl",
-    #                        f"{root}/paired-1k.jsonl")
+    # massage_solved_dataset(f"{root}/all-solved-20k:30k.jsonl",
+    #                        f"{root}/paired-plus-20k:30k.jsonl")
 
     # demo_llama()
-    root = "/home/djl328/prob-repl/datasets/wiz"
-    dataset = load_dataset(f"{root}/paired-20k:30k.jsonl")
+    dataset = load_dataset(f"{root}/paired-plus-20k:30k.jsonl")
     print(dataset)
 
     # model, tokenizer = load_llama()
@@ -126,13 +127,19 @@ if __name__ == "__main__":
 
     response_template = "# Answer:"
     collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+    args = TrainingArguments(
+        output_dir="output",
+        per_device_train_batch_size=2,
+    )
 
+    wandb.init(project="sft")
     trainer = SFTTrainer(
         model,
         train_dataset=dataset,
-        formatting_func=format_prompts,
         data_collator=collator,
         dataset_text_field="solution",
-        max_seq_length=8000,
+        args=args,
+        max_seq_length=2048,
     )
     trainer.train()
+    
