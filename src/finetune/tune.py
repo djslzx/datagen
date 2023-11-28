@@ -11,7 +11,6 @@ import wandb
 import sys
 from datetime import datetime
 import argparse
-from pathlib import Path
 
 # hugging face
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, TrainingArguments
@@ -138,7 +137,7 @@ def massage_solved_dataset(
             info=DatasetInfo(
                 dataset_name=source,
                 description=f"{source} dataset",
-            )
+            ),
         )
         tt = ds.train_test_split(test_size=0.2)
         vt = tt["test"].train_test_split(test_size=0.5)
@@ -199,7 +198,7 @@ def tune_once(model: AutoModel,
                                       add_special_tokens=False)[2:]
     collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
     args = TrainingArguments(
-        output_dir=f"../models/ft/{dataset.info.dataset_name}/{ts}",
+        output_dir=f"../models/ft/{dataset['train'].info.dataset_name}/{ts}",
         per_device_train_batch_size=2,
         bf16=True,
     )
@@ -207,7 +206,8 @@ def tune_once(model: AutoModel,
     wandb.init(project="sft")
     trainer = SFTTrainer(
         model,
-        train_dataset=dataset,
+        train_dataset=dataset['train'],
+        # eval_dataset=dataset['validation'],
         data_collator=collator,
         formatting_func=format_prompts,
         args=args,
@@ -219,17 +219,24 @@ def tune_once(model: AutoModel,
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("mode", type=str, choices=["data", "tune"])
-    p.add_argument("--file", type=str)
+    p.add_argument("--data", type=str)
     p.add_argument("--out-dir", type=str)
     p.add_argument("--model", type=str)
 
     args = p.parse_args()
 
     if args.mode == "data":
-        # Path(args.out_dir).mkdir(parents=True, exist_ok=False)
-        massage_solved_dataset(in_file=args.file, out_dir=args.out_dir)
+        massage_solved_dataset(in_file=args.data, out_dir=args.out_dir)
     elif args.mode == "tune":
-        dataset = load_dataset("json", data_files=args.file)
+        # dataset = DatasetDict.load_from_disk(args.data)
+        dataset = {
+            'train': Dataset.from_pandas(
+                pd.read_json(args.data, lines=True),
+                info=DatasetInfo(
+                    dataset_name='test',
+                ),
+            )
+        }
         model, tokenizer = load_dummy_model()
         tune_once(model, tokenizer, dataset=dataset, max_seq_length=1024)
 
