@@ -16,6 +16,7 @@ import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, TrainingArguments
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from datasets import Dataset, DatasetInfo, DatasetDict, load_dataset
+from peft import PeftConfig, PeftModel, LoraConfig, get_peft_model
 
 
 def timestamp():
@@ -51,22 +52,6 @@ def test_split_by_percentages():
         out = split_by_percentages(xs, ps)
         assert out == y, f"Expected {y} but got {out}"
     
-
-def load_llama() -> Tuple[AutoModel, AutoTokenizer]:
-    # model_name = "codellama/CodeLlama-7b-Python-hf"
-    model_name = "codellama/CodeLLama-7b-instruct-hf"
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.padding_side = "right"
-    return model, tokenizer
-
-
-def load_dummy_model() -> Tuple[AutoModel, AutoTokenizer]:
-    model_name = "Salesforce/codegen-350M-mono"
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    return model, tokenizer
-
 
 def massage_solved_dataset(
         in_file: str, 
@@ -159,9 +144,25 @@ def tune_all(model: AutoModel, tokenizer: AutoTokenizer, train_datasets: List[st
 def tune_once(model: AutoModel, 
               tokenizer: AutoTokenizer, 
               dataset: Dict, 
-              max_seq_length=2048,
+              max_seq_length: int,
+              batch_size: int,
               problem_key="restyled problem",
 ):
+    assert problem_key in {"original problem", "restyled problem"}, \
+        (f"Invalid problem key {problem_key}: must be one of "
+         "{'original problem', 'restyled problem'}")
+
+    ts = timestamp()
+
+    if not tokenizer.pad_token:
+        print("WARNING: no pad token defined by tokenizer, setting to default", file=sys.stderr)
+        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        model.resize_token_embeddings(len(tokenizer))
+
+    tokenizer.truncation = True
+    tokenizer.padding = "max_length"
+    tokenizer.padding_side = "right"
+
     def format_prompt(q: str, a: str) -> str:
         return f"# Question: {q}\n# Answer: {a}\n#DONE#"
 
@@ -178,20 +179,6 @@ def tune_once(model: AutoModel,
     def encode_len(x: Dict):
         return len(tokenizer.encode(format_prompt(x[problem_key], x['solution'])))
 
-    assert problem_key in {"original problem", "restyled problem"}, \
-        (f"Invalid problem key {problem_key}: must be one of "
-         "{'original problem', 'restyled problem'}")
-
-    ts = timestamp()
-
-    if not tokenizer.pad_token:
-        print("WARNING: no pad token defined by tokenizer, setting to default", file=sys.stderr)
-        tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-        model.resize_token_embeddings(len(tokenizer))
-
-    tokenizer.truncation = True
-    tokenizer.padding = "max_length"
-
     # Compensate for lack of context in response template 
     response_template_w_context = "\n# Answer:"
     response_template_ids = tokenizer.encode(response_template_w_context,
@@ -202,14 +189,23 @@ def tune_once(model: AutoModel,
     )
     args = TrainingArguments(
         output_dir=f"../models/ft/{dataset['train'].info.dataset_name}/{ts}",
-        per_device_train_batch_size=2,
+        per_device_train_batch_size=batch_size,
         bf16=True,
         evaluation_strategy="steps",
+        eval_steps=5000,
     )
 
     # filter out data that is too long
     train = dataset['train'].filter(lambda x: encode_len(x) < max_seq_length)
     validation = dataset['validation'].filter(lambda x: encode_len(x) < max_seq_length)
+
+    # peft - lora
+    peft_config = LoraConfig(
+        task_type="CAUSAL_LM",
+        bias="none",
+    )
+    model = get_peft_model(model, peft_config)
+    model.print_trainable_parameters()
 
     wandb.init(project="sft")
     trainer = SFTTrainer(
@@ -226,21 +222,21 @@ def tune_once(model: AutoModel,
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("mode", type=str, choices=["data", "tune"])
+    p.add_argument("mode", type=str, choices=["data", "finetune", "lora"])
     p.add_argument("--data", type=str)
     p.add_argument("--out-dir", type=str)
-    p.add_argument("--model", type=str)
-
+    
     args = p.parse_args()
     if args.mode == "data":
         massage_solved_dataset(in_file=args.data, out_dir=args.out_dir)
-    elif args.mode == "tune":
+    elif args.mode == "finetune":
         dataset = DatasetDict.load_from_disk(args.data)
-        model, tokenizer = load_dummy_model()
-        tune_once(model, tokenizer, dataset=dataset, max_seq_length=1024)
+        model_name = "codellama/CodeLLama-7b-instruct-hf"
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        tune_once(model, tokenizer, dataset=dataset, max_seq_length=1024, batch_size=1)
 
     # todos:
-    # - add validation loss to metrics during ft
     # - sweep using wandb
     # - set up memorization test (100 examples)
     # - while sweep runs:
