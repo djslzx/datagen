@@ -158,9 +158,9 @@ def tune_all(model: AutoModel, tokenizer: AutoTokenizer, train_datasets: List[st
 
 def tune_once(model: AutoModel, 
               tokenizer: AutoTokenizer, 
-              dataset: Dataset, 
+              dataset: Dict, 
               max_seq_length=2048,
-              problem_key = "restyled problem",
+              problem_key="restyled problem",
 ):
     def format_prompt(q: str, a: str) -> str:
         return f"# Question: {q}\n# Answer: {a}\n#DONE#"
@@ -175,9 +175,8 @@ def tune_once(model: AutoModel,
             outputs.append(format_prompt(problem, solution))
         return outputs
 
-    # todo
-    def compute_metrics(eval_predictions):
-        pass
+    def encode_len(x: Dict):
+        return len(tokenizer.encode(format_prompt(x[problem_key], x['solution'])))
 
     assert problem_key in {"original problem", "restyled problem"}, \
         (f"Invalid problem key {problem_key}: must be one of "
@@ -190,24 +189,32 @@ def tune_once(model: AutoModel,
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
         model.resize_token_embeddings(len(tokenizer))
 
+    tokenizer.truncation = True
+    tokenizer.padding = "max_length"
+
     # Compensate for lack of context in response template 
     response_template_w_context = "\n# Answer:"
-    response_template_ids = tokenizer(response_template_w_context,
-                                      truncation=True,
-                                      padding="max_length",
-                                      add_special_tokens=False)[2:]
-    collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
+    response_template_ids = tokenizer.encode(response_template_w_context,
+                                             add_special_tokens=False)[2:]
+    collator = DataCollatorForCompletionOnlyLM(
+        response_template_ids, 
+        tokenizer=tokenizer
+    )
     args = TrainingArguments(
         output_dir=f"../models/ft/{dataset['train'].info.dataset_name}/{ts}",
         per_device_train_batch_size=2,
         bf16=True,
     )
 
+    # filter out data that is too long
+    train = dataset['train'].filter(lambda x: encode_len(x) < max_seq_length)
+    validation = dataset['validation'].filter(lambda x: encode_len(x) < max_seq_length)
+
     wandb.init(project="sft")
     trainer = SFTTrainer(
         model,
-        train_dataset=dataset['train'],
-        # eval_dataset=dataset['validation'],
+        train_dataset=train,
+        # eval_dataset=validation,
         data_collator=collator,
         formatting_func=format_prompts,
         args=args,
@@ -228,15 +235,15 @@ if __name__ == "__main__":
     if args.mode == "data":
         massage_solved_dataset(in_file=args.data, out_dir=args.out_dir)
     elif args.mode == "tune":
-        # dataset = DatasetDict.load_from_disk(args.data)
-        dataset = {
-            'train': Dataset.from_pandas(
-                pd.read_json(args.data, lines=True),
-                info=DatasetInfo(
-                    dataset_name='test',
-                ),
-            )
-        }
+        dataset = DatasetDict.load_from_disk(args.data)
+        # dataset = {
+        #     'train': Dataset.from_pandas(
+        #         pd.read_json(args.data, lines=True),
+        #         info=DatasetInfo(
+        #             dataset_name='test',
+        #         ),
+        #     )
+        # }
         model, tokenizer = load_dummy_model()
         tune_once(model, tokenizer, dataset=dataset, max_seq_length=1024)
 
