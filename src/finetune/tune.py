@@ -204,6 +204,7 @@ def tune_once(model: AutoModel,
         output_dir=f"../models/ft/{dataset['train'].info.dataset_name}/{ts}",
         per_device_train_batch_size=2,
         bf16=True,
+        evaluation_strategy="steps",
     )
 
     # filter out data that is too long
@@ -214,7 +215,7 @@ def tune_once(model: AutoModel,
     trainer = SFTTrainer(
         model,
         train_dataset=train,
-        # eval_dataset=validation,
+        eval_dataset=validation,
         data_collator=collator,
         formatting_func=format_prompts,
         args=args,
@@ -231,19 +232,10 @@ if __name__ == "__main__":
     p.add_argument("--model", type=str)
 
     args = p.parse_args()
-
     if args.mode == "data":
         massage_solved_dataset(in_file=args.data, out_dir=args.out_dir)
     elif args.mode == "tune":
         dataset = DatasetDict.load_from_disk(args.data)
-        # dataset = {
-        #     'train': Dataset.from_pandas(
-        #         pd.read_json(args.data, lines=True),
-        #         info=DatasetInfo(
-        #             dataset_name='test',
-        #         ),
-        #     )
-        # }
         model, tokenizer = load_dummy_model()
         tune_once(model, tokenizer, dataset=dataset, max_seq_length=1024)
 
