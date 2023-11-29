@@ -1,0 +1,41 @@
+program: finetune/tune.py
+method: grid
+metric:
+  goal: minimize
+  name: eval/loss
+parameters:
+  mode:
+    value: finetune
+  model-name:
+    values:
+      - codellama/CodeLlama-7b-Python-hf
+      - codellama/CodeLlama-7b-Instruct-hf
+  train-dataset:
+    values:
+      - /home/djl328/prob-repl/datasets/wiz/hf-data-20k:30k/NSCA
+      - /home/djl328/prob-repl/datasets/wiz/hf-data-20k:30k/NSE
+      - /home/djl328/prob-repl/datasets/wiz/hf-data-20k:30k/CA
+      - /home/djl328/prob-repl/datasets/wiz/hf-data-20k:30k/WW
+      - /home/djl328/prob-repl/datasets/wiz/hf-data-20k:30k/WD
+  max-seq-length:
+    values:
+      - 512
+      # - 1024
+      # - 2048
+  epochs:
+    value: 10
+  batch-size:
+    values:
+      - 1
+      # - 2
+      # - 4
+  lr-init:
+    value: 5e-5                 # hf default
+    # distribution: log_uniform_values
+    # min: 1e-5
+    # max: 1e-3
+  lr-scheduler-type:
+    values:
+      - linear
+      - cosine
+      - constant
