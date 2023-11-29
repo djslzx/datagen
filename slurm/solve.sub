@@ -1,0 +1,14 @@
+#!/bin/bash
+#SBATCH -J solve                           # Job name
+#SBATCH -o solve-%j.out                    # output file (%j expands to jobID)
+#SBATCH -e solve-%j.err                    # error log file (%j expands to jobID)
+#SBATCH --mail-type=ALL                      # Request status by email 
+#SBATCH --mail-user=djl328@cornell.edu       # Email address to send results to
+#SBATCH -N 1                                 # Total number of nodes requested
+#SBATCH -n 1                                # Total number of cores requested
+#SBATCH --get-user-env                       # retrieve the users login environment
+#SBATCH --mem=10000                         # server memory requested (per node)
+#SBATCH -t 168:00:00                          # Time limit (hh:mm:ss)
+#SBATCH --partition=ellis                    # Request partition
+#SBATCH --gres=gpu:0                         # Request GPU
+/home/djl328/prob-repl/slurm/solve.sh "$1" "$2"
