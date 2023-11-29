@@ -1,7 +1,7 @@
 """
 Finetune an LLM using the generated datasets
 """
-from typing import Tuple, List, Dict, Callable
+from typing import Tuple, List, Dict, Callable, Set
 from math import isnan
 import pandas as pd
 import numpy as np
@@ -11,12 +11,13 @@ import wandb
 import sys
 from datetime import datetime
 import argparse
+import yaml
 
 # hugging face
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, TrainingArguments
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from datasets import Dataset, DatasetInfo, DatasetDict, load_dataset
-from peft import PeftConfig, PeftModel, LoraConfig, get_peft_model
+from peft import PeftConfig, PeftModel, LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 
 def timestamp():
@@ -51,6 +52,10 @@ def test_split_by_percentages():
     for xs, ps, y in zip(cases[0::3], cases[1::3], cases[2::3]):
         out = split_by_percentages(xs, ps)
         assert out == y, f"Expected {y} but got {out}"
+
+
+def check_in(x, name: str, options: Set) -> bool:
+    assert x in options, f"Invalid {name} {x}: must be in {options}"
     
 
 def massage_solved_dataset(
@@ -146,16 +151,17 @@ def tune_once(model: AutoModel,
               dataset: Dict, 
               max_seq_length: int,
               batch_size: int,
+              epochs: int,
+              lr_init: float,
+              lr_scheduler_type: str,
+              output_dir: str,
               problem_key="restyled problem",
 ):
-    assert problem_key in {"original problem", "restyled problem"}, \
-        (f"Invalid problem key {problem_key}: must be one of "
-         "{'original problem', 'restyled problem'}")
-
-    ts = timestamp()
+    check_in(problem_key, "problem key", {"original problem", "restyled problem"})
 
     if not tokenizer.pad_token:
-        print("WARNING: no pad token defined by tokenizer, setting to default", file=sys.stderr)
+        print("WARNING: no pad token defined by tokenizer, setting to default", 
+              file=sys.stderr)
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
         model.resize_token_embeddings(len(tokenizer))
 
@@ -188,26 +194,37 @@ def tune_once(model: AutoModel,
         tokenizer=tokenizer
     )
     args = TrainingArguments(
-        output_dir=f"../models/ft/{dataset['train'].info.dataset_name}/{ts}",
+        output_dir=output_dir,
         per_device_train_batch_size=batch_size,
         bf16=True,
         evaluation_strategy="steps",
         eval_steps=5000,
+        num_train_epochs=epochs,
+        learning_rate=lr_init,
+        lr_scheduler_type=lr_scheduler_type,
     )
 
     # filter out data that is too long
+    orig_train_len = len(dataset['train'])
     train = dataset['train'].filter(lambda x: encode_len(x) < max_seq_length)
+    orig_validation_len = len(dataset['validation'])
     validation = dataset['validation'].filter(lambda x: encode_len(x) < max_seq_length)
+    print(f"Train after filtering to max_seq_len={max_seq_length}: "
+          f"{orig_train_len} => {len(train)}")
+    print(f"Validation after filtering to max_seq_len={max_seq_length}: "
+          f"{orig_validation_len} => {len(validation)}")
 
-    # peft - lora
     peft_config = LoraConfig(
+        r=8,
+        lora_alpha=16,
+        lora_dropout=0.1,
         task_type="CAUSAL_LM",
         bias="none",
     )
+    model = prepare_model_for_kbit_training(model)
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 
-    wandb.init(project="sft")
     trainer = SFTTrainer(
         model,
         train_dataset=train,
@@ -220,28 +237,49 @@ def tune_once(model: AutoModel,
     trainer.train()
     
 
-if __name__ == "__main__":
+def main():
     p = argparse.ArgumentParser()
-    p.add_argument("mode", type=str, choices=["data", "finetune", "lora"])
-    p.add_argument("--data", type=str)
-    p.add_argument("--out-dir", type=str)
-    
+    p.add_argument("--mode", choices=["data", "finetune"])
+    p.add_argument("--massage-data")
+    p.add_argument("--out-dir")
+    p.add_argument("--train-dataset")
+    p.add_argument("--model-name", default="codellama/CodeLLama-7b-instruct-hf")
+    p.add_argument("--max-seq-length", type=int, default=512)
+    p.add_argument("--batch-size", type=int, default=1)
+    p.add_argument("--epochs", type=int, default=10)
+    p.add_argument("--lr-init", type=float, default=5e-5)
+    p.add_argument("--lr-scheduler-type", choices=["linear", "cosine", "constant"])
+
     args = p.parse_args()
     if args.mode == "data":
-        massage_solved_dataset(in_file=args.data, out_dir=args.out_dir)
+        massage_solved_dataset(in_file=args.massage_data, out_dir=args.out_dir)
     elif args.mode == "finetune":
-        dataset = DatasetDict.load_from_disk(args.data)
-        model_name = "codellama/CodeLLama-7b-instruct-hf"
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        tune_once(model, tokenizer, dataset=dataset, max_seq_length=1024, batch_size=1)
+        dataset = DatasetDict.load_from_disk(args.train_dataset)
+        dataset_name = dataset['train'].info.dataset_name
+        model = AutoModelForCausalLM.from_pretrained(args.model_name)
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        ts = timestamp()
+        tune_once(
+            model=model, 
+            tokenizer=tokenizer, 
+            dataset=dataset, 
+            max_seq_length=args.max_seq_length, 
+            batch_size=args.batch_size,
+            epochs=args.epochs,
+            lr_init=args.lr_init,
+            lr_scheduler_type=args.lr_scheduler_type,
+            output_dir=f"/home/djl328/prob-repl/models/sft/{dataset_name}/{ts}"
+        )
 
+
+if __name__ == "__main__":
+    main()
     # todos:
-    # - sweep using wandb
     # - set up memorization test (100 examples)
     # - while sweep runs:
     #   - set up test/eval framework
     #     - use standard datasets (HumanEval, DS1000, APPS, MBPP)
     #     - report %checkers passed for each of n solutions sampled per problem
     #   - set up problem distribution visualization
+
 
