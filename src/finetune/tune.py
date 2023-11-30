@@ -1,7 +1,7 @@
 """
 Finetune an LLM using the generated datasets
 """
-from typing import Tuple, List, Dict, Callable, Set
+from typing import Tuple, List, Dict, Callable, Set, Optional
 from math import isnan
 import pandas as pd
 import numpy as np
@@ -12,6 +12,7 @@ import sys
 from datetime import datetime
 import argparse
 import yaml
+import pdb
 
 # hugging face
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, TrainingArguments
@@ -94,7 +95,7 @@ def massage_solved_dataset(
     df = pd.read_json(in_file, lines=True)
     df = df[["id", "key", "value"]]
     df["id"] = df["id"].apply(rename)
-    df = df[df["key"].isin(["id", "original problem", "restyled problem"] + soln_keys(n_solns))]
+    df = df[df["key"].isin(["id", "restyled problem"] + soln_keys(n_solns))]
     df = df.drop_duplicates(subset=["id", "key"], keep="first")
 
     df = df.pivot(index="id", columns="key", values="value")
@@ -118,8 +119,7 @@ def massage_solved_dataset(
                     rows.append({
                         "id": f"{id}:{i}",
                         "source": source,
-                        "original problem": row["original problem"],
-                        "restyled problem": row["restyled problem"],
+                        "problem": row["restyled problem"],
                         "solution": row[soln],
                     })
         ds = Dataset.from_pandas(
@@ -146,6 +146,23 @@ def tune_all(model: AutoModel, tokenizer: AutoTokenizer, train_datasets: List[st
     pass
 
 
+def format_prompt(q: str, a: str) -> str:
+    return f"# Question: {q}\n# Answer: {a}\n#DONE#"
+
+def format_question(q: str) -> str:
+    return f"# Question: {q}\n# Answer: "
+
+def format_prompts(x) -> List[str]:
+    outputs = []
+    problems, solutions = x["problem"], x["solution"]
+    assert len(problems) == len(solutions), \
+        (f"Expected to have the same number of problems and solutions, but got "
+         f"|problems|={len(problems)}, |solutions|={len(solutions)}")
+    for problem, solution in zip(problems, solutions):
+        outputs.append(format_prompt(problem, solution))
+    return outputs
+
+
 def tune_once(model: AutoModel, 
               tokenizer: AutoTokenizer, 
               dataset: Dict, 
@@ -155,9 +172,7 @@ def tune_once(model: AutoModel,
               lr_init: float,
               lr_scheduler_type: str,
               output_dir: str,
-              problem_key="restyled problem",
 ):
-    check_in(problem_key, "problem key", {"original problem", "restyled problem"})
 
     if not tokenizer.pad_token:
         print("WARNING: no pad token defined by tokenizer, setting to default", 
@@ -169,21 +184,8 @@ def tune_once(model: AutoModel,
     tokenizer.padding = "max_length"
     tokenizer.padding_side = "right"
 
-    def format_prompt(q: str, a: str) -> str:
-        return f"# Question: {q}\n# Answer: {a}\n#DONE#"
-
-    def format_prompts(x) -> List[str]:
-        outputs = []
-        problems, solutions = x[problem_key], x["solution"]
-        assert len(problems) == len(solutions), \
-            (f"Expected to have the same number of problems and solutions, but got "
-             f"|problems|={len(problems)}, |solutions|={len(solutions)}")
-        for problem, solution in zip(problems, solutions):
-            outputs.append(format_prompt(problem, solution))
-        return outputs
-
     def encode_len(x: Dict):
-        return len(tokenizer.encode(format_prompt(x[problem_key], x['solution'])))
+        return len(tokenizer.encode(format_prompt(x['problem'], x['solution'])))
 
     # Compensate for lack of context in response template 
     response_template_w_context = "\n# Answer:"
@@ -237,27 +239,61 @@ def tune_once(model: AutoModel,
     trainer.train()
     
 
+def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: Dataset):
+    problems = []
+    for x in dataset['train']:
+        problems.append(format_question(x["problem"]))
+
+    tokenizer.truncation = True
+    tokenizer.padding = "max_length"
+    tokenizer.padding_side = "left"
+
+    inputs = tokenizer(problems, padding='max_length', max_length=512, return_tensors="pt").to("cuda")
+    generated_ids = model.generate(**inputs, max_new_tokens=200)
+    outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
+    for x in outputs:
+        print(x)
+
+    # rollout most probable sequence solution to each problem
+    pass
+
+    # check that sequence matches the canonical solution
+    pass
+
+
+def load_kbit_model(model_name: str, k: Optional[int]) -> AutoModel:
+    if not k:
+        return AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
+    elif k == 4:
+        return AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True, device_map="auto")
+    elif k == 8:
+        return AutoModelForCausalLM.from_pretrained(model_name, load_in_8bit=True, device_map="auto")
+    else:
+        raise ValueError(f"Invalid k for kbit model: k={k}")
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--mode", choices=["data", "finetune"])
-    p.add_argument("--massage-data")
+    p.add_argument("--mode", choices=["data", "finetune", "memorize-train", "memorize-test"])
     p.add_argument("--out-dir")
-    p.add_argument("--train-dataset")
+    p.add_argument("--dataset")
     p.add_argument("--model-name", default="codellama/CodeLLama-7b-instruct-hf")
     p.add_argument("--max-seq-length", type=int, default=512)
     p.add_argument("--batch-size", type=int, default=1)
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--lr-init", type=float, default=5e-5)
-    p.add_argument("--lr-scheduler-type", choices=["linear", "cosine", "constant"])
+    p.add_argument("--lr-scheduler-type", choices=["linear", "cosine", "constant"], default="linear")
+    p.add_argument("--kbit", type=int, choices=[4, 8])
 
     args = p.parse_args()
     if args.mode == "data":
-        massage_solved_dataset(in_file=args.massage_data, out_dir=args.out_dir)
+        massage_solved_dataset(in_file=args.dataset, out_dir=args.out_dir)
     elif args.mode == "finetune":
-        dataset = DatasetDict.load_from_disk(args.train_dataset)
+        dataset = DatasetDict.load_from_disk(args.dataset)
         dataset_name = dataset['train'].info.dataset_name
-        model = AutoModelForCausalLM.from_pretrained(args.model_name)
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        model = load_kbit_model(args.model_name, k=args.kbit)
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name, padding_side="right")
         ts = timestamp()
         tune_once(
             model=model, 
@@ -270,6 +306,35 @@ def main():
             lr_scheduler_type=args.lr_scheduler_type,
             output_dir=f"/home/djl328/prob-repl/models/sft/{dataset_name}/{ts}"
         )
+    elif args.mode.startswith("memorize-"):
+        dataset = DatasetDict.load_from_disk(args.dataset)
+        dataset['train'] = dataset['train'].select(range(10))
+        dataset['validation'] = dataset['validation'].select([])
+        dataset = DatasetDict(dataset)
+        model = load_kbit_model(args.model_name, k=args.kbit)
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        tokenizer.padding_side = "right"
+        ts = timestamp()
+
+        if args.mode == "memorize-train":
+            wandb.init(project="sft-memorize")
+            tune_once(
+                model=model,
+                tokenizer=tokenizer,
+                dataset=dataset,
+                max_seq_length=args.max_seq_length,
+                batch_size=args.batch_size,
+                epochs=args.epochs,
+                lr_init=args.lr_init,
+                lr_scheduler_type=args.lr_scheduler_type,
+                output_dir=f"/home/djl328/prob-repl/models/test/{ts}"
+            )
+        else:
+            check_memorized(
+                model=model,
+                tokenizer=tokenizer,
+                dataset=dataset,
+            )
 
 
 if __name__ == "__main__":
