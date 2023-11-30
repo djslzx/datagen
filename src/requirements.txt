@@ -47,3 +47,7 @@ huggingface_hub
 trl  # transformer rl
 peft  # parameter efficient fine-tuning
 # ribs[visualize]  # pyribs - quality diversity
+
+# flash-attn
+accelerate
+bitsandbytes
