@@ -43,7 +43,7 @@ def split_by_percentages(xs: List, ps: Dict[str, float]) -> Dict[str, List]:
 
 def test_split_by_percentages():
     cases = [
-        [1,2,3], {"a": 1/3, "b": 1/3, "c": 1/3},
+        [1, 2, 3], {"a": 1 / 3, "b": 1 / 3, "c": 1 / 3},
         {"a": [1], "b": [2], "c": [3]},
         [1] * 80 + [2] * 10 + [3] * 10, {"train": 0.8, "validate": 0.1, "test": 0.1},
         {"train": [1] * 80,
@@ -57,10 +57,10 @@ def test_split_by_percentages():
 
 def check_in(x, name: str, options: Set) -> bool:
     assert x in options, f"Invalid {name} {x}: must be in {options}"
-    
+
 
 def massage_solved_dataset(
-        in_file: str, 
+        in_file: str,
         out_dir: str,
         name_map: Dict[str, str] = None,
 ):
@@ -149,8 +149,10 @@ def tune_all(model: AutoModel, tokenizer: AutoTokenizer, train_datasets: List[st
 def format_prompt(q: str, a: str) -> str:
     return f"# Question: {q}\n# Answer: {a}\n#DONE#"
 
+
 def format_question(q: str) -> str:
     return f"# Question: {q}\n# Answer: "
+
 
 def format_prompts(x) -> List[str]:
     outputs = []
@@ -163,9 +165,9 @@ def format_prompts(x) -> List[str]:
     return outputs
 
 
-def tune_once(model: AutoModel, 
-              tokenizer: AutoTokenizer, 
-              dataset: Dict, 
+def tune_once(model: AutoModel,
+              tokenizer: AutoTokenizer,
+              dataset: Dict,
               max_seq_length: int,
               batch_size: int,
               epochs: int,
@@ -173,10 +175,9 @@ def tune_once(model: AutoModel,
               lr_scheduler_type: str,
               output_dir: str,
               logging_steps: int,
-):
-
+              ):
     if not tokenizer.pad_token:
-        print("WARNING: no pad token defined by tokenizer, setting to default", 
+        print("WARNING: no pad token defined by tokenizer, setting to default",
               file=sys.stderr)
         tokenizer.add_special_tokens({'pad_token': '[PAD]'})
         model.resize_token_embeddings(len(tokenizer))
@@ -193,7 +194,7 @@ def tune_once(model: AutoModel,
     response_template_ids = tokenizer.encode(response_template_w_context,
                                              add_special_tokens=False)[2:]
     collator = DataCollatorForCompletionOnlyLM(
-        response_template_ids, 
+        response_template_ids,
         tokenizer=tokenizer
     )
     args = TrainingArguments(
@@ -240,7 +241,7 @@ def tune_once(model: AutoModel,
         max_seq_length=max_seq_length,
     )
     trainer.train()
-    
+
 
 def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: DatasetDict):
     problems = []
@@ -300,10 +301,10 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(args.model_name, padding_side="right")
         ts = timestamp()
         tune_once(
-            model=model, 
-            tokenizer=tokenizer, 
-            dataset=dataset, 
-            max_seq_length=args.max_seq_length, 
+            model=model,
+            tokenizer=tokenizer,
+            dataset=dataset,
+            max_seq_length=args.max_seq_length,
             batch_size=args.batch_size,
             epochs=args.epochs,
             lr_init=args.lr_init,
@@ -352,5 +353,3 @@ if __name__ == "__main__":
     #     - use standard datasets (HumanEval, DS1000, APPS, MBPP)
     #     - report %checkers passed for each of n solutions sampled per problem
     #   - set up problem distribution visualization
-
-
