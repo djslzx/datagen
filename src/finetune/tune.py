@@ -172,6 +172,7 @@ def tune_once(model: AutoModel,
               lr_init: float,
               lr_scheduler_type: str,
               output_dir: str,
+              logging_steps: int,
 ):
 
     if not tokenizer.pad_token:
@@ -204,6 +205,7 @@ def tune_once(model: AutoModel,
         num_train_epochs=epochs,
         learning_rate=lr_init,
         lr_scheduler_type=lr_scheduler_type,
+        logging_Steps=logging_steps,
     )
 
     # filter out data that is too long
@@ -231,6 +233,7 @@ def tune_once(model: AutoModel,
         model,
         train_dataset=train,
         eval_dataset=validation,
+        tokenizer=tokenizer,
         data_collator=collator,
         formatting_func=format_prompts,
         args=args,
@@ -285,6 +288,7 @@ def main():
     p.add_argument("--lr-init", type=float, default=5e-5)
     p.add_argument("--lr-scheduler-type", choices=["linear", "cosine", "constant"], default="linear")
     p.add_argument("--kbit", type=int, choices=[4, 8])
+    p.add_argument("--logging-steps", type=int, default=500)
 
     args = p.parse_args()
     if args.mode == "data":
@@ -305,6 +309,7 @@ def main():
             lr_init=args.lr_init,
             lr_scheduler_type=args.lr_scheduler_type,
             output_dir=f"/home/djl328/prob-repl/models/sft/{dataset_name}/{ts}"
+            logging_steps=args.logging_steps,
         )
     elif args.mode.startswith("memorize-"):
         dataset = DatasetDict.load_from_disk(args.dataset)
@@ -327,7 +332,8 @@ def main():
                 epochs=args.epochs,
                 lr_init=args.lr_init,
                 lr_scheduler_type=args.lr_scheduler_type,
-                output_dir=f"/home/djl328/prob-repl/models/test/{ts}"
+                output_dir=f"/home/djl328/prob-repl/models/test/{ts}",
+                logging_steps=args.logging_steps,
             )
         else:
             check_memorized(
