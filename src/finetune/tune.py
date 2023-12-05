@@ -269,8 +269,7 @@ def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: Dataset
                 n_matches += 1
             else:
                 break
-        print(f"Matched {n_matches} tokens out of {len(reference_tokens)}")
-    print("All outputs match references!")
+        print(f"Matched {n_matches} tokens out of {len(reference_tokens)} ({n_matches / len(reference_tokens):.2f})")
 
 
 def load_kbit_model(model_name: str, k: Optional[int]) -> AutoModel:
