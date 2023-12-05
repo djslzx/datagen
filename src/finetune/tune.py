@@ -269,7 +269,7 @@ def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: Dataset
                 n_matches += 1
             else:
                 break
-        print(f"Matched {n_matches} tokens out of {len(reference_tokens)}"
+        print(f"Matched {n_matches} tokens out of {len(reference_tokens)}")
     print("All outputs match references!")
 
 
