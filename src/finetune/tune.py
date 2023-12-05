@@ -243,7 +243,7 @@ def tune_once(model: AutoModel,
     trainer.train()
 
 
-def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: DatasetDict):
+def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: DatasetDict, n_tries=3):
     prompts = []
     references = []
     for x in dataset['train']:
@@ -256,28 +256,22 @@ def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: Dataset
 
     inputs = tokenizer(prompts, max_length=512, truncation=True, padding="max_length", return_tensors="pt").to("cuda")
     generated_ids = model.generate(**inputs, max_new_tokens=200)
-    outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True, num_beams=10, num_return_sequences=10)
 
-    assert len(outputs) == 10 * len(references), f"Expected {len(references)} outputs, but got {len(outputs)}"
-
-    # reshape outputs
-    outputs = np.array(outputs).reshape((len(references), 10))
-    for output_batch, reference in zip(outputs, references):
-        max_matches = 0
-        n_tokens = len(reference.split())
-        for output in output_batch:
+    for _ in range(n_tries):
+        outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        for output, reference in zip(outputs, references):
             # count the number of tokens that match
             output_tokens = output.split()
             reference_tokens = reference.split()
             n_matches = 0
+            n_tokens = len(reference_tokens)
             for i, (ot, rt) in enumerate(zip(output_tokens, reference_tokens)):
                 if ot == rt:
                     n_matches += 1
                 else:
                     break
-            max_matches = max(max_matches, n_matches)
-        print(f"Matched {max_matches} tokens out of {n_tokens} ({max_matches / n_tokens:.2f})")
-
+            print(f"Matched {n_matches} tokens out of {n_tokens} ({n_matches / n_tokens:.2f})")
+        print()
 
 def load_kbit_model(model_name: str, k: Optional[int]) -> AutoModel:
     if not k:
