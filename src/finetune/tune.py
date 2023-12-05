@@ -244,30 +244,24 @@ def tune_once(model: AutoModel,
 
 
 def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: DatasetDict):
-    problems = []
+    prompts = []
+    references = []
     for x in dataset['train']:
-        problems.append(format_question(x["problem"]))
+        prompts.append(format_question(x["problem"]))
+        references.append(format_prompt(x["problem"], x["solution"]))
 
     tokenizer.truncation = True
     tokenizer.padding = "max_length"
     tokenizer.padding_side = "left"
 
-    print(problems)
-
-    print(tokenizer)
-
-    inputs = tokenizer(problems, max_length=512, truncation=True, padding=True, return_tensors="pt").to("cuda")
+    inputs = tokenizer(prompts, max_length=512, truncation=True, padding="max_length", return_tensors="pt").to("cuda")
     generated_ids = model.generate(**inputs, max_new_tokens=200)
     outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
-    for x in outputs:
-        print(x)
-
-    # rollout most probable sequence solution to each problem
-    pass
-
-    # check that sequence matches the canonical solution
-    pass
+    assert len(outputs) == len(references), f"Expected {len(references)} outputs, but got {len(outputs)}"
+    for output, reference in zip(outputs, references):
+        assert output == reference, f"Expected output={output} to match reference={reference}"
+    print("All outputs match references!")
 
 
 def load_kbit_model(model_name: str, k: Optional[int]) -> AutoModel:
