@@ -242,7 +242,7 @@ def tune_once(model: AutoModel,
     trainer.train()
     
 
-def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: Dataset):
+def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: DatasetDict):
     problems = []
     for x in dataset['train']:
         problems.append(format_question(x["problem"]))
@@ -251,7 +251,7 @@ def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: Dataset
     tokenizer.padding = "max_length"
     tokenizer.padding_side = "left"
 
-    inputs = tokenizer(problems, padding='max_length', max_length=512, return_tensors="pt").to("cuda")
+    inputs = tokenizer.encode(problems, max_length=512, return_tensors="pt").to("cuda")
     generated_ids = model.generate(**inputs, max_new_tokens=200)
     outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
@@ -308,7 +308,7 @@ def main():
             epochs=args.epochs,
             lr_init=args.lr_init,
             lr_scheduler_type=args.lr_scheduler_type,
-            output_dir=f"/home/djl328/prob-repl/models/sft/{dataset_name}/{ts}"
+            output_dir=f"/home/djl328/prob-repl/models/sft/{dataset_name}/{ts}",
             logging_steps=args.logging_steps,
         )
     elif args.mode.startswith("memorize-"):
