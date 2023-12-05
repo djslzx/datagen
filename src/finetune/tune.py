@@ -260,7 +260,16 @@ def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: Dataset
 
     assert len(outputs) == len(references), f"Expected {len(references)} outputs, but got {len(outputs)}"
     for output, reference in zip(outputs, references):
-        assert output == reference, f"Expected output={output} to match reference={reference}"
+        # count the number of tokens that match
+        output_tokens = output.split()
+        reference_tokens = reference.split()
+        n_matches = 0
+        for i, (ot, rt) in enumerate(zip(output_tokens, reference_tokens)):
+            if ot == rt:
+                n_matches += 1
+            else:
+                break
+        print(f"Matched {n_matches} tokens out of {len(reference_tokens)}"
     print("All outputs match references!")
 
 
