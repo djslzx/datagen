@@ -253,11 +253,11 @@ def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: Dataset
     tokenizer.truncation = True
     tokenizer.padding = "max_length"
     tokenizer.padding_side = "left"
-
-    inputs = tokenizer(prompts, max_length=512, truncation=True, padding="max_length", return_tensors="pt").to("cuda")
-    generated_ids = model.generate(**inputs, max_new_tokens=200)
+    inputs = tokenizer(prompts, max_length=512, truncation=True, 
+                       padding="max_length", return_tensors="pt").to("cuda")
 
     for _ in range(n_tries):
+        generated_ids = model.generate(**inputs, max_new_tokens=200, do_sample=True, num_beams=1)
         outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
         for output, reference in zip(outputs, references):
             # count the number of tokens that match
