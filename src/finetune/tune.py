@@ -252,7 +252,7 @@ def check_memorized(model: AutoModel, tokenizer: AutoTokenizer, dataset: Dataset
     tokenizer.padding = "max_length"
     tokenizer.padding_side = "left"
 
-    inputs = tokenizer.encode(problems, max_length=512, return_tensors="pt").to("cuda")
+    inputs = tokenizer.encode(problems, max_length=512, truncation=True, return_tensors="pt").to("cuda")
     generated_ids = model.generate(**inputs, max_new_tokens=200)
     outputs = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 
