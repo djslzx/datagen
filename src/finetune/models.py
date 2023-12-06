@@ -13,6 +13,7 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizer,
     TrainingArguments,
+    EvalPrediction,
 )
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from datasets import Dataset, DatasetInfo, DatasetDict
@@ -62,6 +63,15 @@ def format_prompts(x) -> List[str]:
     for problem, solution in zip(problems, solutions):
         outputs.append(format_prompt(problem, solution))
     return outputs
+
+
+def compute_metrics(eval_preds: EvalPrediction):
+    # must take an EvalPrediction(predictions, label_ids) and
+    # return a dict[str, float]
+    # use Trainer.predict() to get predictions from the model -> (predictions, label_ids, metrics)
+    # - metrics: loss on dataset + some time metrics + metrics from this function
+    preds, label_ids = eval_preds
+    print(eval_preds)
 
 
 def finetune_model(
@@ -130,6 +140,7 @@ def finetune_model(
         formatting_func=format_prompts,
         args=args,
         max_seq_length=max_seq_length,
+        compute_metrics=compute_metrics,
     )
     trainer.train()
     trainer.save_model(output_dir)
