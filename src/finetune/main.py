@@ -59,7 +59,12 @@ def main():
 
     args = p.parse_args()
     if args.mode == "data":
-        data.prepare_dataset(in_file=args.dataset, out_dir=args.out_dir, n_solns=args.n_solns, n_tests=args.n_tests)
+        data.prepare_dataset(
+            in_file=args.dataset,
+            out_dir=args.out_dir,
+            n_solns=args.n_solns,
+            n_tests=args.n_tests
+        )
     elif args.mode == "finetune":
         dataset = DatasetDict.load_from_disk(args.dataset)
         dataset_name = dataset['train'].info.dataset_name
