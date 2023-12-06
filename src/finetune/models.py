@@ -6,6 +6,8 @@ Functions for running pretrained/finetuned language models
 """
 from typing import Tuple, Set, Dict, List, Optional
 import sys
+import pdb
+import numpy as np
 from transformers import (
     AutoModel,
     AutoTokenizer,
@@ -65,13 +67,16 @@ def format_prompts(x) -> List[str]:
     return outputs
 
 
-def compute_metrics(eval_preds: EvalPrediction):
-    # must take an EvalPrediction(predictions, label_ids) and
-    # return a dict[str, float]
-    # use Trainer.predict() to get predictions from the model -> (predictions, label_ids, metrics)
-    # - metrics: loss on dataset + some time metrics + metrics from this function
-    preds, label_ids = eval_preds
-    print(eval_preds)
+def make_metrics(tokenizer: PreTrainedTokenizer):
+    def compute_metrics(eval_preds: EvalPrediction):
+        preds, label_ids = eval_preds
+        # pdb.set_trace()
+        pred_ids = np.argmax(preds, axis=-1)
+        pred_toks = tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
+        print(pred_toks)
+        return {}
+
+    return compute_metrics
 
 
 def finetune_model(
@@ -84,6 +89,7 @@ def finetune_model(
         lr_init: float,
         lr_scheduler_type: str,
         logging_steps: int,
+        eval_steps: int,
         output_dir: str,
 ):
     # setup data collator
@@ -113,7 +119,7 @@ def finetune_model(
         per_device_train_batch_size=batch_size,
         bf16=True,
         evaluation_strategy="steps",
-        eval_steps=5000,
+        eval_steps=eval_steps,
         num_train_epochs=epochs,
         learning_rate=lr_init,
         lr_scheduler_type=lr_scheduler_type,
@@ -131,6 +137,7 @@ def finetune_model(
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 
+    metrics = make_metrics(tokenizer)
     trainer = SFTTrainer(
         model,
         train_dataset=train,
@@ -140,7 +147,7 @@ def finetune_model(
         formatting_func=format_prompts,
         args=args,
         max_seq_length=max_seq_length,
-        compute_metrics=compute_metrics,
+        compute_metrics=metrics,
     )
     trainer.train()
     trainer.save_model(output_dir)
