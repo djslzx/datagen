@@ -54,10 +54,12 @@ def main():
     p.add_argument("--kbit", type=int, choices=[4, 8])
     p.add_argument("--logging-steps", type=int, default=500)
     p.add_argument("--eval-steps", type=int, default=5000)
+    p.add_argument("--n-solns", type=int, default=3)
+    p.add_argument("--n-tests", type=int, default=3)
 
     args = p.parse_args()
     if args.mode == "data":
-        data.clean_solution_dataset(in_file=args.dataset, out_dir=args.out_dir)
+        data.prepare_dataset(in_file=args.dataset, out_dir=args.out_dir, n_solns=args.n_solns, n_tests=args.n_tests)
     elif args.mode == "finetune":
         dataset = DatasetDict.load_from_disk(args.dataset)
         dataset_name = dataset['train'].info.dataset_name

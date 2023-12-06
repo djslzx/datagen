@@ -9,7 +9,7 @@ from datasets import Dataset, DatasetDict, DatasetInfo
 from tqdm import tqdm
 
 
-def clean_solution_dataset(
+def prepare_dataset(
         in_file: str,
         out_dir: str,
         name_map: Dict[str, str] = None,
@@ -58,6 +58,7 @@ def clean_solution_dataset(
 
     # fixme: for now, we make the simplifying assumption that all solutions
     #   are good, so use any problem/solution pair to fine-tune
+    # fixme: we also assume that all tests are good
 
     # shuffle data
     df = df.sample(frac=1)
