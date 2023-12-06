@@ -83,8 +83,8 @@ def make_metrics(tokenizer: PreTrainedTokenizer):
 
 class CodeEvalSFTTrainer(SFTTrainer):
 
-    def __init__(self, timeout: float):
-        super().__init__()
+    def __init__(self, timeout: float, **kwargs):
+        super().__init__(**kwargs)
         self.timeout = timeout
 
     def evaluate(
@@ -126,7 +126,7 @@ class CodeEvalSFTTrainer(SFTTrainer):
             n_passed = 0
             n_progs = 0
             for prog in evaluate.make_programs([soln], row["tests"]):
-                out = execution.unsafe_check(program=prog["program"], timeout=self.timeout).passed
+                out = execution.unsafe_check(program=prog.program, timeout=self.timeout).passed
                 n_passed += int(out)
                 n_progs += 1
             return n_passed / n_progs
@@ -195,8 +195,8 @@ def finetune_model(
     model.print_trainable_parameters()
 
     metrics = make_metrics(tokenizer)
-    trainer = SFTTrainer(
-        model,
+    trainer = CodeEvalSFTTrainer(
+        model=model,
         train_dataset=train,
         eval_dataset=validation,
         tokenizer=tokenizer,
@@ -205,6 +205,7 @@ def finetune_model(
         args=args,
         max_seq_length=max_seq_length,
         compute_metrics=metrics,
+        timeout=5,
     )
     trainer.train()
     trainer.save_model(output_dir)
