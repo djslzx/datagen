@@ -5,10 +5,18 @@ Evaluate LLM-generated code and tests.
 import re
 import pandas as pd
 from typing import List, Optional, Dict, Iterable, TypedDict, Tuple
-
+from dataclasses import dataclass
 import execution as ex
 import util
-from dc import SolnTestPair, KVItem
+from dc import KVItem
+
+
+@dataclass
+class SolnTestPair:
+    soln: str
+    test: str
+    program: str
+    id: Optional[str] = None
 
 
 def make_programs(solns: List[str], tests: List[str]) -> Iterable[SolnTestPair]:
