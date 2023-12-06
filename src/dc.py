@@ -4,14 +4,6 @@ from typing import TypedDict
 
 
 @dataclass
-class SolnTestPair:
-    soln: str
-    test: str
-    program: str
-    id: Optional[str] = None
-
-
-@dataclass
 class Result:
     passed: bool
     result: str
