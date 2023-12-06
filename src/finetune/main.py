@@ -53,6 +53,7 @@ def main():
     p.add_argument("--lr-scheduler-type", choices=["linear", "cosine", "constant"], default="linear")
     p.add_argument("--kbit", type=int, choices=[4, 8])
     p.add_argument("--logging-steps", type=int, default=500)
+    p.add_argument("--eval-steps", type=int, default=5000)
 
     args = p.parse_args()
     if args.mode == "data":
@@ -72,12 +73,13 @@ def main():
             lr_init=args.lr_init,
             lr_scheduler_type=args.lr_scheduler_type,
             logging_steps=args.logging_steps,
+            eval_steps=args.eval_steps,
             output_dir=f"/home/djl328/prob-repl/models/sft/{dataset_name}/{ts}",
         )
     elif args.mode.startswith("memorize-"):
         dataset = DatasetDict.load_from_disk(args.dataset)
         dataset['train'] = dataset['train'].select(range(10))
-        dataset['validation'] = dataset['validation'].select([])
+        dataset['validation'] = dataset['train'].select(range(10))
         dataset = DatasetDict(dataset)
         model, tokenizer = models.load_model(args.model_name, k=args.kbit)
         ts = util.timestamp()
@@ -94,6 +96,7 @@ def main():
                 lr_init=args.lr_init,
                 lr_scheduler_type=args.lr_scheduler_type,
                 logging_steps=args.logging_steps,
+                eval_steps=args.eval_steps,
                 output_dir=f"/home/djl328/prob-repl/models/test/{ts}",
             )
         else:
