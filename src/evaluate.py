@@ -4,8 +4,10 @@ Evaluate LLM-generated code and tests.
 
 import re
 import pandas as pd
-from typing import List, Optional, Dict, Iterable, TypedDict, Tuple
+from typing import List, Optional, Dict, Iterable, TypedDict, Tuple, Any
 from dataclasses import dataclass
+
+import execution
 import execution as ex
 import util
 from dc import KVItem
@@ -42,6 +44,18 @@ def make_programs(solns: List[str], tests: List[str]) -> Iterable[SolnTestPair]:
                 ])
             program = "\n\n".join([preamble, soln, test, tester])
             yield SolnTestPair(id=f"{i}:{j}", soln=soln, test=test, program=program)
+
+
+def run_tests(program: str, tests: List[str], timeout: float) -> Dict[str, Any]:
+    n_passed = 0
+    n_tries = 0
+    for prog in make_programs([program], tests):
+        out = execution.unsafe_check(program=prog.program, timeout=timeout)
+        n_passed += int(out.passed)
+        n_tries += 1
+    return {
+        "pass rate": n_passed / n_tries,
+    }
 
 
 def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: float) -> Iterable[Dict]:

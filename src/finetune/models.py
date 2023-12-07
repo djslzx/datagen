@@ -20,7 +20,6 @@ from transformers import (
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from datasets import Dataset, DatasetInfo, DatasetDict
 from peft import PeftConfig, PeftModel, LoraConfig, get_peft_model
-import finetune.execution as execution
 import finetune.evaluate as evaluate
 
 
@@ -122,19 +121,13 @@ class CodeEvalSFTTrainer(SFTTrainer):
 
         # make and evaluate programs for each solution/test pair
         def eval_row(row):
-            soln = row["solution"]
-            n_passed = 0
-            n_progs = 0
-            for prog in evaluate.make_programs([soln], row["tests"]):
-                out = execution.unsafe_check(program=prog.program, timeout=self.timeout).passed
-                n_passed += int(out)
-                n_progs += 1
-            return n_passed / n_progs
+            return evaluate.run_tests(row["solution"], row["tests"], timeout=self.timeout)["pass rate"]
 
         passes = eval_dataset.map(eval_row, batched=False)  # todo: revisit batching
         print(passes)
 
         return {}
+
 
 def finetune_model(
         model: PreTrainedModel,
