@@ -48,6 +48,7 @@ def llama_set_batch_size(kbit: int, seq_length: int) -> int:
         raise ValueError(f"k={kbit} and seq_length={seq_length} are too big to fit on A6000")
     return batch_size
 
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--mode", choices=["data",
