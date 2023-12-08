@@ -17,6 +17,7 @@ from transformers import (
     PreTrainedTokenizer,
     TrainingArguments,
     EvalPrediction,
+    BitsAndBytesConfig,
 )
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from datasets import Dataset, DatasetInfo, DatasetDict
@@ -25,12 +26,23 @@ import finetune.evaluate as evaluate
 
 
 def load_model(model_name: str, k: Optional[int] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
-    if not k:
+    if not k or k == 32:
         model = AutoModelForCausalLM.from_pretrained(model_name)
     elif k == 4:
-        model = AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, 
+            quantization_config=BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16
+            )
+        )
     elif k == 8:
-        model = AutoModelForCausalLM.from_pretrained(model_name, load_in_8bit=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, 
+            load_in_8bit=True,
+        )
     elif k == 16:
         model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16)
     else:
@@ -134,6 +146,10 @@ class CodeEvalSFTTrainer(SFTTrainer):
         return {}
 
 
+def encode_len(tokenizer: PreTrainedTokenizer, x: Dict):
+        return len(tokenizer.encode(format_prompt(x['problem'], x['solution'])))
+
+
 def finetune_model(
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
@@ -156,14 +172,11 @@ def finetune_model(
         tokenizer=tokenizer
     )
 
-    def encode_len(x: Dict):
-        return len(tokenizer.encode(format_prompt(x['problem'], x['solution'])))
-
     # filter out data that is too long
     orig_train_len = len(dataset['train'])
-    train = dataset['train'].filter(lambda x: encode_len(x) < max_seq_length)
+    train = dataset['train'].filter(lambda x: encode_len(tokenizer, x) < max_seq_length)
     orig_validation_len = len(dataset['validation'])
-    validation = dataset['validation'].filter(lambda x: encode_len(x) < max_seq_length)
+    validation = dataset['validation'].filter(lambda x: encode_len(tokenizer, x) < max_seq_length)
     print(f"Train after filtering to max_seq_len={max_seq_length}: "
           f"{orig_train_len} => {len(train)}")
     print(f"Validation after filtering to max_seq_len={max_seq_length}: "
