@@ -22,7 +22,7 @@ from transformers import (
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from datasets import Dataset, DatasetInfo, DatasetDict
 from peft import PeftConfig, PeftModel, LoraConfig, get_peft_model
-import finetune.evaluate as evaluate
+import finetune.check as evaluate
 
 
 def load_model(model_name: str, k: Optional[int] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
