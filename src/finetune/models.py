@@ -115,6 +115,8 @@ class CodeEvalSFTTrainer(SFTTrainer):
             A dictionary containing the evaluation loss and the potential metrics computed from the predictions. The
             dictionary also contains the epoch number which comes from the training state.
         """
+        raise NotImplementedError
+
         eval_dataset = self.eval_dataset if eval_dataset is None else eval_dataset
         assert all(k in eval_dataset for k in ["id", "problem", "solution", "tests"]), \
             f"CodeEval: bad eval_dataset schema: expected {{id, problem, solution, tests}} but got {eval_dataset.column_names}"
