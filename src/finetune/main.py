@@ -60,6 +60,7 @@ def main():
     p.add_argument("--dataset")
     p.add_argument("--model-name", default="codellama/CodeLLama-7b-instruct-hf")
     p.add_argument("--max-seq-length", type=int, default=1024)
+    p.add_argument("--batch-size", type=int)
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--lr-init", type=float, default=5e-5)
     p.add_argument("--lr-scheduler-type", choices=["linear", "cosine", "constant"], default="linear")
@@ -84,12 +85,13 @@ def main():
         model, tokenizer = models.load_model(args.model_name, k=args.kbit)
         ts = util.timestamp()
         suffix = f"{args.id}-{ts}" if args.id else f"{ts}"
+        batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) if batch_size is None else batch_size
         models.finetune_model(
             model=model,
             tokenizer=tokenizer,
             dataset=dataset,
             max_seq_length=args.max_seq_length,
-            batch_size=llama_set_batch_size(args.kbit, args.max_seq_length),
+            batch_size=batch_size,
             epochs=args.epochs,
             lr_init=args.lr_init,
             lr_scheduler_type=args.lr_scheduler_type,
@@ -104,7 +106,7 @@ def main():
         dataset = DatasetDict(dataset)
         model, tokenizer = models.load_model(args.model_name, k=args.kbit)
         ts = util.timestamp()
-
+        batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) if batch_size is None else batch_size
         if args.mode == "memorize-train":
             wandb.init(project="sft-memorize")
             models.finetune_model(
@@ -112,7 +114,7 @@ def main():
                 tokenizer=tokenizer,
                 dataset=dataset,
                 max_seq_length=args.max_seq_length,
-                batch_size=llama_set_batch_size(args.kbit, args.max_seq_length),
+                batch_size=batch_size,
                 epochs=args.epochs,
                 lr_init=args.lr_init,
                 lr_scheduler_type=args.lr_scheduler_type,
