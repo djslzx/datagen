@@ -7,7 +7,6 @@ Functions for running pretrained/finetuned language models
 from typing import Tuple, Set, Dict, List, Optional
 import sys
 import pdb
-import torch
 import numpy as np
 from transformers import (
     AutoModel,
@@ -26,16 +25,15 @@ import finetune.evaluate as evaluate
 
 def load_model(model_name: str, k: Optional[int] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
     if not k:
-        model = AutoModelForCausalLM.from_pretrained(model_name)
+        args = {}
     elif k == 4:
-        model = AutoModelForCausalLM.from_pretrained(model_name, load_in_4bit=True)
+        args = {"load_in_4bit": True}
     elif k == 8:
-        model = AutoModelForCausalLM.from_pretrained(model_name, load_in_8bit=True)
-    elif k == 16:
-        model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16)
+        args = {"load_in_8bit": True}
     else:
         raise ValueError(f"Invalid k for kbit model: k={k}")
 
+    model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", **args)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     if model_name.startswith("codellama"):
@@ -166,21 +164,18 @@ def finetune_model(
           f"{orig_train_len} => {len(train)}")
     print(f"Validation after filtering to max_seq_len={max_seq_length}: "
           f"{orig_validation_len} => {len(validation)}")
-    if len(validation) > 100:
-        print("Clamping validation dataset to 100 instances...")
-        validation = validation.select(range(100))
 
     args = TrainingArguments(
         output_dir=output_dir,
         per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
-        # bf16=True,
+        bf16=True,
         evaluation_strategy="steps",
         eval_steps=eval_steps,
         num_train_epochs=epochs,
         learning_rate=lr_init,
         lr_scheduler_type=lr_scheduler_type,
         logging_steps=logging_steps,
+o        logging_first_step=True,  # log and eval first step
     )
 
     # setup lora
@@ -194,7 +189,7 @@ def finetune_model(
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 
-    # metrics = make_metrics(tokenizer)
+    metrics = make_metrics(tokenizer)
     trainer = SFTTrainer(
         model=model,
         train_dataset=train,
@@ -204,10 +199,9 @@ def finetune_model(
         formatting_func=format_prompts,
         args=args,
         max_seq_length=max_seq_length,
-        # compute_metrics=metrics,
+        compute_metrics=metrics,
         # timeout=5,
     )
-    trainer.evaluate()
     trainer.train()
     trainer.save_model(output_dir)
 

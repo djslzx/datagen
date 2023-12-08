@@ -51,11 +51,12 @@ def main():
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--lr-init", type=float, default=5e-5)
     p.add_argument("--lr-scheduler-type", choices=["linear", "cosine", "constant"], default="linear")
-    p.add_argument("--kbit", type=int, choices=[4, 8])
+    p.add_argument("--kbit", type=int, choices=[4, 8, 16])
     p.add_argument("--logging-steps", type=int, default=500)
     p.add_argument("--eval-steps", type=int, default=5000)
     p.add_argument("--n-solns", type=int, default=3)
     p.add_argument("--n-tests", type=int, default=3)
+    p.add_argument("--id", default="")
 
     args = p.parse_args()
     if args.mode == "data":
@@ -70,6 +71,7 @@ def main():
         dataset_name = dataset['train'].info.dataset_name
         model, tokenizer = models.load_model(args.model_name, k=args.kbit)
         ts = util.timestamp()
+        suffix = f"{args.id}-{ts}" if args.id else f"{ts}"
         models.finetune_model(
             model=model,
             tokenizer=tokenizer,
@@ -81,7 +83,7 @@ def main():
             lr_scheduler_type=args.lr_scheduler_type,
             logging_steps=args.logging_steps,
             eval_steps=args.eval_steps,
-            output_dir=f"/home/djl328/prob-repl/models/sft/{dataset_name}/{ts}",
+            output_dir=f"/home/djl328/prob-repl/models/sft/{dataset_name}/{suffix}",
         )
     elif args.mode.startswith("memorize-"):
         dataset = DatasetDict.load_from_disk(args.dataset)
