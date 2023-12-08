@@ -42,25 +42,23 @@ def check_memorized(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, data
     print()
 
 
-def llama_set_batch_and_length(kbit: int) -> Dict[str, int]:
-    pass
-    # return {
-    #     "batch_size": 
-    # }
+def llama_set_batch_size(kbit: int, seq_length: int) -> int:
+    batch_size = int(8 / kbit * 1024 / seq_length)
+    if batch_size < 1:
+        raise ValueError(f"k={kbit} and seq_length={seq_length} are too big to fit on A6000")
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--mode", choices=["data", 
-                                      "finetune", 
-                                      "memorize-train", 
+    p.add_argument("--mode", choices=["data",
+                                      "finetune",
+                                      "memorize-train",
                                       "memorize-test",
                                       "data-length"])
     p.add_argument("--out-dir")
     p.add_argument("--dataset")
     p.add_argument("--model-name", default="codellama/CodeLLama-7b-instruct-hf")
-    p.add_argument("--max-seq-length", type=int, default=512)
-    p.add_argument("--batch-size", type=int, default=1)
+    p.add_argument("--max-seq-length", type=int, default=1024)
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--lr-init", type=float, default=5e-5)
     p.add_argument("--lr-scheduler-type", choices=["linear", "cosine", "constant"], default="linear")
@@ -90,7 +88,7 @@ def main():
             tokenizer=tokenizer,
             dataset=dataset,
             max_seq_length=args.max_seq_length,
-            batch_size=args.batch_size,
+            batch_size=llama_set_batch_size(args.kbit, args.max_seq_length),
             epochs=args.epochs,
             lr_init=args.lr_init,
             lr_scheduler_type=args.lr_scheduler_type,
@@ -113,7 +111,7 @@ def main():
                 tokenizer=tokenizer,
                 dataset=dataset,
                 max_seq_length=args.max_seq_length,
-                batch_size=args.batch_size,
+                batch_size=llama_set_batch_size(args.kbit, args.max_seq_length),
                 epochs=args.epochs,
                 lr_init=args.lr_init,
                 lr_scheduler_type=args.lr_scheduler_type,
@@ -130,7 +128,7 @@ def main():
     elif args.mode == "data-length":
         # print number/percent of training data that pass length cutoffs
         paths = [str(x) for x in Path(args.dataset).glob('*')]
-        print(f"Found paths: {paths}")        
+        print(f"Found paths: {paths}")
 
         def inc_cutoffs(x):
             n = models.encode_len(tokenizer, x)
@@ -144,7 +142,7 @@ def main():
             dataset = DatasetDict.load_from_disk(path)
             dataset_name = dataset['train'].info.dataset_name
             dataset['train'].map(inc_cutoffs)
-            
+
             print(dataset_name)
             pp(cutoffs)
 
