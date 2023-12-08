@@ -20,17 +20,9 @@ parameters:
       - /home/djl328/prob-repl/datasets/wiz/hf-20:30k/WW
       - /home/djl328/prob-repl/datasets/wiz/hf-20:30k/WD
   max-seq-length:
-    values:
-      - 512
-      # - 1024
-      # - 2048
+    value: 1024
   epochs:
     value: 10
-  batch-size:
-    values:
-      - 1
-      # - 2
-      # - 4
   lr-init:
     value: 5e-5                 # hf default
     # distribution: log_uniform_values
@@ -45,4 +37,3 @@ parameters:
     values:
       - 4
       - 8
-      - null
