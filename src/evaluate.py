@@ -35,7 +35,7 @@ def make_programs(solns: List[str], tests: List[str]) -> Iterable[SolnTestPair]:
         for j, test in enumerate(tests):
             test_names = find_tests(test)
             if not test_names:
-                tester = "assert False, 'no tests found'"
+                tester = "raise TestFailed('No tests found')"
             else:
                 test_name = test_names[0]
                 tester = "\n".join([
@@ -117,7 +117,7 @@ def find_fns(text: str) -> List[str]:
 
 
 def find_tests(text: str) -> List[str]:
-    return re.findall(r"def (test_.+)\(.*\)", text)
+    return re.findall(r"def (test.*)\(.*\):", text)
 
 
 if __name__ == "__main__":
