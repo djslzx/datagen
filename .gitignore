@@ -156,3 +156,6 @@ src/wandb
 src/datasets
 .vscode
 src/.langchain.db
+
+#emacs temp files
+\#*\#  
