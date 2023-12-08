@@ -85,7 +85,7 @@ def main():
         model, tokenizer = models.load_model(args.model_name, k=args.kbit)
         ts = util.timestamp()
         suffix = f"{args.id}-{ts}" if args.id else f"{ts}"
-        batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) if batch_size is None else batch_size
+        batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) if args.batch_size is None else args.batch_size
         models.finetune_model(
             model=model,
             tokenizer=tokenizer,
@@ -106,7 +106,7 @@ def main():
         dataset = DatasetDict(dataset)
         model, tokenizer = models.load_model(args.model_name, k=args.kbit)
         ts = util.timestamp()
-        batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) if batch_size is None else batch_size
+        batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) if args.batch_size is None else args.batch_size
         if args.mode == "memorize-train":
             wandb.init(project="sft-memorize")
             models.finetune_model(
