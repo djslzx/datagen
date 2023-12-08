@@ -7,7 +7,9 @@ import wandb
 import sys
 import argparse
 import pdb
-from transformers import PreTrainedModel, PreTrainedTokenizer
+from pprint import pp
+from pathlib import Path
+from transformers import PreTrainedModel, PreTrainedTokenizer, AutoTokenizer
 from datasets import Dataset, DatasetInfo, DatasetDict
 
 import finetune.models as models
@@ -40,9 +42,20 @@ def check_memorized(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, data
     print()
 
 
+def llama_set_batch_and_length(kbit: int) -> Dict[str, int]:
+    pass
+    # return {
+    #     "batch_size": 
+    # }
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--mode", choices=["data", "finetune", "memorize-train", "memorize-test"])
+    p.add_argument("--mode", choices=["data", 
+                                      "finetune", 
+                                      "memorize-train", 
+                                      "memorize-test",
+                                      "data-length"])
     p.add_argument("--out-dir")
     p.add_argument("--dataset")
     p.add_argument("--model-name", default="codellama/CodeLLama-7b-instruct-hf")
@@ -51,7 +64,7 @@ def main():
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--lr-init", type=float, default=5e-5)
     p.add_argument("--lr-scheduler-type", choices=["linear", "cosine", "constant"], default="linear")
-    p.add_argument("--kbit", type=int, choices=[4, 8, 16])
+    p.add_argument("--kbit", type=int, choices=[4, 8, 16, 32])
     p.add_argument("--logging-steps", type=int, default=500)
     p.add_argument("--eval-steps", type=int, default=5000)
     p.add_argument("--n-solns", type=int, default=3)
@@ -114,6 +127,26 @@ def main():
                 tokenizer=tokenizer,
                 dataset=dataset,
             )
+    elif args.mode == "data-length":
+        # print number/percent of training data that pass length cutoffs
+        paths = [str(x) for x in Path(args.dataset).glob('*')]
+        print(f"Found paths: {paths}")        
+
+        def inc_cutoffs(x):
+            n = models.encode_len(tokenizer, x)
+            for c in cutoffs:
+                if n <= c:
+                    cutoffs[c] += 1
+
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+        for path in paths:
+            cutoffs = {512 * 2 ** i: 0 for i in range(5)}
+            dataset = DatasetDict.load_from_disk(path)
+            dataset_name = dataset['train'].info.dataset_name
+            dataset['train'].map(inc_cutoffs)
+            
+            print(dataset_name)
+            pp(cutoffs)
 
 
 if __name__ == "__main__":
