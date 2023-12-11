@@ -18,6 +18,10 @@ from adjustText import adjust_text
 from datetime import datetime
 
 
+def filter_None(xs: List) -> List:
+    return [x for x in xs if x is not None]
+
+
 def isnan(x):
     try:
         return np.isnan(x)
