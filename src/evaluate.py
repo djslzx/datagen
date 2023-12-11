@@ -69,11 +69,16 @@ def run_soln_w_test(soln: str, test: str, timeout: float) -> execution.Result:
     return execution.unsafe_check(program=prog.program, timeout=timeout)
 
 
-def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: float) -> Iterable[Dict]:
+def eval_dataset(filename: str, timeout: float) -> Iterable[Dict]:
     df = pd.read_json(filename, lines=True)
     df = df[["id", "key", "value"]]
     n_orig = len(df.groupby("id"))
 
+    problems = (
+        df[df["key"] == "restyled problem"]
+        .groupby("id").agg({"value": "first"})
+        .rename(columns={"value": "problem"})
+    )
     solns = (
         df[df["key"].str.startswith("solution ")]
         .groupby("id").agg({"value": list})
@@ -85,39 +90,28 @@ def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: floa
         .rename(columns={"value": "tests"})
     )
 
-    df = pd.concat([solns, tests], axis=1)
+    df = pd.concat([problems, solns, tests], axis=1)
     df = df[(~df["tests"].isna()) & (~df["solutions"].isna())]
 
+    print(df)
     print(f"Found {len(df)} rows from {n_orig} ({len(df) / n_orig * 100}% retained) with at least 1 soln/test")
-
-    # split source file and local id from global id
-    df["id"] = df.index
-
-    # take subset of rows of size n_samples
-    if n_samples_per_file is None:
-        view = df
-        print(f"Keeping full dataset of size {len(df)}...")
-    else:
-        df["source file"] = df["id"].apply(lambda s: s.split(":")[0])
-        view = df.groupby("source file").sample(n=n_samples_per_file, replace=False)
-        print(f"Sampled {n_samples_per_file} rows from each source file, yielding dataset of size {len(view)}...")
 
     # run soln/test pairs
     print("Running soln/test pairs...")
-    for _, row in view.iterrows():
-        id = row["id"]
+    for id, row in df.iterrows():
+        problem = row["problem"],
         solns = row["solutions"]
         tests = row["tests"]
 
         for prog in make_programs(solns, tests):
-            eval_out = execution.unsafe_check(program=prog.program, timeout=timeout)
+            result = execution.unsafe_check(program=prog.program, timeout=timeout)
             out = {
                 "id": f"{id}:{prog.id}",
-                "passed": eval_out.passed,
-                "result": eval_out,
-                "test": prog.test,
+                "problem": problem,
                 "solution": prog.soln,
-                "functions": find_fns(prog.program),
+                "test": prog.test,
+                "passed": result.passed,
+                **result.to_dict(prefix="result."),
             }
             for item in KVItem.from_dict(out):
                 yield item.to_dict()
@@ -147,10 +141,9 @@ def test_find_tests():
 if __name__ == "__main__":
     ts = util.timestamp()
     util.incrementally_save_jsonl(
+        filename=f"../datasets/wiz/all-evaluated-20k:30k-{ts}",
         it=eval_dataset(
-            filename="../datasets/wiz/solved/all-solved-1k.jsonl",
-            n_samples_per_file=None,
+            filename="../datasets/wiz/all-solved/all-solved-20k:30k.jsonl",
             timeout=30,
         ),
-        filename=f"../datasets/wiz/evaluated-1k-{ts}",
     )
