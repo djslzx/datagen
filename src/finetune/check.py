@@ -1,12 +1,9 @@
 # dirty import hacks...
 import sys, os
-sys.path.insert(1, os.path.join(sys.path[0], '..'))
-import evaluate
-import execution
+from typing import Dict, List
+import pandas as pd
+import numpy as np
+from datasets import Dataset
 
-
-if __name__ == "__main__":
-    print(
-        evaluate.run_tests(program="print(3)", tests=["def test(): return True"], timeout=10),
-        execution.unsafe_check(program="print(3)", timeout=10),
-    )
+from root import evaluate
+import finetune.data as data
