@@ -8,7 +8,6 @@ from typing import List, Optional, Dict, Iterable, TypedDict, Tuple, Any
 from dataclasses import dataclass
 
 import execution
-import execution as ex
 import util
 from dc import KVItem
 
@@ -99,7 +98,7 @@ def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: floa
         tests = row["tests"]
 
         for prog in make_programs(solns, tests):
-            eval_out = ex.unsafe_check(program=prog.program, timeout=timeout)
+            eval_out = execution.unsafe_check(program=prog.program, timeout=timeout)
             out = {
                 "id": f"{id}:{prog.id}",
                 "passed": eval_out.passed,
@@ -117,7 +116,20 @@ def find_fns(text: str) -> List[str]:
 
 
 def find_tests(text: str) -> List[str]:
-    return re.findall(r"def (test.*)\(.*\):", text)
+    return re.findall(r"def (test.*)\(\)(?: -> .*)?:", text)
+
+
+def test_find_tests():
+    cases = [
+        "def test(): return True", ["test"],
+        "def test_1(): return True", ["test_1"],
+        "def test_this(): return True", ["test_this"],
+        "def test() -> bool: return True", ["test"],
+        "def test_1() -> bool: return True", ["test_1"],
+        "def test_that() -> bool: return True", ["test_that"],
+    ]
+    for x, y in zip(cases[::2], cases[1::2]):
+        assert find_tests(x) == y
 
 
 if __name__ == "__main__":
