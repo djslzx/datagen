@@ -74,7 +74,7 @@ def main():
     args = p.parse_args()
     if args.mode == "data":
         data.prepare_dataset(
-            in_file=args.dataset,
+            filename=args.dataset,
             out_dir=args.out_dir,
             n_solns=args.n_solns,
             n_tests=args.n_tests
