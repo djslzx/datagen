@@ -8,6 +8,7 @@ import sys
 import pandas as pd
 from datasets import Dataset, DatasetDict, DatasetInfo
 from tqdm import tqdm
+
 from root import evaluate
 
 
@@ -116,28 +117,38 @@ def prepare_dataset(
 def fetch_solns_and_tests(filename: str, source: str, n_solns: int = 3, n_tests: int = 3) -> pd.DataFrame:
     df = read_long_dataset_to_wide_df(filename=filename, n_solns=n_solns, n_tests=n_tests)
     df = df[df["source"] == source]
-    df["tests"] = df.apply(lambda row: [row[f"test {i}"] for i in range(n_tests)], axis=1)
-    df["solutions"] = df.apply(lambda row: [row[f"solution {i}"] for i in range(n_solns)], axis=1)
+    df["tests"] = df.apply(lambda row: [row[f"test {i}"] for i in range(n_tests) if row[f"test {i}"]], axis=1)
+    df["solutions"] = df.apply(lambda row: [row[f"solution {i}"] for i in range(n_solns) if row[f"solution {i}"]],
+                               axis=1)
     df = df.rename(columns={"restyled problem": "problem"})
     return df[["problem", "solutions", "tests"]]
 
 
-def filter_tests(df: pd.DataFrame) -> pd.DataFrame:
+def fetch_good_solns_and_tests(filename: str, source: str, n_solns: int = 3, n_tests: int = 3,
+                               timeout=1) -> pd.DataFrame:
     """
-    Filter out rows where solutions and tests fail.
+    Filter out all "bad" solutions and tests.
     """
     pass
 
 
+def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> pd.DataFrame:
+    rows = []
+    for id, row in tqdm(df.iterrows(), total=len(df)):
+        for i, soln in enumerate(row["solutions"]):
+            for j, test in enumerate(row["tests"]):
+                rows.append({
+                    "id": f"{id}:{i}:{j}",
+                    "problem": row["problem"],
+                    "solution": soln,
+                    "test": test,
+                    **evaluate.run_soln_w_test(soln, test, timeout).to_dict(prefix="result."),
+                })
+    return pd.DataFrame.from_records(rows)
+
+
 if __name__ == "__main__":
     df = fetch_solns_and_tests("../../datasets/wiz/all-solved/all-solved-20k:30k.jsonl", source="NSCA")
-    row = df.loc["NSCA:1"]
-    print(
-        row["problem"],
-        row["solutions"][0],
-        row["tests"],
-        sep="\n",
-    )
-    print(
-        evaluate.run_tests(program=row["solutions"][0], tests=row["tests"], timeout=10)
-    )
+    df = df.head(3)
+    print(df)
+    print(run_solns_and_tests(df, timeout=2))
