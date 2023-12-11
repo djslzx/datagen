@@ -10,6 +10,7 @@ from datasets import Dataset, DatasetDict, DatasetInfo
 from tqdm import tqdm
 
 from root import evaluate
+from root import util
 
 
 def read_long_dataset_to_wide_df(
@@ -114,9 +115,8 @@ def prepare_dataset(
         dd.save_to_disk(f"{out_dir}/{source}")
 
 
-def fetch_solns_and_tests(filename: str, source: str, n_solns: int = 3, n_tests: int = 3) -> pd.DataFrame:
+def fetch_solns_and_tests(filename: str, n_solns: int = 3, n_tests: int = 3) -> pd.DataFrame:
     df = read_long_dataset_to_wide_df(filename=filename, n_solns=n_solns, n_tests=n_tests)
-    df = df[df["source"] == source]
     df["tests"] = df.apply(lambda row: [row[f"test {i}"] for i in range(n_tests) if row[f"test {i}"]], axis=1)
     df["solutions"] = df.apply(lambda row: [row[f"solution {i}"] for i in range(n_solns) if row[f"solution {i}"]],
                                axis=1)
@@ -148,7 +148,7 @@ def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    df = fetch_solns_and_tests("../../datasets/wiz/all-solved/all-solved-20k:30k.jsonl", source="NSCA")
-    df = df.head(3)
-    print(df)
-    print(run_solns_and_tests(df, timeout=2))
+    project_dir = "/home/djl328/prob-repl"
+    df = fetch_solns_and_tests(f"{project_dir}/datasets/wiz/all-solved/all-solved-20k:30k.jsonl")
+    out = run_solns_and_tests(df, timeout=5)
+    out.to_json(f"{project_dir}/datasets/wiz/all-eval-20k:30k.jsonl", orient="records", lines=True)
