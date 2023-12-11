@@ -51,3 +51,4 @@ peft  # parameter efficient fine-tuning
 # flash-attn
 accelerate
 bitsandbytes
+nvidia-ml-py3
