@@ -11,7 +11,7 @@ import multiprocessing
 import platform
 import signal
 import tempfile
-from dc import Result
+from dataclasses import dataclass
 
 
 def _unsafe_execute(program: str, timeout: float, result: List):
@@ -49,7 +49,7 @@ def _unsafe_execute(program: str, timeout: float, result: List):
                     exec(program, exec_globals)
             result.append("passed")
         except TimeoutException:
-            result.append(f"failed:timed out:after {timeout} seconds")
+            result.append(f"failed:Timeout:{timeout}s")
         except BaseException as e:
             result.append(f"failed:{type(e).__name__}:{e}")
 
@@ -57,6 +57,32 @@ def _unsafe_execute(program: str, timeout: float, result: List):
         shutil.rmtree = rmtree
         os.rmdir = rmdir
         os.chdir = chdir
+
+
+@dataclass
+class Result:
+    """
+    The result of running a solution-test pair.
+    """
+
+    passed: bool
+    exception_type: Optional[str]
+    exception_message: Optional[str]
+
+    @staticmethod
+    def from_str(s: str) -> "Result":
+        if s.startswith("failed:"):
+            _, e_type, e_msg = s.split(":")
+            return Result(False, e_type, e_msg)
+        else:
+            return Result(True, None, None)
+
+    def to_dict(self, prefix: str = "") -> dict:
+        return {
+            prefix + "passed": self.passed,
+            prefix + "exception_type": self.exception_type,
+            prefix + "exception_message": self.exception_message,
+        }
 
 
 def unsafe_check(program: str, timeout: float) -> Result:
@@ -73,10 +99,7 @@ def unsafe_check(program: str, timeout: float) -> Result:
     if not result:
         result.append("timed out")
 
-    return Result(
-        passed=result[0] == "passed",
-        result=result[0],
-    )
+    return Result.from_str(result[0])
 
 
 @contextlib.contextmanager

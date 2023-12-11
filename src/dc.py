@@ -4,12 +4,6 @@ from typing import TypedDict
 
 
 @dataclass
-class Result:
-    passed: bool
-    result: str
-
-
-@dataclass
 class KVItem:
     id: str
     key: str
