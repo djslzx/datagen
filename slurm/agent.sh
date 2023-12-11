@@ -5,4 +5,4 @@ export 'TOKENIZERS_PARALLELISM=false'
 export PYTHONPATH=$PYTHONPATH:$PROJECT_DIR/src
 source $PROJECT_DIR/venv/bin/activate
 cd $PROJECT_DIR/src
-wandb agent djsl/sft/zs7fwzeg
+wandb agent djsl/sft/x2bp6y5g
