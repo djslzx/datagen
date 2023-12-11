@@ -4,7 +4,7 @@ Evaluate LLM-generated code and tests.
 
 import re
 import pandas as pd
-from typing import List, Optional, Dict, Iterable, TypedDict, Tuple, Any
+from typing import List, Optional, Dict, Iterable, TypedDict, Tuple, Any, Iterator
 from dataclasses import dataclass
 
 import execution
@@ -20,21 +20,27 @@ class SolnTestPair:
     id: Optional[str] = None
 
 
-def make_programs(solns: List[str], tests: List[str]) -> Iterable[SolnTestPair]:
+def make_programs(solns: List[str], tests: List[str]) -> Iterator[SolnTestPair]:
     """
     Given a list of solutions and a list of tests, produces programs that pair each
     solution with each test.  Yields a dictionary with keys "soln", "test", and
     "program".
     """
     preamble = "\n".join([
+        "from typing import List, Dict, Tuple, Set, Optional"
+        "",
         "class TestFailed(Exception):",
         "    pass",
+        "",
+        "class MissingTests(Exception):",
+        "    pass",
+        "",
     ])
     for i, soln in enumerate(solns):
         for j, test in enumerate(tests):
             test_names = find_tests(test)
             if not test_names:
-                tester = "raise TestFailed('No tests found')"
+                tester = "raise MissingTests('No tests found')"
             else:
                 test_name = test_names[0]
                 tester = "\n".join([
@@ -45,16 +51,22 @@ def make_programs(solns: List[str], tests: List[str]) -> Iterable[SolnTestPair]:
             yield SolnTestPair(id=f"{i}:{j}", soln=soln, test=test, program=program)
 
 
-def run_tests(program: str, tests: List[str], timeout: float) -> Dict[str, Any]:
-    n_passed = 0
-    n_tries = 0
-    for prog in make_programs([program], tests):
-        out = execution.unsafe_check(program=prog.program, timeout=timeout)
-        n_passed += int(out.passed)
-        n_tries += 1
-    return {
-        "pass rate": n_passed / n_tries,
-    }
+def make_program(soln: str, test: str) -> SolnTestPair:
+    return next(make_programs([soln], [test]))
+
+
+def run_solns_w_tests(solns: List[str], tests: List[str], timeout: float) -> List[execution.Result]:
+    return [
+        execution.unsafe_check(program=prog.program, timeout=timeout)
+        for prog in make_programs(solns, tests)
+    ]
+
+
+def run_soln_w_test(soln: str, test: str, timeout: float) -> execution.Result:
+    assert soln
+    assert test
+    prog = make_program(soln, test)
+    return execution.unsafe_check(program=prog.program, timeout=timeout)
 
 
 def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: float) -> Iterable[Dict]:
@@ -102,7 +114,7 @@ def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: floa
             out = {
                 "id": f"{id}:{prog.id}",
                 "passed": eval_out.passed,
-                "result": eval_out.result,
+                "result": eval_out,
                 "test": prog.test,
                 "solution": prog.soln,
                 "functions": find_fns(prog.program),
