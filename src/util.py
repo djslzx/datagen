@@ -14,7 +14,6 @@ import sys
 from os import mkdir
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from func_timeout import func_timeout, FunctionTimedOut
-import openai.error
 from adjustText import adjust_text
 from datetime import datetime
 
@@ -154,27 +153,6 @@ def pp_jsonl(filename: str, skip=1):
     with open(filename, "r") as f:
         for line in f.readlines()[::skip]:
             pp(json.loads(line))
-
-
-def prompt_openai_with_exp_backoff(f, *args):
-    backoff = 1
-    while True:
-        try:
-            func_timeout(1000, f, args)
-        except (openai.error.RateLimitError, openai.error.Timeout):
-            print(f"Exceeded rate limit, blocking {backoff}s", openai.api_key)
-            time.sleep(backoff)
-            backoff *= 2
-        except FunctionTimedOut:
-            print(f"Timed out, blocking {backoff}s", openai.api_key)
-            time.sleep(backoff)
-            backoff *= 2
-        except (openai.error.APIError, openai.error.APIConnectionError, openai.error.ServiceUnavailableError):
-            print("openai.error.APIError, blocking 10s")
-            time.sleep(10)
-        except openai.error.InvalidRequestError as e:
-            print("openai.error.InvalidRequestError", e)
-            time.sleep(10)
 
 
 def dict_to_text(d: dict) -> str:
