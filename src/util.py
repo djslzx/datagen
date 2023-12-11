@@ -13,8 +13,6 @@ import time
 import sys
 from os import mkdir
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
-from func_timeout import func_timeout, FunctionTimedOut
-from adjustText import adjust_text
 from datetime import datetime
 
 
