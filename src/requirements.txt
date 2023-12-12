@@ -52,3 +52,5 @@ peft  # parameter efficient fine-tuning
 accelerate
 bitsandbytes
 nvidia-ml-py3
+joblib
+loky
