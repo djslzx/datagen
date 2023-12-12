@@ -8,6 +8,7 @@ import sys
 import pandas as pd
 from datasets import Dataset, DatasetDict, DatasetInfo
 from tqdm import tqdm
+from joblib import Parallel, delayed
 
 from root import evaluate
 from root import util
@@ -172,11 +173,55 @@ def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> Iterator[dict]:
                     yield item.to_dict()
 
 
-def pull_test_keys(dirname: str, children=List[str]) -> List[str]:
-    keys = []
+def run_soln(ident: str, problem: str, soln: str, timeout: float) -> dict:
+    result = evaluate.run_soln(soln, timeout)
+    return {
+        "id": ident,
+        "problem": problem,
+        "solution": soln,
+        "test": None,
+        **result.to_dict(prefix="result."),
+    }
+
+
+def run_soln_and_test(ident: str, problem: str, soln: str, test: str, timeout: float) -> dict:
+    result = evaluate.run_soln_w_test(soln, test, timeout)
+    return {
+        "id": ident,
+        "problem": problem,
+        "solution": soln,
+        "test": test,
+        **result.to_dict(prefix="result."),
+    }
+
+
+def mp_run_solns_and_tests(df: pd.DataFrame, timeout: float, n_jobs: int = -1) -> Iterator[dict]:
+    parallel = Parallel(n_jobs=n_jobs, backend="multiprocessing")
+    soln_runner = parallel(
+        delayed(run_soln)(f"{ident}:{i}", row["problem"], soln, timeout)
+        for ident, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions in isolation")
+        for i, soln in enumerate(row["solutions"])
+    )
+    for result in tqdm(soln_runner):
+        for item in util.KVItem.from_dict(result):
+            yield item.to_dict()
+
+    test_runner = parallel(
+        delayed(run_soln_and_test)(f"{ident}:{i}:{j}", row["problem"], soln, test, timeout)
+        for ident, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions with tests")
+        for i, soln in enumerate(row["solutions"])
+        for j, test in enumerate(row["tests"])
+    )
+    for result in tqdm(test_runner):
+        for item in util.KVItem.from_dict(result):
+            yield item.to_dict()
+
+
+def pull_test_keys(dirname: str, children=List[str]) -> Dict[str, List[str]]:
+    keys = {}
     for c in children:
         dataset = DatasetDict.load_from_disk(f"{dirname}/{c}")
-        keys.extend(dataset['test']['id'])
+        keys[c] = dataset['test']['id']
     return keys
 
 
@@ -184,13 +229,18 @@ if __name__ == "__main__":
     project_dir = "/home/djl328/prob-repl"
     small_ds = "solved/all-solved-1k.jsonl"
     full_ds = "all-solved/all-solved-20k:30k.jsonl"
-    # df = read_long_dataset_to_wide_df(filename=f"{project_dir}/datasets/wiz/{small_ds}")    
-    # ts = util.timestamp()
-    # util.incrementally_save_jsonl(
-    #     quiet=True,
-    #     filename=f"{project_dir}/datasets/eval-test-1k-{ts}",
-    #     it=run_solns_and_tests(df, timeout=30),
-    # )
-    keys = pull_test_keys(dirname="../datasets/wiz/hf-20:30k/", children=["NSCA", "NSE", "WD", "WW", "CA"])
-    print(keys)
 
+    df = read_long_dataset_to_wide_df(filename=f"{project_dir}/datasets/wiz/{full_ds}")    
+    df = df.head(100)
+    ts = util.timestamp()
+    util.incrementally_save_jsonl(
+        quiet=True,
+        filename=f"{project_dir}/datasets/wiz/eval-mptest-{ts}",
+        # filename=f"{project_dir}/datasets/eval-all-20k:30k-{ts}",
+        it=mp_run_solns_and_tests(df, timeout=30, n_jobs=-1),
+    )
+
+    # keys = pull_test_keys(dirname="../datasets/wiz/hf-20:30k/", children=["NSCA", "NSE", "WD", "WW", "CA"])
+    # print(f"Collected keys:")
+    # for k, vs in keys.items():
+    #     print(f"  {k}: {len(vs)}")
