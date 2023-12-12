@@ -7,7 +7,6 @@ import contextlib
 import faulthandler
 import io
 import os
-import multiprocessing
 import platform
 import signal
 import tempfile
@@ -21,7 +20,6 @@ def _unsafe_execute(program: str, timeout: float):
         "import sys",
         "from sys import",
         "joblib",
-        "open(",
     ]
     for x in forbidden:
         if x in program:
@@ -38,6 +36,8 @@ def _unsafe_execute(program: str, timeout: float):
         rmtree = shutil.rmtree
         rmdir = os.rmdir
         chdir = os.chdir
+        getcwd = os.getcwd
+        unlink = os.unlink
 
         # Disable functionalities that can make destructive changes to the test.
         reliability_guard()
@@ -58,6 +58,8 @@ def _unsafe_execute(program: str, timeout: float):
         shutil.rmtree = rmtree
         os.rmdir = rmdir
         os.chdir = chdir
+        os.getcwd = getcwd
+        os.unlink = unlink
 
     return out
 
@@ -89,7 +91,8 @@ class Result:
 
 
 def unsafe_check(program: str, timeout: float) -> Result:
-    return Result.from_str(_unsafe_execute(program, timeout))
+    result = _unsafe_execute(program, timeout)
+    return Result.from_str(result)
 
 
 @contextlib.contextmanager
@@ -215,16 +218,16 @@ def reliability_guard(maximum_memory_bytes: Optional[int] = None):
     os.lchflags = None
     os.lchmod = None
     os.lchown = None
-    # os.getcwd = None
-    # os.chdir = None
+    os.getcwd = None
+    os.chdir = None
 
-    # import shutil
-    # shutil.rmtree = None
-    # shutil.move = None
-    # shutil.chown = None
+    import shutil
+    shutil.rmtree = None
+    shutil.move = None
+    shutil.chown = None
 
-    # import subprocess
-    # subprocess.Popen = None  # type: ignore
+    import subprocess
+    subprocess.Popen = None  # type: ignore
 
     __builtins__['help'] = None
 
