@@ -8,7 +8,7 @@ import sys
 import pandas as pd
 from datasets import Dataset, DatasetDict, DatasetInfo
 from tqdm import tqdm
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, effective_n_jobs
 
 from root import evaluate
 from root import util
@@ -17,6 +17,7 @@ from root import util
 def read_long_dataset_to_wide_df(
         filename: str, 
         name_map: Dict[str, str] = None, 
+        rename: bool = True,
         n_solns: int = 3, 
         n_tests: int = 3,
 ) -> pd.DataFrame:
@@ -32,7 +33,7 @@ def read_long_dataset_to_wide_df(
     """
     assert filename.endswith(".jsonl"), f"Expected jsonl file, but got in_file={filename}"
 
-    if not name_map:
+    if rename and name_map is None:
         name_map = {
             "CA-20k": "CA",
             "NS-euler": "NSE",
@@ -41,14 +42,14 @@ def read_long_dataset_to_wide_df(
             "Wiz-wide": "WW",
         }
 
-    def rename(s_id: str) -> str:
+    def rename_id(s_id: str) -> str:
         s_src, s_num = s_id.split(":")
         s_src = name_map[s_src] if s_src in name_map else s_src
         return f"{s_src}:{s_num}"
 
     df = pd.read_json(filename, lines=True)
     df = df[["id", "key", "value"]]
-    df["id"] = df["id"].apply(rename)
+    df["id"] = df["id"].apply(rename_id)
     df = df.drop_duplicates(subset=["id", "key"], keep="first")
     df = df.pivot(index="id", columns="key", values="value")
     df = df.where(pd.notnull(df), None)
@@ -225,20 +226,29 @@ def pull_test_keys(dirname: str, children=List[str]) -> Dict[str, List[str]]:
     return keys
 
 
+def count_error_types(df: pd.DataFrame) -> Dict[str, int]:
+    df = df.drop_duplicates(subset=["id", "key"], keep="first")
+    df = df.pivot(index="id", columns="key", values="value")
+    pdb.set_trace()
+
+
 if __name__ == "__main__":
     project_dir = "/home/djl328/prob-repl"
     small_ds = "solved/all-solved-1k.jsonl"
     full_ds = "all-solved/all-solved-20k:30k.jsonl"
 
+    print(f"Running solutions and tests with n_jobs={effective_n_jobs(-1)}")
     df = read_long_dataset_to_wide_df(filename=f"{project_dir}/datasets/wiz/{full_ds}")    
-    df = df.head(100)
     ts = util.timestamp()
     util.incrementally_save_jsonl(
         quiet=True,
-        filename=f"{project_dir}/datasets/wiz/eval-mptest-{ts}",
+        filename=f"{project_dir}/datasets/wiz/eval-mp-{ts}",
         # filename=f"{project_dir}/datasets/eval-all-20k:30k-{ts}",
         it=mp_run_solns_and_tests(df, timeout=30, n_jobs=-1),
     )
+
+    # df = pd.read_json(f"{project_dir}/datasets/wiz/eval-mp-2023-12-12T18:07:22.031679.jsonl", lines=True)
+    # count_error_types(df)
 
     # keys = pull_test_keys(dirname="../datasets/wiz/hf-20:30k/", children=["NSCA", "NSE", "WD", "WW", "CA"])
     # print(f"Collected keys:")
