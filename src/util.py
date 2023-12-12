@@ -76,9 +76,7 @@ def incrementally_save_jsonl(it, filename: str, quiet=False) -> pd.DataFrame:
             if not quiet:
                 print(line)
             f.write(line + "\n")
-    df = pd.read_json(filename + ".jsonl", lines=True)
-    df.to_csv(filename + ".csv")
-    return df
+    return pd.read_json(filename + ".jsonl", lines=True)
 
 
 def pad_list(xs: List, n: int, nil: Any) -> List:
@@ -514,3 +512,5 @@ def try_mkdir(dir: str):
         mkdir(dir)
     except IsADirectoryError:
         pass
+
+
