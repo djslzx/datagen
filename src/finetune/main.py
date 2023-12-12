@@ -14,7 +14,7 @@ from datasets import Dataset, DatasetInfo, DatasetDict
 
 import finetune.models as models
 import finetune.data as data
-import finetune.util as util
+from root import util
 
 
 def check_memorized(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, dataset: DatasetDict):
@@ -73,7 +73,7 @@ def main():
 
     args = p.parse_args()
     if args.mode == "data":
-        data.prepare_dataset(
+        data.prepare_hf_dataset(
             filename=args.dataset,
             out_dir=args.out_dir,
             n_solns=args.n_solns,

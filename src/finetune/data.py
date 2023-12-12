@@ -3,7 +3,7 @@ Dataset handling:
 - given file/id, fetch problems, solutions, and tests
 """
 import pdb
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Iterator
 import sys
 import pandas as pd
 from datasets import Dataset, DatasetDict, DatasetInfo
@@ -14,15 +14,20 @@ from root import util
 
 
 def read_long_dataset_to_wide_df(
-        filename: str,
-        name_map: Dict[str, str] = None,
-        n_solns: int = 3,
-        n_tests: int = 3) -> pd.DataFrame:
+        filename: str, 
+        name_map: Dict[str, str] = None, 
+        n_solns: int = 3, 
+        n_tests: int = 3,
+) -> pd.DataFrame:
     """
-        Clean up datasets consisting of problems, solutions, and checkers and return a dataframe.
-        - pivot from kv to columnar form
-        - rename datasets, e.g. CA-20k to CA
-        - extract source from id
+    Clean up datasets consisting of problems, solutions, and checkers and return a dataframe keyed
+    by id, with columns "problem", "solutions", and "tests".
+
+    Transformations:
+    - pivot from kv to columnar form
+    - rename datasets, e.g. CA-20k to CA
+    - extract source from id
+    - group solns, tests into lists
     """
     assert filename.endswith(".jsonl"), f"Expected jsonl file, but got in_file={filename}"
 
@@ -35,9 +40,6 @@ def read_long_dataset_to_wide_df(
             "Wiz-wide": "WW",
         }
 
-    soln_keys = [f"solution {i}" for i in range(n_solns)]
-    test_keys = [f"test {i}" for i in range(n_tests)]
-
     def rename(s_id: str) -> str:
         s_src, s_num = s_id.split(":")
         s_src = name_map[s_src] if s_src in name_map else s_src
@@ -46,22 +48,31 @@ def read_long_dataset_to_wide_df(
     df = pd.read_json(filename, lines=True)
     df = df[["id", "key", "value"]]
     df["id"] = df["id"].apply(rename)
-    keys = ["id", "restyled problem"] + soln_keys + test_keys
-    df = df[df["key"].isin(keys)]
     df = df.drop_duplicates(subset=["id", "key"], keep="first")
-
     df = df.pivot(index="id", columns="key", values="value")
     df = df.where(pd.notnull(df), None)
     df["source"] = df.index.map(lambda x: x.split(":")[0])
+    df = df.rename(columns={"restyled problem": "problem"})
+
+    # keep only n_tests tests and n_solns solns
+    soln_keys = [f"solution {i}" for i in range(n_solns)]
+    test_keys = [f"test {i}" for i in range(n_tests)]
+    df["tests"] = df.apply(lambda row: [row[k] for k in test_keys if row[k]], axis=1)
+    df["solutions"] = df.apply(lambda row: [row[k] for k in soln_keys if row[k]], axis=1)
+    df = df[["problem", "solutions", "tests"]]
+
+    # remove problems with empty solutions or empty tests
+    df = df[df["solutions"].apply(lambda x: len(x) > 0) &
+            df["tests"].apply(lambda x: len(x) > 0)]
 
     return df
 
 
-def prepare_dataset(
-        filename: str,
-        out_dir: str,
-        name_map: Dict[str, str] = None,
-        n_solns: int = 3,
+def prepare_hf_dataset(
+        filename: str, 
+        out_dir: str, 
+        name_map: Dict[str, str] = None, 
+        n_solns: int = 3, 
         n_tests: int = 3,
 ):
     """
@@ -73,7 +84,12 @@ def prepare_dataset(
     - split into separate output files by source
     - shuffle dataset
     """
-    df = read_long_dataset_to_wide_df(filename=filename, name_map=name_map, n_solns=n_solns, n_tests=n_tests)
+    df = read_long_dataset_to_wide_df(
+        filename=filename, 
+        name_map=name_map, 
+        n_solns=n_solns, 
+        n_tests=n_tests
+    )
 
     # fixme: for now, we make the simplifying assumption that all solutions
     #   are good, so use any problem/solution pair to fine-tune
@@ -88,16 +104,16 @@ def prepare_dataset(
         rows = []
         print(f"Found {len(data)} lines in {source}, processing...", file=sys.stderr)
         for id, row in tqdm(data.iterrows(), total=len(data), desc=f"Massaging {source}"):
-            for i in range(n_solns):
-                soln_key = f"solution {i}"
-                if row[soln_key]:
-                    rows.append({
-                        "id": f"{id}:{i}",
-                        "source": source,
-                        "problem": row["restyled problem"],
-                        "solution": row[soln_key],
-                        "tests": [row[f"test {j}"] for j in range(n_tests)],
-                    })
+            problem = row["problem"]
+            tests = row["tests"]
+            for i, soln in enumerate(row["solutions"]):
+                rows.append({
+                    "id": f"{id}:{i}",
+                    "source": source,
+                    "problem": problem,
+                    "solution": soln,
+                    "tests": tests,
+                })
         ds = Dataset.from_pandas(
             pd.DataFrame.from_records(rows),
             info=DatasetInfo(
@@ -115,15 +131,6 @@ def prepare_dataset(
         dd.save_to_disk(f"{out_dir}/{source}")
 
 
-def fetch_solns_and_tests(filename: str, n_solns: int = 3, n_tests: int = 3) -> pd.DataFrame:
-    df = read_long_dataset_to_wide_df(filename=filename, n_solns=n_solns, n_tests=n_tests)
-    df["tests"] = df.apply(lambda row: [row[f"test {i}"] for i in range(n_tests) if row[f"test {i}"]], axis=1)
-    df["solutions"] = df.apply(lambda row: [row[f"solution {i}"] for i in range(n_solns) if row[f"solution {i}"]],
-                               axis=1)
-    df = df.rename(columns={"restyled problem": "problem"})
-    return df[["problem", "solutions", "tests"]]
-
-
 def fetch_good_solns_and_tests(filename: str, source: str, n_solns: int = 3, n_tests: int = 3,
                                timeout=1) -> pd.DataFrame:
     """
@@ -132,23 +139,58 @@ def fetch_good_solns_and_tests(filename: str, source: str, n_solns: int = 3, n_t
     pass
 
 
-def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> pd.DataFrame:
-    rows = []
-    for id, row in tqdm(df.iterrows(), total=len(df)):
+def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> Iterator[dict]:
+    # Run solutions in isolation
+    for id, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions in isolation"):
+        problem = row["problem"]
+        for i, soln in enumerate(row["solutions"]):
+            result = evaluate.run_soln(soln, timeout)
+            out = {
+                "id": f"{id}:{i}",
+                "problem": problem,
+                "solution": soln,
+                "test": None,
+                **result.to_dict(prefix="result."),
+            }
+            for item in util.KVItem.from_dict(out):
+                yield item.to_dict()
+
+    # Run solutions with tests
+    for id, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions with tests"):
+        problem = row["problem"]
         for i, soln in enumerate(row["solutions"]):
             for j, test in enumerate(row["tests"]):
-                rows.append({
+                result = evaluate.run_soln_w_test(soln, test, timeout)
+                out = {
                     "id": f"{id}:{i}:{j}",
-                    "problem": row["problem"],
+                    "problem": problem,
                     "solution": soln,
                     "test": test,
-                    **evaluate.run_soln_w_test(soln, test, timeout).to_dict(prefix="result."),
-                })
-    return pd.DataFrame.from_records(rows)
+                    **result.to_dict(prefix="result."),
+                }
+                for item in util.KVItem.from_dict(out):
+                    yield item.to_dict()
+
+
+def pull_test_keys(dirname: str, children=List[str]) -> List[str]:
+    keys = []
+    for c in children:
+        dataset = DatasetDict.load_from_disk(f"{dirname}/{c}")
+        keys.extend(dataset['test']['id'])
+    return keys
 
 
 if __name__ == "__main__":
     project_dir = "/home/djl328/prob-repl"
-    df = fetch_solns_and_tests(f"{project_dir}/datasets/wiz/all-solved/all-solved-20k:30k.jsonl")
-    out = run_solns_and_tests(df, timeout=5)
-    out.to_json(f"{project_dir}/datasets/wiz/all-eval-20k:30k.jsonl", orient="records", lines=True)
+    small_ds = "solved/all-solved-1k.jsonl"
+    full_ds = "all-solved/all-solved-20k:30k.jsonl"
+    # df = read_long_dataset_to_wide_df(filename=f"{project_dir}/datasets/wiz/{small_ds}")    
+    # ts = util.timestamp()
+    # util.incrementally_save_jsonl(
+    #     quiet=True,
+    #     filename=f"{project_dir}/datasets/eval-test-1k-{ts}",
+    #     it=run_solns_and_tests(df, timeout=30),
+    # )
+    keys = pull_test_keys(dirname="../datasets/wiz/hf-20:30k/", children=["NSCA", "NSE", "WD", "WW", "CA"])
+    print(keys)
+
