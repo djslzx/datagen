@@ -34,6 +34,8 @@ def read_long_dataset_to_wide_df(
     - extract source from id
     - group solns, tests into lists
     """
+    assert type(df) == pd.DataFrame, f"Expected DataFrame but got {type(df)}"
+
     if rename and name_map is None:
         name_map = {
             "CA-20k": "CA",
@@ -66,6 +68,9 @@ def read_long_dataset_to_wide_df(
     # remove problems with empty solutions or empty tests
     df = df[df["solutions"].apply(lambda x: len(x) > 0) &
             df["tests"].apply(lambda x: len(x) > 0)]
+
+    # ensure we have an id column
+    df["id"] = df.index
 
     return df
 
@@ -271,7 +276,6 @@ if __name__ == "__main__":
     elif args.mode == "process":
         df = pd.read_json(args.dataset, lines=True)
         df = read_long_dataset_to_wide_df(df)
-        df["id"] = df.index
         df.to_json(args.out, orient="records", lines=True)
 
     elif args.mode == "split":
