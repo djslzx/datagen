@@ -6,16 +6,19 @@ import pdb
 from typing import Dict, List, Optional, Tuple, Iterator
 import sys
 import pandas as pd
+import numpy as np
+from math import ceil
 from datasets import Dataset, DatasetDict, DatasetInfo
 from tqdm import tqdm
-from joblib import Parallel, delayed, effective_n_jobs
+from joblib import Parallel, delayed
+import argparse
 
 from root import evaluate
 from root import util
 
 
 def read_long_dataset_to_wide_df(
-        filename: str, 
+        df: pd.DataFrame,
         name_map: Dict[str, str] = None, 
         rename: bool = True,
         n_solns: int = 3, 
@@ -31,8 +34,6 @@ def read_long_dataset_to_wide_df(
     - extract source from id
     - group solns, tests into lists
     """
-    assert filename.endswith(".jsonl"), f"Expected jsonl file, but got in_file={filename}"
-
     if rename and name_map is None:
         name_map = {
             "CA-20k": "CA",
@@ -47,9 +48,8 @@ def read_long_dataset_to_wide_df(
         s_src = name_map[s_src] if s_src in name_map else s_src
         return f"{s_src}:{s_num}"
 
-    df = pd.read_json(filename, lines=True)
-    df = df[["id", "key", "value"]]
     df["id"] = df["id"].apply(rename_id)
+    df = df[["id", "key", "value"]]
     df = df.drop_duplicates(subset=["id", "key"], keep="first")
     df = df.pivot(index="id", columns="key", values="value")
     df = df.where(pd.notnull(df), None)
@@ -61,7 +61,7 @@ def read_long_dataset_to_wide_df(
     test_keys = [f"test {i}" for i in range(n_tests)]
     df["tests"] = df.apply(lambda row: [row[k] for k in test_keys if row[k]], axis=1)
     df["solutions"] = df.apply(lambda row: [row[k] for k in soln_keys if row[k]], axis=1)
-    df = df[["problem", "solutions", "tests"]]
+    df = df[["source", "problem", "solutions", "tests"]]
 
     # remove problems with empty solutions or empty tests
     df = df[df["solutions"].apply(lambda x: len(x) > 0) &
@@ -86,17 +86,22 @@ def prepare_hf_dataset(
     - split into separate output files by source
     - shuffle dataset
     """
+    df = pd.read_json(filename, lines=True)
     df = read_long_dataset_to_wide_df(
-        filename=filename, 
-        name_map=name_map, 
-        n_solns=n_solns, 
-        n_tests=n_tests
+        df=df,
+        name_map=name_map,
+        n_solns=n_solns,
+        n_tests=n_tests,
     )
 
     # fixme: for now, we make the simplifying assumption that all solutions
     #   are good, so use any problem/solution pair to fine-tune
     # fixme: we also assume that all tests are good
 
+    to_hf_dataset(df, out_dir=out_dir)
+
+
+def to_hf_dataset(df: pd.DataFrame, out_dir: str):
     # shuffle data
     df = df.sample(frac=1)
 
@@ -133,14 +138,10 @@ def prepare_hf_dataset(
         dd.save_to_disk(f"{out_dir}/{source}")
 
 
-def fetch_good_solns_and_tests(filename: str, source: str, n_solns: int = 3, n_tests: int = 3,
-                               timeout=1) -> pd.DataFrame:
+def filter_solns_and_tests(df: pd.DataFrame) -> pd.DataFrame:
     """
     Filter out all "bad" solutions and tests.
     """
-
-    # TODO: run all soln-test pairs once, then operate over cached results
-
     def test_is_bad(test: str, solns: List[str]) -> bool:
         """
         Check if a test is bad wrt un-vetted solutions.
@@ -168,40 +169,24 @@ def fetch_good_solns_and_tests(filename: str, source: str, n_solns: int = 3, n_t
         """
         pass
 
-    df = fetch_solns_and_tests(filename, source, n_solns, n_tests)
-    pass
+    print(df)
+    return df
 
 
 def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> Iterator[dict]:
     # Run solutions in isolation
-    for id, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions in isolation"):
-        problem = row["problem"]
+    for ident, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions in isolation"):
         for i, soln in enumerate(row["solutions"]):
-            result = evaluate.run_soln(soln, timeout)
-            out = {
-                "id": f"{id}:{i}",
-                "problem": problem,
-                "solution": soln,
-                "test": None,
-                **result.to_dict(prefix="result."),
-            }
-            for item in util.KVItem.from_dict(out):
+            result = run_soln(f"{ident}:{i}", row["problem"], soln, timeout)
+            for item in util.KVItem.from_dict(result):
                 yield item.to_dict()
 
     # Run solutions with tests
-    for id, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions with tests"):
-        problem = row["problem"]
+    for ident, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions with tests"):
         for i, soln in enumerate(row["solutions"]):
             for j, test in enumerate(row["tests"]):
-                result = evaluate.run_soln_w_test(soln, test, timeout)
-                out = {
-                    "id": f"{id}:{i}:{j}",
-                    "problem": problem,
-                    "solution": soln,
-                    "test": test,
-                    **result.to_dict(prefix="result."),
-                }
-                for item in util.KVItem.from_dict(out):
+                result = run_soln_and_test(f"{ident}:{i}:{j}", row["problem"], soln, test, timeout)
+                for item in util.KVItem.from_dict(result):
                     yield item.to_dict()
 
 
@@ -228,13 +213,15 @@ def run_soln_and_test(ident: str, problem: str, soln: str, test: str, timeout: f
 
 
 def mp_run_solns_and_tests(df: pd.DataFrame, timeout: float, n_jobs: int = -1) -> Iterator[dict]:
+    raise NotImplementedError("Multiprocessing should be done outside of this script")
+
     parallel = Parallel(n_jobs=n_jobs, backend="multiprocessing")
     soln_runner = parallel(
         delayed(run_soln)(f"{ident}:{i}", row["problem"], soln, timeout)
         for ident, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions in isolation")
         for i, soln in enumerate(row["solutions"])
     )
-    for result in tqdm(soln_runner):
+    for result in soln_runner:
         for item in util.KVItem.from_dict(result):
             yield item.to_dict()
 
@@ -244,7 +231,7 @@ def mp_run_solns_and_tests(df: pd.DataFrame, timeout: float, n_jobs: int = -1) -
         for i, soln in enumerate(row["solutions"])
         for j, test in enumerate(row["tests"])
     )
-    for result in tqdm(test_runner):
+    for result in test_runner:
         for item in util.KVItem.from_dict(result):
             yield item.to_dict()
 
@@ -264,22 +251,45 @@ def count_error_types(df: pd.DataFrame) -> Dict[str, int]:
 
 
 if __name__ == "__main__":
-    project_dir = "/home/djl328/prob-repl"
-    small_ds = "solved/all-solved-1k.jsonl"
-    full_ds = "all-solved/all-solved-20k:30k.jsonl"
+    p = argparse.ArgumentParser()
+    p.add_argument("--mode", choices=["eval", "process", "split"])
+    p.add_argument("--dataset")
+    p.add_argument("--out")
+    p.add_argument("--timeout", type=int, default=30)
+    p.add_argument("--n-chunks", type=int, default=10)
+    args = p.parse_args()
 
-    print(f"Running solutions and tests with n_jobs={effective_n_jobs(-1)}")
-    df = read_long_dataset_to_wide_df(filename=f"{project_dir}/datasets/wiz/{full_ds}")    
-    ts = util.timestamp()
-    util.incrementally_save_jsonl(
-        quiet=True,
-        filename=f"{project_dir}/datasets/wiz/eval-mp-{ts}",
-        # filename=f"{project_dir}/datasets/eval-all-20k:30k-{ts}",
-        it=mp_run_solns_and_tests(df, timeout=30, n_jobs=-1),
-    )
+    if args.mode == "eval":
+        ts = util.timestamp()
+        df = pd.read_json(filename=args.dataset, lines=True)
+        if args.out.endswith(".jsonl"):
+            args.out = args.out[:-len(".jsonl")]
+        util.incrementally_save_jsonl(
+            quiet=True,
+            filename=args.out,
+            it=run_solns_and_tests(df, timeout=args.timeout),
+        )
 
-    # df = pd.read_json(f"{project_dir}/datasets/wiz/eval-mp-2023-12-12T18:07:22.031679.jsonl", lines=True)
-    # count_error_types(df)
+    elif args.mode == "process":
+        df = pd.read_json(args.dataset, lines=True)
+        df = read_long_dataset_to_wide_df(df)
+        df["id"] = df.index
+        df.to_json(args.out, orient="records", lines=True)
+
+    elif args.mode == "split":
+        df = pd.read_json(args.dataset, lines=True)
+        for source, split in df.groupby("source"):
+            n_rows = len(split)
+            chunk_size = ceil(n_rows / args.n_chunks)
+            for i in range(args.n_chunks):
+                split[i * chunk_size:(i+1) * chunk_size].to_json(
+                    f"{args.out}/{source}/chunk-{i:02d}.jsonl", 
+                    orient="records", 
+                    lines=True
+                )
+
+    else:
+        raise ValueError(f"Unexpected mode: {args.mode}")
 
     # keys = pull_test_keys(dirname="../datasets/wiz/hf-20:30k/", children=["NSCA", "NSE", "WD", "WW", "CA"])
     # print(f"Collected keys:")
