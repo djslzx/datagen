@@ -13,13 +13,53 @@ import time
 import sys
 from os import mkdir
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
-from func_timeout import func_timeout, FunctionTimedOut
-from adjustText import adjust_text
 from datetime import datetime
+from dataclasses import dataclass
 
 
-def filter_None(xs: List) -> List:
-    return [x for x in xs if x is not None]
+@dataclass
+class KVItem:
+    id: str
+    key: str
+    value: Any
+
+    @staticmethod
+    def from_dict(d: Dict) -> List["KVItem"]:
+        id = d["id"]
+        return [
+            KVItem(id=id, key=key, value=value)
+            for key, value in d.items()
+            if key != "id"
+        ]
+
+    def to_dict(self) -> Dict:
+        return {
+            "id": self.id,
+            "key": self.key,
+            "value": self.value,
+        }
+
+
+def test_from_dict():
+    cases = [
+        {"id": 0,
+         "a": 1,
+         "b": 2},
+        [KVItem(0, "a", 1),
+         KVItem(0, "b", 2)],
+    ]
+    for x, y in zip(cases[::2], cases[1::2]):
+        assert KVItem.from_dict(x) == y
+
+
+def test_json_dump():
+    import json
+    cases = [
+        KVItem(0, "a", 1), {"id": 0, "key": "a", "value": 1},
+        KVItem(0, "b", 2), {"id": 0, "key": "b", "value": 2},
+    ]
+    for x, y in zip(cases[::2], cases[1::2]):
+        assert json.dumps(x) == y
 
 
 def isnan(x):
@@ -29,15 +69,14 @@ def isnan(x):
         return False
 
 
-def incrementally_save_jsonl(it, filename: str) -> pd.DataFrame:
+def incrementally_save_jsonl(it, filename: str, quiet=False) -> pd.DataFrame:
     with open(filename + ".jsonl", "w") as f:
         for x in it:
             line = json.dumps(x, indent=None)
-            print(line)
+            if not quiet:
+                print(line)
             f.write(line + "\n")
-    df = pd.read_json(filename + ".jsonl", lines=True)
-    df.to_csv(filename + ".csv")
-    return df
+    return pd.read_json(filename + ".jsonl", lines=True)
 
 
 def pad_list(xs: List, n: int, nil: Any) -> List:
@@ -473,3 +512,5 @@ def try_mkdir(dir: str):
         mkdir(dir)
     except IsADirectoryError:
         pass
+
+

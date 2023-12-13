@@ -6,10 +6,11 @@ import re
 import pandas as pd
 from typing import List, Optional, Dict, Iterable, TypedDict, Tuple, Any, Iterator
 from dataclasses import dataclass
+import sys
+import datasets
 
 import execution
 import util
-from dc import KVItem
 
 
 @dataclass
@@ -27,7 +28,7 @@ def make_programs(solns: List[str], tests: List[str]) -> Iterator[SolnTestPair]:
     "program".
     """
     preamble = "\n".join([
-        "from typing import List, Dict, Tuple, Set, Optional"
+        "from typing import List, Dict, Tuple, Set, Optional, Any"
         "",
         "class TestFailed(Exception):",
         "    pass",
@@ -55,6 +56,14 @@ def make_program(soln: str, test: str) -> SolnTestPair:
     return next(make_programs([soln], [test]))
 
 
+def make_soln_program(soln: str) -> str:
+    preamble = "\n".join([
+        "from typing import List, Dict, Tuple, Set, Optional"
+        "",
+    ])
+    return "\n\n".join([preamble, soln])
+
+
 def run_solns_w_tests(solns: List[str], tests: List[str], timeout: float) -> List[execution.Result]:
     return [
         execution.unsafe_check(program=prog.program, timeout=timeout)
@@ -69,58 +78,10 @@ def run_soln_w_test(soln: str, test: str, timeout: float) -> execution.Result:
     return execution.unsafe_check(program=prog.program, timeout=timeout)
 
 
-def eval_dataset(filename: str, n_samples_per_file: Optional[int], timeout: float) -> Iterable[Dict]:
-    df = pd.read_json(filename, lines=True)
-    df = df[["id", "key", "value"]]
-    n_orig = len(df.groupby("id"))
-
-    solns = (
-        df[df["key"].str.startswith("solution ")]
-        .groupby("id").agg({"value": list})
-        .rename(columns={"value": "solutions"})
-    )
-    tests = (
-        df[df["key"].str.startswith("test ")]
-        .groupby("id").agg({"value": list})
-        .rename(columns={"value": "tests"})
-    )
-
-    df = pd.concat([solns, tests], axis=1)
-    df = df[(~df["tests"].isna()) & (~df["solutions"].isna())]
-
-    print(f"Found {len(df)} rows from {n_orig} ({len(df) / n_orig * 100}% retained) with at least 1 soln/test")
-
-    # split source file and local id from global id
-    df["id"] = df.index
-
-    # take subset of rows of size n_samples
-    if n_samples_per_file is None:
-        view = df
-        print(f"Keeping full dataset of size {len(df)}...")
-    else:
-        df["source file"] = df["id"].apply(lambda s: s.split(":")[0])
-        view = df.groupby("source file").sample(n=n_samples_per_file, replace=False)
-        print(f"Sampled {n_samples_per_file} rows from each source file, yielding dataset of size {len(view)}...")
-
-    # run soln/test pairs
-    print("Running soln/test pairs...")
-    for _, row in view.iterrows():
-        id = row["id"]
-        solns = row["solutions"]
-        tests = row["tests"]
-
-        for prog in make_programs(solns, tests):
-            eval_out = execution.unsafe_check(program=prog.program, timeout=timeout)
-            out = {
-                "id": f"{id}:{prog.id}",
-                "passed": eval_out.passed,
-                "result": eval_out,
-                "test": prog.test,
-                "solution": prog.soln,
-                "functions": find_fns(prog.program),
-            }
-            for item in KVItem.from_dict(out):
-                yield item.to_dict()
+def run_soln(soln: str, timeout: float) -> execution.Result:
+    assert soln
+    p = make_soln_program(soln)
+    return execution.unsafe_check(program=p, timeout=timeout)
 
 
 def find_fns(text: str) -> List[str]:
@@ -147,10 +108,11 @@ def test_find_tests():
 if __name__ == "__main__":
     ts = util.timestamp()
     util.incrementally_save_jsonl(
+        filename=f"../datasets/wiz/all-eval-1k-{ts}",
+        # filename=f"../datasets/wiz/all-evaluated-20k:30k-{ts}",
         it=eval_dataset(
             filename="../datasets/wiz/solved/all-solved-1k.jsonl",
-            n_samples_per_file=None,
-            timeout=30,
+            # filename="../datasets/wiz/all-solved/all-solved-20k:30k.jsonl",
+            timeout=10,
         ),
-        filename=f"../datasets/wiz/evaluated-1k-{ts}",
     )

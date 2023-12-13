@@ -7,24 +7,23 @@ import contextlib
 import faulthandler
 import io
 import os
-import multiprocessing
 import platform
 import signal
 import tempfile
 from dataclasses import dataclass
 
 
-def _unsafe_execute(program: str, timeout: float, result: List):
+def _unsafe_execute(program: str, timeout: float):
     forbidden = [
         "import os",
         "from os import",
         "import sys",
         "from sys import",
+        "joblib",
     ]
     for x in forbidden:
         if x in program:
-            result.append(f"failed:Forbidden:{x}")
-            return
+            out = f"failed::Forbidden::{x}"
 
     # remove print statements
     program = "\n".join([line for line in program.split("\n")
@@ -37,6 +36,8 @@ def _unsafe_execute(program: str, timeout: float, result: List):
         rmtree = shutil.rmtree
         rmdir = os.rmdir
         chdir = os.chdir
+        getcwd = os.getcwd
+        unlink = os.unlink
 
         # Disable functionalities that can make destructive changes to the test.
         reliability_guard()
@@ -47,16 +48,20 @@ def _unsafe_execute(program: str, timeout: float, result: List):
                 with time_limit(timeout):
                     # WARNING: unsafe
                     exec(program, exec_globals)
-            result.append("passed")
+            out = "passed"
         except TimeoutException:
-            result.append(f"failed:Timeout:{timeout}s")
+            out = f"failed::Timeout::{timeout}s"
         except BaseException as e:
-            result.append(f"failed:{type(e).__name__}:{e}")
+            out = f"failed::{type(e).__name__}::{e}"
 
         # Needed for cleaning up.
         shutil.rmtree = rmtree
         os.rmdir = rmdir
         os.chdir = chdir
+        os.getcwd = getcwd
+        os.unlink = unlink
+
+    return out
 
 
 @dataclass
@@ -71,8 +76,8 @@ class Result:
 
     @staticmethod
     def from_str(s: str) -> "Result":
-        if s.startswith("failed:"):
-            _, e_type, e_msg = s.split(":")
+        if s.startswith("failed::"):
+            _, e_type, e_msg = s.split("::")
             return Result(False, e_type, e_msg)
         else:
             return Result(True, None, None)
@@ -86,20 +91,8 @@ class Result:
 
 
 def unsafe_check(program: str, timeout: float) -> Result:
-    manager = multiprocessing.Manager()
-    result = manager.list()
-
-    p = multiprocessing.Process(target=_unsafe_execute, args=(program, timeout, result))
-    p.start()
-    p.join(timeout=timeout + 1)
-
-    if p.is_alive():
-        p.kill()
-
-    if not result:
-        result.append("timed out")
-
-    return Result.from_str(result[0])
+    result = _unsafe_execute(program, timeout)
+    return Result.from_str(result)
 
 
 @contextlib.contextmanager
@@ -240,7 +233,7 @@ def reliability_guard(maximum_memory_bytes: Optional[int] = None):
 
     import sys
     sys.modules['ipdb'] = None
-    sys.modules['joblib'] = None
+    # sys.modules['joblib'] = None
     sys.modules['resource'] = None
     sys.modules['psutil'] = None
     sys.modules['tkinter'] = None
