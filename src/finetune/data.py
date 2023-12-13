@@ -13,8 +13,8 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 import argparse
 
-from root import evaluate
-from root import util
+from finetune.root import evaluate
+from finetune.root import util
 
 
 def read_long_dataset_to_wide_df(
@@ -261,9 +261,7 @@ if __name__ == "__main__":
 
     if args.mode == "eval":
         ts = util.timestamp()
-        df = pd.read_json(filename=args.dataset, lines=True)
-        if args.out.endswith(".jsonl"):
-            args.out = args.out[:-len(".jsonl")]
+        df = pd.read_json(args.dataset, lines=True)
         util.incrementally_save_jsonl(
             quiet=True,
             filename=args.out,
