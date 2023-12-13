@@ -5,4 +5,4 @@ export TOKENIZERS_PARALLELISM=false
 export PYTHONPATH=$PYTHONPATH:$PROJECT_DIR/src
 source $PROJECT_DIR/venv/bin/activate
 cd $PROJECT_DIR/src
-python3 -u finetune/data.py
+python3 -u finetune/data.py $@
