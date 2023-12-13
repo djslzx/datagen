@@ -129,6 +129,37 @@ def fetch_good_solns_and_tests(filename: str, source: str, n_solns: int = 3, n_t
     """
     Filter out all "bad" solutions and tests.
     """
+
+    # TODO: run all soln-test pairs once, then operate over cached results
+
+    def test_is_bad(test: str, solns: List[str]) -> bool:
+        """
+        Check if a test is bad wrt un-vetted solutions.
+        A test is bad if it is unstable, missing, or times out.
+        A test is unstable wrt its solutions if it gets runtime errors on all of the solutions.
+        """
+        results = evaluate.run_solns_w_tests(solns=solns, tests=[test], timeout=timeout)
+        exception_types = {result.exception_type for result in results if not result.passed}
+
+        # check if any tests violate basic rules
+        if exception_types.intersection({"MissingTests", "Forbidden", "Timeout"}):
+            return True
+
+        # check if the test is unstable: runtime errors on all solutions
+        if len(exception_types) == len(solns) and all(result.exception_type != "TestFailed" for result in results):
+            return True
+
+        # otherwise, test is good
+        return False
+
+    def soln_is_bad(soln: str, good_tests: List[str]) -> bool:
+        """
+        Check if a solution is good wrt a set of good tests.
+        A solution is bad if it fails on any good test.
+        """
+        pass
+
+    df = fetch_solns_and_tests(filename, source, n_solns, n_tests)
     pass
 
 
