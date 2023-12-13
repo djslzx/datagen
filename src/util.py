@@ -70,13 +70,15 @@ def isnan(x):
 
 
 def incrementally_save_jsonl(it, filename: str, quiet=False) -> pd.DataFrame:
-    with open(filename + ".jsonl", "w") as f:
+    if not filename.endswith(".jsonl"):
+        filename += ".jsonl"
+    with open(filename, "w") as f:
         for x in it:
             line = json.dumps(x, indent=None)
             if not quiet:
                 print(line)
             f.write(line + "\n")
-    return pd.read_json(filename + ".jsonl", lines=True)
+    return pd.read_json(filename, lines=True)
 
 
 def pad_list(xs: List, n: int, nil: Any) -> List:
