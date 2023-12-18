@@ -10,10 +10,11 @@ import os
 import platform
 import signal
 import tempfile
+import multiprocessing as mp
 from dataclasses import dataclass
 
 
-def _unsafe_execute(program: str, timeout: float):
+def _unsafe_execute(program: str, timeout: float, result: List):
     forbidden = [
         "import os",
         "from os import",
@@ -61,7 +62,7 @@ def _unsafe_execute(program: str, timeout: float):
         os.getcwd = getcwd
         os.unlink = unlink
 
-    return out
+        result.append(out)
 
 
 @dataclass
@@ -91,8 +92,21 @@ class Result:
 
 
 def unsafe_check(program: str, timeout: float) -> Result:
-    result = _unsafe_execute(program, timeout)
-    return Result.from_str(result)
+    manager = mp.Manager()
+    result = manager.list()
+    p = mp.Process(
+        target=_unsafe_execute,
+        args=(program, timeout, result),
+    )
+    p.start()
+    p.join(timeout=timeout + 1)
+
+    if p.is_alive():
+        p.kill()
+    if not result:
+        result.append("failed::Timeout::{timeout}")
+
+    return Result.from_str(result[0])
 
 
 @contextlib.contextmanager
@@ -233,7 +247,7 @@ def reliability_guard(maximum_memory_bytes: Optional[int] = None):
 
     import sys
     sys.modules['ipdb'] = None
-    # sys.modules['joblib'] = None
+    sys.modules['joblib'] = None
     sys.modules['resource'] = None
     sys.modules['psutil'] = None
     sys.modules['tkinter'] = None
