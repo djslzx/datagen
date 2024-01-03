@@ -241,6 +241,28 @@ def mp_run_solns_and_tests(df: pd.DataFrame, timeout: float, n_jobs: int = -1) -
             yield item.to_dict()
 
 
+def debug_segfaults(df: pd.DataFrame, timeout: float, out: str):
+    # try running some of the problematic solutions/tests
+    problems = [
+        ("NSCA", 8981),
+        ("WW", 703),
+        ("WW", 1518),
+        ("CA", 864),
+        ("CA", 247),
+    ]
+    radius=0
+    ids = []
+    for source, n in problems:
+        ids.extend([f"{source}:{m}" for m in range(n - radius, n + radius + 1)])
+    df = df[df["id"].isin(ids)]
+    df.set_index("id", inplace=True)
+    util.incrementally_save_jsonl(
+        quiet=True,
+        filename=out,
+        it=run_solns_and_tests(df, timeout=timeout),
+    )
+
+
 def pull_test_keys(dirname: str, children=List[str]) -> Dict[str, List[str]]:
     keys = {}
     for c in children:
@@ -257,7 +279,7 @@ def count_error_types(df: pd.DataFrame) -> Dict[str, int]:
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--mode", choices=["eval", "process", "split"])
+    p.add_argument("--mode", choices=["eval", "process", "split", "debug"])
     p.add_argument("--dataset")
     p.add_argument("--out")
     p.add_argument("--timeout", type=int, default=30)
@@ -285,10 +307,14 @@ if __name__ == "__main__":
             chunk_size = ceil(n_rows / args.n_chunks)
             for i in range(args.n_chunks):
                 split[i * chunk_size:(i+1) * chunk_size].to_json(
-                    f"{args.out}/{source}/chunk-{i:02d}.jsonl", 
+                    f"{args.out}/{source}/chunk-{i:04d}.jsonl", 
                     orient="records", 
                     lines=True
                 )
+
+    elif args.mode == "debug":
+        df = pd.read_json(args.dataset, lines=True)
+        debug_segfaults(df, timeout=args.timeout, out=args.out)
 
     else:
         raise ValueError(f"Unexpected mode: {args.mode}")
