@@ -1,0 +1,38 @@
+#!/bin/bash
+#SBATCH -J eval-arr                          # Job name
+#SBATCH -o eval-arr-%j.out                   # output file (%j expands to jobID)
+#SBATCH -e eval-arr-%j.err                   # error log file (%j expands to jobID)
+#SBATCH --mail-type=ALL                      # Request status by email 
+#SBATCH --mail-user=djl328@cornell.edu       # Email address to send results to
+#SBATCH --get-user-env                       # retrieve the users login environment
+#SBATCH --partition=ellis                    # Request partition
+#SBATCH --gres=gpu:0                         # Request GPU
+#SBATCH -N 1                                 # Total number of nodes requested
+#SBATCH -n 1                                 # Cores per node
+#SBATCH --mem=16G                            # Memory
+#SBATCH -t 168:00:00                         # Time limit (hh:mm:ss)
+#SBATCH --array=1-10
+
+# n: number of splits
+n=10
+# b: size of each batch
+# b=100
+
+project_dir=/home/djl328/prob-repl
+data_dir=$project_dir/datasets/wiz/pre-eval-n$n
+out_dir=$project_dir/datasets/wiz/post-eval-n$n
+script=$project_dir/slurm/data.sh
+
+config=$project_dir/slurm/evaluate/n$n.cfg
+timeout=30
+
+file=$(awk -v ArrayTaskID=$SLURM_ARRAY_TASK_ID '$1==ArrayTaskID {print $2}' $config)
+
+echo "Processing file=$file, task_id=$SLURM_ARRAY_TASK_ID" 1>&2
+$script \
+    --mode=eval \
+    --timeout=$timeout \
+    --dataset=$data_dir/$file \
+    --out=$out_dir/$file
+
+
