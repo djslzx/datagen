@@ -9,7 +9,7 @@
 #SBATCH --gres=gpu:0                         # Request GPU
 #SBATCH -N 1                                 # Total number of nodes requested
 #SBATCH -n 1                                 # Cores per node
-#SBATCH --mem=8G                             # memory per core
+#SBATCH --mem=32G                             # memory per core
 #SBATCH -t 168:00:00                         # Time limit (hh:mm:ss)
 
 project_dir=/home/djl328/prob-repl
@@ -17,12 +17,11 @@ data_dir=$project_dir/datasets/wiz/
 script=$project_dir/slurm/data.sh
 timeout=30
 
-echo "Processing file $1" 1>&2
+echo "Processing file w/ params $@" 1>&2
 
 $script \
     --mode=eval \
     --timeout=$timeout \
-    --dataset=$data_dir/pre-eval/$1 \
-    --out=$data_dir/post-eval/$1
+    $@
 
 
