@@ -19,7 +19,7 @@ tabulate
 
 # pretrained LLMs + deps
 tqdm
-git+https://github.com/huggingface/transformers.git@main
+# git+https://github.com/huggingface/transformers.git@main
 accelerate
 datasets
 sentence-transformers
@@ -52,5 +52,6 @@ peft  # parameter efficient fine-tuning
 accelerate
 bitsandbytes
 nvidia-ml-py3
-joblib
-loky
+
+# lempel-ziv compression
+# fastlz

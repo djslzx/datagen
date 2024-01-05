@@ -10,18 +10,16 @@ import numpy as np
 from math import ceil
 from datasets import Dataset, DatasetDict, DatasetInfo
 from tqdm import tqdm
-from joblib import Parallel, delayed
 import argparse
 
-from finetune.root import evaluate
-from finetune.root import util
+from finetune.root import evaluate, util
 
 
 def read_long_dataset_to_wide_df(
         df: pd.DataFrame,
-        name_map: Dict[str, str] = None, 
+        name_map: Dict[str, str] = None,
         rename: bool = True,
-        n_solns: int = 3, 
+        n_solns: int = 3,
         n_tests: int = 3,
 ) -> pd.DataFrame:
     """
@@ -76,10 +74,10 @@ def read_long_dataset_to_wide_df(
 
 
 def prepare_hf_dataset(
-        filename: str, 
-        out_dir: str, 
-        name_map: Dict[str, str] = None, 
-        n_solns: int = 3, 
+        filename: str,
+        out_dir: str,
+        name_map: Dict[str, str] = None,
+        n_solns: int = 3,
         n_tests: int = 3,
 ):
     """
@@ -147,6 +145,7 @@ def filter_solns_and_tests(df: pd.DataFrame) -> pd.DataFrame:
     """
     Filter out all "bad" solutions and tests.
     """
+
     def test_is_bad(test: str, solns: List[str]) -> bool:
         """
         Check if a test is bad wrt un-vetted solutions.
@@ -217,30 +216,6 @@ def run_soln_and_test(ident: str, problem: str, soln: str, test: str, timeout: f
     }
 
 
-def mp_run_solns_and_tests(df: pd.DataFrame, timeout: float, n_jobs: int = -1) -> Iterator[dict]:
-    raise NotImplementedError("Multiprocessing should be done outside of this script")
-
-    parallel = Parallel(n_jobs=n_jobs, backend="multiprocessing")
-    soln_runner = parallel(
-        delayed(run_soln)(f"{ident}:{i}", row["problem"], soln, timeout)
-        for ident, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions in isolation")
-        for i, soln in enumerate(row["solutions"])
-    )
-    for result in soln_runner:
-        for item in util.KVItem.from_dict(result):
-            yield item.to_dict()
-
-    test_runner = parallel(
-        delayed(run_soln_and_test)(f"{ident}:{i}:{j}", row["problem"], soln, test, timeout)
-        for ident, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions with tests")
-        for i, soln in enumerate(row["solutions"])
-        for j, test in enumerate(row["tests"])
-    )
-    for result in test_runner:
-        for item in util.KVItem.from_dict(result):
-            yield item.to_dict()
-
-
 def debug_segfaults(df: pd.DataFrame, timeout: float, out: str):
     # try running some of the problematic solutions/tests
     problems = [
@@ -250,7 +225,7 @@ def debug_segfaults(df: pd.DataFrame, timeout: float, out: str):
         ("CA", 864),
         ("CA", 247),
     ]
-    radius=0
+    radius = 0
     ids = []
     for source, n in problems:
         ids.extend([f"{source}:{m}" for m in range(n - radius, n + radius + 1)])
@@ -277,17 +252,19 @@ def count_error_types(df: pd.DataFrame) -> Dict[str, int]:
     pdb.set_trace()
 
 
-if __name__ == "__main__":
+def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--mode", choices=["eval", "process", "split", "debug"])
-    p.add_argument("--dataset")
-    p.add_argument("--out")
-    p.add_argument("--timeout", type=int, default=30)
-    p.add_argument("--n-chunks", type=int, default=10)
+    p.add_argument("-m", "--mode", choices=["eval", "process", "split", "debug", "analyze"])
+    p.add_argument("-d", "--dataset")
+    p.add_argument("-o", "--out")
+    p.add_argument("-t", "--timeout", type=int, default=30)
+    p.add_argument("-n", "--n-chunks", type=int)
+    p.add_argument("-b", "--chunk-size", type=int)
     args = p.parse_args()
 
     if args.mode == "eval":
-        ts = util.timestamp()
+        assert args.dataset and args.out and args.timeout
+
         df = pd.read_json(args.dataset, lines=True)
         util.incrementally_save_jsonl(
             quiet=True,
@@ -296,30 +273,46 @@ if __name__ == "__main__":
         )
 
     elif args.mode == "process":
+        assert args.dataset and args.out
+
         df = pd.read_json(args.dataset, lines=True)
         df = read_long_dataset_to_wide_df(df)
         df.to_json(args.out, orient="records", lines=True)
 
     elif args.mode == "split":
+        assert args.dataset and args.out and ((args.n_chunks is not None) ^ (args.chunk_size is not None))
+        assert args.chunk_size is None or args.chunk_size > 0
+        assert args.n_chunks is None or args.n_chunks > 0
+
         df = pd.read_json(args.dataset, lines=True)
         for source, split in df.groupby("source"):
             n_rows = len(split)
-            chunk_size = ceil(n_rows / args.n_chunks)
+            chunk_size = args.chunk_size if args.chunk_size else ceil(n_rows / args.n_chunks)
             for i in range(args.n_chunks):
-                split[i * chunk_size:(i+1) * chunk_size].to_json(
-                    f"{args.out}/{source}/chunk-{i:04d}.jsonl", 
-                    orient="records", 
+                split[i * chunk_size:(i + 1) * chunk_size].to_json(
+                    f"{args.out}/{source}/chunk-{i:04d}.jsonl",
+                    orient="records",
                     lines=True
                 )
 
     elif args.mode == "debug":
+        assert args.dataset and args.out and args.timeout
+
         df = pd.read_json(args.dataset, lines=True)
         debug_segfaults(df, timeout=args.timeout, out=args.out)
+
+    elif args.mode == "analyze":
+        assert args.dataset
+
+        df = pd.read_json(args.dataset, lines=True)
+        print(df)
 
     else:
         raise ValueError(f"Unexpected mode: {args.mode}")
 
-    # keys = pull_test_keys(dirname="../datasets/wiz/hf-20:30k/", children=["NSCA", "NSE", "WD", "WW", "CA"])
-    # print(f"Collected keys:")
-    # for k, vs in keys.items():
-    #     print(f"  {k}: {len(vs)}")
+
+if __name__ == "__main__":
+    # pandas print all columns
+    pd.set_option('display.max_columns', None)
+
+    main()
