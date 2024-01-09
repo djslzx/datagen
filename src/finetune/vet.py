@@ -3,6 +3,7 @@ Vet solutions and tests
 """
 
 import pandas as pd
+from pandas import Series
 
 
 def soln_test_id_to_soln_id(ident: str) -> str:
@@ -41,7 +42,7 @@ def stable_tests(df: pd.DataFrame, stable_solns_df: pd.DataFrame) -> pd.DataFram
     return df[df.apply(is_stable_test, axis=1)]
 
 
-def test_passing_solns(df: pd.DataFrame, stable_solns_df: pd.DataFrame, stable_tests_df: pd.DataFrame) -> pd.DataFrame:
+def test_passing_solns(df: pd.DataFrame, stable_solns_df: pd.DataFrame, stable_tests_df: pd.DataFrame) -> Series:
     """
     Extract stable solutions that pass all stable tests
     """
@@ -76,9 +77,12 @@ def largest_consensus_set(df: pd.DataFrame) -> pd.DataFrame:
     raise NotImplementedError
 
 
-def filter_solutions(df: pd.DataFrame):
+def filter_solutions(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Returns stable solutions in `df` that pass stable tests.
+    Extracts stable solutions in `df` that pass stable tests.
+    The dataframe `df` should contain a record of evaluation solution-test pairs.
+
+    Returns a dataframe containing filtered solutions.
     """
     df["run-type"] = df["test"].apply(lambda x: "soln-only" if x is None else "soln-and-test")
 
@@ -103,4 +107,5 @@ def filter_solutions(df: pd.DataFrame):
     print(f"stable tests | stable solns: {n_stable_tests} / {n_tests} ({n_stable_tests / n_tests})")
     print(f"stable solns passing stable tests: {n_passing_solns} / {n_solns} ({n_passing_solns / n_solns})")
 
-    return passing_solns_df
+    # get solutions from original df keyed by filtered solutions
+    return df.loc[passing_solns_df[passing_solns_df].index]

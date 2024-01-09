@@ -91,13 +91,22 @@ def to_hf_dataset(df: pd.DataFrame, out_dir: str):
         print(f"Found {len(data)} lines in {source}, processing...", file=sys.stderr)
         for id, row in tqdm(data.iterrows(), total=len(data), desc=f"Massaging {source}"):
             problem = row["problem"]
-            for i, soln in enumerate(row["solutions"]):
+            if "solutions" not in row and len(id.split(":")) > 2:
+                # solutions are keyed by their own id
                 rows.append({
-                    "id": f"{id}:{i}",
+                    "id": row["id"],
                     "source": source,
                     "problem": problem,
-                    "solution": soln,
+                    "solution": row["solution"],
                 })
+            else:
+                for i, soln in enumerate(row["solutions"]):
+                    rows.append({
+                        "id": f"{id}:{i}",
+                        "source": source,
+                        "problem": problem,
+                        "solution": soln,
+                    })
         ds = Dataset.from_pandas(
             pd.DataFrame.from_records(rows),
             info=DatasetInfo(
@@ -117,10 +126,9 @@ def to_hf_dataset(df: pd.DataFrame, out_dir: str):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("-m", "--mode", choices=["eval", "process", "split", "analyze"])
+    p.add_argument("-m", "--mode", choices=["eval", "pre-ft", "pre-eval", "split", "eval-filter-ft"])
     p.add_argument("-d", "--dataset")
     p.add_argument("-o", "--out")
-    p.add_argument("--filter", help="filter dataset ")
     p.add_argument("-t", "--timeout", type=int, default=30)
     p.add_argument("-n", "--n-chunks", type=int)
     p.add_argument("-b", "--chunk-size", type=int)
@@ -134,7 +142,14 @@ def main():
             filename=args.out,
             it=run.run_solns_and_tests(df, timeout=args.timeout),
         )
-    elif args.mode == "process":
+    elif args.mode == "pre-ft":
+        # prep dataset for fine-tuning, i.e. output to huggingface format
+        assert args.dataset and args.out
+        df = pd.read_json(args.dataset, lines=True)
+        df = read_raw_dataset_to_solns_and_tests(df)
+        to_hf_dataset(df, args.out)
+    elif args.mode == "pre-eval":
+        # prep dataset for evaluation
         assert args.dataset and args.out
         df = pd.read_json(args.dataset, lines=True)
         df = read_raw_dataset_to_solns_and_tests(df)
@@ -153,11 +168,12 @@ def main():
                     orient="records",
                     lines=True
                 )
-    elif args.mode == "filter-hf":
+    elif args.mode == "eval-filter-ft":
+        # filter dataset by evaluation results
         assert args.dataset and args.out
         df = pd.read_json(args.dataset, lines=True)
         df = long_to_wide(df)
-        df = vet.filter_solutions(df)
+        df = vet.filter_solutions(df)[["id", "source", "problem", "solution"]]
         to_hf_dataset(df, args.out)
     else:
         raise ValueError(f"Missing mode: {args.mode}")
