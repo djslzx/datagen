@@ -13,6 +13,7 @@ from tqdm import tqdm
 import argparse
 
 from finetune.root import evaluate, util
+from finetune import vet
 
 
 def long_to_wide(df: pd.DataFrame) -> pd.DataFrame:
@@ -79,37 +80,6 @@ def read_raw_dataset_to_solns_and_tests(
     return df
 
 
-def prepare_hf_dataset(
-        filename: str,
-        out_dir: str,
-        name_map: Dict[str, str] = None,
-        n_solns: int = 3,
-        n_tests: int = 3,
-):
-    """
-    Clean up datasets consisting of problems, solutions, and checkers.
-    - pivot from kv to columnar form
-    - rename datasets, e.g. CA-20k to CA
-    - extract source from id
-    - add columns for problems, solutions, and tests
-    - split into separate output files by source
-    - shuffle dataset
-    """
-    df = pd.read_json(filename, lines=True)
-    df = read_raw_dataset_to_solns_and_tests(
-        df=df,
-        name_map=name_map,
-        n_solns=n_solns,
-        n_tests=n_tests,
-    )
-
-    # fixme: for now, we make the simplifying assumption that all solutions
-    #   are good, so use any problem/solution pair to fine-tune
-    # fixme: we also assume that all tests are good
-
-    to_hf_dataset(df, out_dir=out_dir)
-
-
 def to_hf_dataset(df: pd.DataFrame, out_dir: str):
     # shuffle data
     df = df.sample(frac=1)
@@ -121,14 +91,12 @@ def to_hf_dataset(df: pd.DataFrame, out_dir: str):
         print(f"Found {len(data)} lines in {source}, processing...", file=sys.stderr)
         for id, row in tqdm(data.iterrows(), total=len(data), desc=f"Massaging {source}"):
             problem = row["problem"]
-            tests = row["tests"]
             for i, soln in enumerate(row["solutions"]):
                 rows.append({
                     "id": f"{id}:{i}",
                     "source": source,
                     "problem": problem,
                     "solution": soln,
-                    "tests": tests,
                 })
         ds = Dataset.from_pandas(
             pd.DataFrame.from_records(rows),
@@ -145,98 +113,6 @@ def to_hf_dataset(df: pd.DataFrame, out_dir: str):
             "test": vt["test"],
         })
         dd.save_to_disk(f"{out_dir}/{source}")
-
-
-def soln_test_id_to_soln_id(ident: str) -> str:
-    # soln-test id is of the form i:j, whereas test id is of the form j,
-    #  so we remove the last colon-separated bit to get the soln id
-    return ":".join(ident.split(":")[:-1])
-
-
-def stable_solns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Extract stable solutions, i.e. solutions that don't bug out when run alone
-    """
-    assert "run-type" in df
-
-    def is_stable_soln(row: dict) -> bool:
-        return row["run-type"] == "soln-only" and row["result.passed"]
-
-    return df[df.apply(is_stable_soln, axis=1)]
-
-
-def stable_tests(df: pd.DataFrame, stable_solns_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Extract stable tests wrt stable solutions: tests that don't bug out when run with stable tests,
-     i.e. tests that either pass or fail (but don't crash) on stable solutions
-    """
-    assert "run-type" in df
-
-    def is_stable_test(row: dict) -> bool:
-        return row["run-type"] == "soln-and-test" and \
-            soln_test_id_to_soln_id(row["id"]) in stable_solns_df.index and \
-            (
-                    row["result.passed"] or
-                    row["result.exception_type"] == "TestFailed"
-            )
-
-    return df[df.apply(is_stable_test, axis=1)]
-
-
-def test_passing_solns(df: pd.DataFrame) -> pd.DataFrame:
-    # test-passing solutions
-    #  i.e. solutions that pass all tests
-    assert "run-type" in df
-
-    df["soln-id"] = df.apply(
-        lambda row: row["id"] if row["run-type"] == "soln-only" else soln_test_id_to_soln_id(row["id"]),
-        axis=1
-    )
-
-    def all_tests_pass(frame: pd.DataFrame) -> bool:
-        return frame["result.passed"].all(axis=0)
-
-    mask = df[df["run-type"] == "soln-and-test"].groupby("soln-id").apply(all_tests_pass)
-    return df[df["run-type"] == "soln-only"][mask]
-
-
-def analyze_eval_results(df: pd.DataFrame):
-    # label soln-only runs vs soln-test runs
-    df["run-type"] = df["test"].apply(lambda x: "soln-only" if x is None else "soln-and-test")
-
-    all_solns = df[df["run-type"] == "soln-only"]
-    all_tests = df[df["run-type"] == "soln-and-test"]
-
-    stable_solns_df = stable_solns(df)
-    stable_tests_df = stable_tests(df, stable_solns_df)
-    passing_solns_df = test_passing_solns(df)
-
-    n_solns = len(all_solns)
-    n_tests = len(all_tests)
-    n_stable_solns = len(stable_solns_df)
-    n_stable_tests = len(stable_tests_df)
-    n_passing_solns = len(passing_solns_df)
-
-    print(df[df["run-type"] == "soln-only"]["result.exception_type"].value_counts())
-    print(f"total lines: {len(df)}")
-    print(f"stable solns: {n_stable_solns} / {n_solns} ({n_stable_solns / n_solns})")
-    print(f"stable tests | stable solns: {n_stable_tests} / {n_tests} ({n_stable_tests / n_tests})")
-    print(f"solns passing tests: {n_passing_solns} / {n_solns} ({n_passing_solns / n_solns})")
-
-
-def test_analyze_eval_results():
-    # 1. check that non-buggy solns are filtered properly
-    # 2. check that non-buggy tests are filtered properly
-    # 3. check that final solution set consists of solns that pass all stable tests
-
-    df = pd.DataFrame.from_records([
-        {"id": "test:0",
-         "test": None,
-         "result.passed": True,
-         "result.exception_type": None,
-         },
-        {}
-    ])
 
 
 def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> Iterator[dict]:
@@ -305,6 +181,7 @@ def main():
     p.add_argument("-m", "--mode", choices=["eval", "process", "split", "debug", "analyze"])
     p.add_argument("-d", "--dataset")
     p.add_argument("-o", "--out")
+    p.add_argument("--filter", help="filter dataset ")
     p.add_argument("-t", "--timeout", type=int, default=30)
     p.add_argument("-n", "--n-chunks", type=int)
     p.add_argument("-b", "--chunk-size", type=int)
@@ -312,7 +189,6 @@ def main():
 
     if args.mode == "eval":
         assert args.dataset and args.out and args.timeout
-
         df = pd.read_json(args.dataset, lines=True)
         util.incrementally_save_jsonl(
             quiet=True,
@@ -321,7 +197,6 @@ def main():
         )
     elif args.mode == "process":
         assert args.dataset and args.out
-
         df = pd.read_json(args.dataset, lines=True)
         df = read_raw_dataset_to_solns_and_tests(df)
         df.to_json(args.out, orient="records", lines=True)
@@ -329,7 +204,6 @@ def main():
         assert args.dataset and args.out and ((args.n_chunks is not None) ^ (args.chunk_size is not None))
         assert args.chunk_size is None or args.chunk_size > 0
         assert args.n_chunks is None or args.n_chunks > 0
-
         df = pd.read_json(args.dataset, lines=True)
         for source, split in df.groupby("source"):
             n_rows = len(split)
@@ -342,15 +216,14 @@ def main():
                 )
     elif args.mode == "debug":
         assert args.dataset and args.out and args.timeout
-
         df = pd.read_json(args.dataset, lines=True)
         debug_segfaults(df, timeout=args.timeout, out=args.out)
-    elif args.mode == "analyze":
-        assert args.dataset
-
+    elif args.mode == "filter-hf":
+        assert args.dataset and args.out
         df = pd.read_json(args.dataset, lines=True)
         df = long_to_wide(df)
-        analyze_eval_results(df)
+        df = vet.filter_solutions(df)
+        to_hf_dataset(df, args.out)
     else:
         raise ValueError(f"Missing mode: {args.mode}")
 
