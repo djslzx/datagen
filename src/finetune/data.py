@@ -13,7 +13,7 @@ from tqdm import tqdm
 import argparse
 
 from finetune.root import util
-from finetune import vet
+from finetune import vet, run
 
 
 def long_to_wide(df: pd.DataFrame) -> pd.DataFrame:
@@ -115,31 +115,9 @@ def to_hf_dataset(df: pd.DataFrame, out_dir: str):
         dd.save_to_disk(f"{out_dir}/{source}")
 
 
-def debug_segfaults(df: pd.DataFrame, timeout: float, out: str):
-    # try running some of the problematic solutions/tests
-    problems = [
-        ("NSCA", 8981),
-        ("WW", 703),
-        ("WW", 1518),
-        ("CA", 864),
-        ("CA", 247),
-    ]
-    radius = 0
-    ids = []
-    for source, n in problems:
-        ids.extend([f"{source}:{m}" for m in range(n - radius, n + radius + 1)])
-    df = df[df["id"].isin(ids)]
-    df.set_index("id", inplace=True)
-    util.incrementally_save_jsonl(
-        quiet=True,
-        filename=out,
-        it=run_solns_and_tests(df, timeout=timeout),
-    )
-
-
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("-m", "--mode", choices=["eval", "process", "split", "debug", "analyze"])
+    p.add_argument("-m", "--mode", choices=["eval", "process", "split", "analyze"])
     p.add_argument("-d", "--dataset")
     p.add_argument("-o", "--out")
     p.add_argument("--filter", help="filter dataset ")
@@ -154,7 +132,7 @@ def main():
         util.incrementally_save_jsonl(
             quiet=True,
             filename=args.out,
-            it=run_solns_and_tests(df, timeout=args.timeout),
+            it=run.run_solns_and_tests(df, timeout=args.timeout),
         )
     elif args.mode == "process":
         assert args.dataset and args.out
@@ -175,10 +153,6 @@ def main():
                     orient="records",
                     lines=True
                 )
-    elif args.mode == "debug":
-        assert args.dataset and args.out and args.timeout
-        df = pd.read_json(args.dataset, lines=True)
-        debug_segfaults(df, timeout=args.timeout, out=args.out)
     elif args.mode == "filter-hf":
         assert args.dataset and args.out
         df = pd.read_json(args.dataset, lines=True)
