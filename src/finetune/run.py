@@ -9,6 +9,8 @@ from finetune.root import util, evaluate
 def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> Iterator[dict]:
     # Run solutions in isolation
     for ident, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions in isolation"):
+        if "id" in row:
+            ident = row["id"]
         for i, soln in enumerate(row["solutions"]):
             result = run_soln(f"{ident}:{i}", row["problem"], soln, timeout)
             for item in util.KVItem.from_dict(result):
@@ -16,6 +18,8 @@ def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> Iterator[dict]:
 
     # Run solutions with tests
     for ident, row in tqdm(df.iterrows(), total=len(df), desc="Running solutions with tests"):
+        if "id" in row:
+            ident = row["id"]
         for i, soln in enumerate(row["solutions"]):
             for j, test in enumerate(row["tests"]):
                 result = run_soln_and_test(f"{ident}:{i}:{j}", row["problem"], soln, test, timeout)
