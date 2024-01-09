@@ -197,29 +197,30 @@ def test_passing_solns(df: pd.DataFrame) -> pd.DataFrame:
         return frame["result.passed"].all(axis=0)
 
     mask = df[df["run-type"] == "soln-and-test"].groupby("soln-id").apply(all_tests_pass)
-    return df[["run-type"] == "soln-only"][mask]
+    return df[df["run-type"] == "soln-only"][mask]
 
 
 def analyze_eval_results(df: pd.DataFrame):
     # label soln-only runs vs soln-test runs
     df["run-type"] = df["test"].apply(lambda x: "soln-only" if x is None else "soln-and-test")
-    print(df[df["run-type"] == "soln-only"]["result.exception_type"].value_counts())
-    print(f"total lines: {len(df)}")
 
     all_solns = df[df["run-type"] == "soln-only"]
-    stable_solns_df = stable_solns(df)
-    n_stable_solns = len(stable_solns_df)
-    n_solns = len(all_solns)
-    print(f"stable solns: {n_stable_solns} / {n_solns} ({n_stable_solns / n_solns})")
-
     all_tests = df[df["run-type"] == "soln-and-test"]
-    stable_tests_df = stable_tests(df, stable_solns_df)
-    n_stable_tests = len(stable_tests_df)
-    n_tests = len(all_tests)
-    print(f"stable tests | stable solns: {n_stable_tests} / {n_tests} ({n_stable_tests / n_tests})")
 
+    stable_solns_df = stable_solns(df)
+    stable_tests_df = stable_tests(df, stable_solns_df)
     passing_solns_df = test_passing_solns(df)
+
+    n_solns = len(all_solns)
+    n_tests = len(all_tests)
+    n_stable_solns = len(stable_solns_df)
+    n_stable_tests = len(stable_tests_df)
     n_passing_solns = len(passing_solns_df)
+
+    print(df[df["run-type"] == "soln-only"]["result.exception_type"].value_counts())
+    print(f"total lines: {len(df)}")
+    print(f"stable solns: {n_stable_solns} / {n_solns} ({n_stable_solns / n_solns})")
+    print(f"stable tests | stable solns: {n_stable_tests} / {n_tests} ({n_stable_tests / n_tests})")
     print(f"solns passing tests: {n_passing_solns} / {n_solns} ({n_passing_solns / n_solns})")
 
 
