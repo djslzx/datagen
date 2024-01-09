@@ -15,7 +15,17 @@ import argparse
 from finetune.root import evaluate, util
 
 
-def read_long_dataset_to_wide_df(
+def long_to_wide(df: pd.DataFrame) -> pd.DataFrame:
+    df = df[["id", "key", "value"]]
+    df = df.drop_duplicates(subset=["id", "key"], keep="first")
+    df = df.pivot(index="id", columns="key", values="value")
+    df = df.where(pd.notnull(df), None)
+    df["source"] = df.index.map(lambda x: x.split(":")[0])
+    df["id"] = df.index  # ensure we have an id column
+    return df
+
+
+def read_raw_dataset_to_solns_and_tests(
         df: pd.DataFrame,
         name_map: Dict[str, str] = None,
         rename: bool = True,
@@ -49,11 +59,7 @@ def read_long_dataset_to_wide_df(
         return f"{s_src}:{s_num}"
 
     df["id"] = df["id"].apply(rename_id)
-    df = df[["id", "key", "value"]]
-    df = df.drop_duplicates(subset=["id", "key"], keep="first")
-    df = df.pivot(index="id", columns="key", values="value")
-    df = df.where(pd.notnull(df), None)
-    df["source"] = df.index.map(lambda x: x.split(":")[0])
+    df = long_to_wide(df)
     df = df.rename(columns={"restyled problem": "problem"})
 
     # keep only n_tests tests and n_solns solns
@@ -90,7 +96,7 @@ def prepare_hf_dataset(
     - shuffle dataset
     """
     df = pd.read_json(filename, lines=True)
-    df = read_long_dataset_to_wide_df(
+    df = read_raw_dataset_to_solns_and_tests(
         df=df,
         name_map=name_map,
         n_solns=n_solns,
@@ -141,40 +147,95 @@ def to_hf_dataset(df: pd.DataFrame, out_dir: str):
         dd.save_to_disk(f"{out_dir}/{source}")
 
 
-def filter_solns_and_tests(df: pd.DataFrame) -> pd.DataFrame:
+def soln_test_id_to_soln_id(ident: str) -> str:
+    # soln-test id is of the form i:j, whereas test id is of the form j,
+    #  so we remove the last colon-separated bit to get the soln id
+    return ":".join(ident.split(":")[:-1])
+
+
+def stable_solns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Filter out all "bad" solutions and tests.
+    Extract stable solutions, i.e. solutions that don't bug out when run alone
     """
+    assert "run-type" in df
 
-    def test_is_bad(test: str, solns: List[str]) -> bool:
-        """
-        Check if a test is bad wrt un-vetted solutions.
-        A test is bad if it is unstable, missing, or times out.
-        A test is unstable wrt its solutions if it gets runtime errors on all of the solutions.
-        """
-        results = evaluate.run_solns_w_tests(solns=solns, tests=[test], timeout=timeout)
-        exception_types = {result.exception_type for result in results if not result.passed}
+    def is_stable_soln(row: dict) -> bool:
+        return row["run-type"] == "soln-only" and row["result.passed"]
 
-        # check if any tests violate basic rules
-        if exception_types.intersection({"MissingTests", "Forbidden", "Timeout"}):
-            return True
+    return df[df.apply(is_stable_soln, axis=1)]
 
-        # check if the test is unstable: runtime errors on all solutions
-        if len(exception_types) == len(solns) and all(result.exception_type != "TestFailed" for result in results):
-            return True
 
-        # otherwise, test is good
-        return False
+def stable_tests(df: pd.DataFrame, stable_solns_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Extract stable tests wrt stable solutions: tests that don't bug out when run with stable tests,
+     i.e. tests that either pass or fail (but don't crash) on stable solutions
+    """
+    assert "run-type" in df
 
-    def soln_is_bad(soln: str, good_tests: List[str]) -> bool:
-        """
-        Check if a solution is good wrt a set of good tests.
-        A solution is bad if it fails on any good test.
-        """
-        pass
+    def is_stable_test(row: dict) -> bool:
+        return row["run-type"] == "soln-and-test" and \
+            soln_test_id_to_soln_id(row["id"]) in stable_solns_df.index and \
+            (
+                    row["result.passed"] or
+                    row["result.exception_type"] == "TestFailed"
+            )
 
-    print(df)
-    return df
+    return df[df.apply(is_stable_test, axis=1)]
+
+
+def test_passing_solns(df: pd.DataFrame) -> pd.DataFrame:
+    # test-passing solutions
+    #  i.e. solutions that pass all tests
+    assert "run-type" in df
+
+    df["soln-id"] = df.apply(
+        lambda row: row["id"] if row["run-type"] == "soln-only" else soln_test_id_to_soln_id(row["id"]),
+        axis=1
+    )
+
+    def all_tests_pass(frame: pd.DataFrame) -> bool:
+        return frame["result.passed"].all(axis=0)
+
+    mask = df[df["run-type"] == "soln-and-test"].groupby("soln-id").apply(all_tests_pass)
+    return df[["run-type"] == "soln-only"][mask]
+
+
+def analyze_eval_results(df: pd.DataFrame):
+    # label soln-only runs vs soln-test runs
+    df["run-type"] = df["test"].apply(lambda x: "soln-only" if x is None else "soln-and-test")
+    print(df[df["run-type"] == "soln-only"]["result.exception_type"].value_counts())
+    print(f"total lines: {len(df)}")
+
+    all_solns = df[df["run-type"] == "soln-only"]
+    stable_solns_df = stable_solns(df)
+    n_stable_solns = len(stable_solns_df)
+    n_solns = len(all_solns)
+    print(f"stable solns: {n_stable_solns} / {n_solns} ({n_stable_solns / n_solns})")
+
+    all_tests = df[df["run-type"] == "soln-and-test"]
+    stable_tests_df = stable_tests(df, stable_solns_df)
+    n_stable_tests = len(stable_tests_df)
+    n_tests = len(all_tests)
+    print(f"stable tests | stable solns: {n_stable_tests} / {n_tests} ({n_stable_tests / n_tests})")
+
+    passing_solns_df = test_passing_solns(df)
+    n_passing_solns = len(passing_solns_df)
+    print(f"solns passing tests: {n_passing_solns} / {n_solns} ({n_passing_solns / n_solns})")
+
+
+def test_analyze_eval_results():
+    # 1. check that non-buggy solns are filtered properly
+    # 2. check that non-buggy tests are filtered properly
+    # 3. check that final solution set consists of solns that pass all stable tests
+
+    df = pd.DataFrame.from_records([
+        {"id": "test:0",
+         "test": None,
+         "result.passed": True,
+         "result.exception_type": None,
+         },
+        {}
+    ])
 
 
 def run_solns_and_tests(df: pd.DataFrame, timeout: float) -> Iterator[dict]:
@@ -238,20 +299,6 @@ def debug_segfaults(df: pd.DataFrame, timeout: float, out: str):
     )
 
 
-def pull_test_keys(dirname: str, children=List[str]) -> Dict[str, List[str]]:
-    keys = {}
-    for c in children:
-        dataset = DatasetDict.load_from_disk(f"{dirname}/{c}")
-        keys[c] = dataset['test']['id']
-    return keys
-
-
-def count_error_types(df: pd.DataFrame) -> Dict[str, int]:
-    df = df.drop_duplicates(subset=["id", "key"], keep="first")
-    df = df.pivot(index="id", columns="key", values="value")
-    pdb.set_trace()
-
-
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("-m", "--mode", choices=["eval", "process", "split", "debug", "analyze"])
@@ -271,14 +318,12 @@ def main():
             filename=args.out,
             it=run_solns_and_tests(df, timeout=args.timeout),
         )
-
     elif args.mode == "process":
         assert args.dataset and args.out
 
         df = pd.read_json(args.dataset, lines=True)
-        df = read_long_dataset_to_wide_df(df)
+        df = read_raw_dataset_to_solns_and_tests(df)
         df.to_json(args.out, orient="records", lines=True)
-
     elif args.mode == "split":
         assert args.dataset and args.out and ((args.n_chunks is not None) ^ (args.chunk_size is not None))
         assert args.chunk_size is None or args.chunk_size > 0
@@ -294,25 +339,23 @@ def main():
                     orient="records",
                     lines=True
                 )
-
     elif args.mode == "debug":
         assert args.dataset and args.out and args.timeout
 
         df = pd.read_json(args.dataset, lines=True)
         debug_segfaults(df, timeout=args.timeout, out=args.out)
-
     elif args.mode == "analyze":
         assert args.dataset
 
         df = pd.read_json(args.dataset, lines=True)
-        print(df)
-
+        df = long_to_wide(df)
+        analyze_eval_results(df)
     else:
-        raise ValueError(f"Unexpected mode: {args.mode}")
+        raise ValueError(f"Missing mode: {args.mode}")
 
 
 if __name__ == "__main__":
     # pandas print all columns
     pd.set_option('display.max_columns', None)
-
+    # pd.set_option('display.max_rows', None)
     main()
