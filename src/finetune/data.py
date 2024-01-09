@@ -55,9 +55,9 @@ def read_raw_dataset_to_solns_and_tests(
         }
 
     def rename_id(s_id: str) -> str:
-        s_src, s_num = s_id.split(":")
+        s_src, *s_rest = s_id.split(":")
         s_src = name_map[s_src] if s_src in name_map else s_src
-        return f"{s_src}:{s_num}"
+        return ":".join([s_src, *s_rest])
 
     df["id"] = df["id"].apply(rename_id)
     df = long_to_wide(df)
