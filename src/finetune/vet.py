@@ -54,8 +54,10 @@ def test_passing_solns(df: pd.DataFrame, stable_solns_df: pd.DataFrame, stable_t
     )
 
     def passes_all_stable_tests(group: pd.DataFrame) -> bool:
+        # forall t. stable(t) => passed(t)
+        # = forall t. not stable(t) or passed(t)
         return group.apply(
-            lambda row: row["result.passed"] or row["id"] in stable_tests_df.index,
+            lambda row: row["result.passed"] or not row["id"] in stable_tests_df.index,
             axis=1,
         ).all(axis=0)
 
