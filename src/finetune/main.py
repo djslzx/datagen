@@ -1,7 +1,7 @@
 """
 Finetune an LLM using the generated datasets
 """
-from typing import Tuple, List, Dict, Callable, Set, Optional
+from typing import Tuple, List, Dict, Callable, Set, Optional, Iterator
 from tqdm import tqdm
 import wandb
 import sys
@@ -14,7 +14,7 @@ from datasets import Dataset, DatasetInfo, DatasetDict
 
 import finetune.models as models
 import finetune.data as data
-from root import util
+from finetune.root import util
 
 
 def check_memorized(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, dataset: DatasetDict):
@@ -42,6 +42,33 @@ def check_memorized(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, data
     print()
 
 
+def take_rollouts(
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        dataset: DatasetDict,
+        n_solution_samples: int,
+        max_seq_length: int,
+        batch_size: int = 10,
+) -> Iterator[dict]:
+    """
+    Returns an iterator over problem, solution set, test set triples.  
+    Each triple consists of 
+    - a problem from the input dataset, 
+    - a set of rolled-out solutions from the supplied fine-tuned model, and 
+    - a set of tests from the input dataset.
+    """
+    for x in dataset['test']:
+        prompts = [models.format_question(x["problem"])]
+        rollouts = models.sample_model(model, tokenizer, prompts,
+                                       max_length=max_seq_length,
+                                       max_new_tokens=512,
+                                       do_sample=True, 
+                                       num_beams=1)
+        yield {
+            **x, "rollouts": rollouts,
+        }
+
+
 def llama_set_batch_size(kbit: int, seq_length: int) -> int:
     batch_size = int(8 / kbit * 1024 / seq_length)
     if batch_size < 1:
@@ -53,6 +80,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--mode", choices=["data",
                                       "finetune",
+                                      "rollout",
                                       "memorize-train",
                                       "memorize-test",
                                       "data-length"])
@@ -79,10 +107,29 @@ def main():
             n_solns=args.n_solns,
             n_tests=args.n_tests
         )
+    elif args.mode == "rollout":
+        assert args.dataset and args.model_name and args.kbit and args.max_seq_length
+        dataset = DatasetDict.load_from_disk(args.dataset)
+        model, tokenizer = models.load_model_and_tokenizer(args.model_name, k=args.kbit)
+        ts = util.timestamp()
+        # dataset_name = dataset['train'].info.dataset_name
+        # suffix = f"{args.id}-{ts}" if args.id else f"{ts}"
+        batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) \
+            if args.batch_size is None else args.batch_size
+        generator = take_rollouts(
+            model,
+            tokenizer, 
+            dataset, 
+            n_solution_samples=1,
+            max_seq_length=args.max_seq_length,
+        )
+        for x in generator:
+            print(x)
+        
     elif args.mode == "finetune":
         dataset = DatasetDict.load_from_disk(args.dataset)
         dataset_name = dataset['train'].info.dataset_name
-        model, tokenizer = models.load_model(args.model_name, k=args.kbit)
+        model, tokenizer = models.load_model_and_tokenizer(args.model_name, k=args.kbit)
         ts = util.timestamp()
         suffix = f"{args.id}-{ts}" if args.id else f"{ts}"
         batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) if args.batch_size is None else args.batch_size
@@ -104,7 +151,7 @@ def main():
         dataset['train'] = dataset['train'].select(range(10))
         dataset['validation'] = dataset['train'].select(range(10))
         dataset = DatasetDict(dataset)
-        model, tokenizer = models.load_model(args.model_name, k=args.kbit)
+        model, tokenizer = models.load_model_and_tokenizer(args.model_name, k=args.kbit)
         ts = util.timestamp()
         batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) if args.batch_size is None else args.batch_size
         if args.mode == "memorize-train":
@@ -120,7 +167,7 @@ def main():
                 lr_scheduler_type=args.lr_scheduler_type,
                 logging_steps=args.logging_steps,
                 eval_steps=args.eval_steps,
-                output_dir=f"/home/djl328/prob-repl/models/test/{ts}",
+                output_dir=f"/home/djl328/prob-repl/models/memorize-test/{ts}",
             )
         else:
             check_memorized(
