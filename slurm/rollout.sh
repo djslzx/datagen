@@ -6,12 +6,23 @@ export PYTHONPATH=$PYTHONPATH:$PROJECT_DIR/src
 source $PROJECT_DIR/venv/bin/activate
 cd $PROJECT_DIR/src
 
-for dataset in NSCA # NSE WW WD CA
+DATASETS="NSCA NSE WW WD CA"
+MODEL_PATHS=$(grep -v '^#'  $PROJECT_DIR/slurm/models.txt)
+
+for MODEL_PATH in $MODEL_PATHS
 do
-    python3 -u finetune/main.py \
-	    --mode rollout \
-	    --dataset $PROJECT_DIR/datasets/wiz/hf-20\:30k/$dataset \
-	    --model-name "codellama/CodeLLama-7b-Python-hf" \
-	    --kbit 8 \
-	    --max-seq-length 512
+  echo "Loading model from ${MODEL_PATH}"
+  for DATASET in $DATASETS
+  do
+    echo "Testing model on dataset ${DATASET}"
+    CUDA_LAUNCH_BLOCKING=1 python3 -u finetune/main.py \
+            --mode rollout \
+            --dataset $PROJECT_DIR/datasets/wiz/hf-20\:30k/$DATASET \
+            --model-name $MODEL_PATH \
+            --peft \
+            --kbit 8 \
+            --max-seq-length 512
+    exit
+  done
 done
+
