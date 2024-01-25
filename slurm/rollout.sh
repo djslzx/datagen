@@ -15,14 +15,15 @@ do
   for DATASET in $DATASETS
   do
     echo "Testing model on dataset ${DATASET}"
-    CUDA_LAUNCH_BLOCKING=1 python3 -u finetune/main.py \
+    # CUDA_LAUNCH_BLOCKING=1 
+    python3 -u finetune/main.py \
             --mode rollout \
             --dataset $PROJECT_DIR/datasets/wiz/hf-20\:30k/$DATASET \
             --model-name $MODEL_PATH \
-            --peft \
             --kbit 8 \
-            --max-seq-length 512
-    exit
+            --max-seq-length 512 \
+            --peft \
+            --out-dir $PROJECT_DIR/datasets/wiz/rollouts/
   done
 done
 
