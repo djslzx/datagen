@@ -18,6 +18,8 @@ from transformers import (
     TrainingArguments,
     EvalPrediction,
     BitsAndBytesConfig,
+    StoppingCriteria,
+    StoppingCriteriaList,
 )
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from datasets import Dataset, DatasetInfo, DatasetDict
@@ -178,29 +180,45 @@ def finetune_model(
     trainer.save_model(output_dir)
 
 
+class StopWordCriteria(StoppingCriteria):
+    """
+    Custom `StoppingCriteria` which checks if all generations in the batch contain the END string.
+    """
+
+    def __init__(self, end_str: str, tokenizer: PreTrainedTokenizer):
+        self.end_str = end_str
+        self.tokenizer = tokenizer
+
+    def __call__(self, input_ids, scores, **kwargs):
+        """Returns true if all generated sequences contain any of the END strings."""
+        for seq in self.tokenizer.batch_decode(input_ids):
+            if self.end_str not in seq:
+                return False
+
+
 def sample_model(
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
         prompt_batch: List[str],
-        max_length: int,
         max_new_tokens: int,
         do_sample: bool,
         num_beams: int,
-        end_stamp="#DONE#",
+        end_word="#DONE#",
 ) -> List[str]:
     tokenizer.padding_side = "left"
-    model = model
-    input_ids = tokenizer(prompt_batch,
-                          return_tensors="pt",
-                          padding="max_length",
-                          truncation=True,
-                          max_length=max_length).to("cuda")
-    # print(f"Input ids: {input_ids.shape}")
+    model = model.to("cuda")
+    input_ids = tokenizer(
+        prompt_batch,
+        return_tensors="pt",
+        # padding=True,
+        # truncation=True,
+    ).to("cuda")
     output_ids = model.generate(
         **input_ids,
         max_new_tokens=max_new_tokens,
         num_beams=num_beams,
         do_sample=do_sample,
+        stopping_criteria=StoppingCriteriaList([StopWordCriteria(end_word, tokenizer)])
     )
     outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
     return outputs

@@ -56,8 +56,8 @@ def lowest_eval_loss_checkpoint(path: str) -> str:
 
     # load last logged trainer state
     trainer_state_path = f"{path}/checkpoint-{last_checkpoint_id}/trainer_state.json"
-    with open(trainer_state_path, "r") as json_file:
-        trainer_state = json.load(json_file)
+    with open(trainer_state_path, "r") as f:
+        trainer_state = json.load(f)
 
     # get dict with lowest 'eval_loss' in trainer state's 'log_history'
     trainer_log = sorted(
@@ -79,7 +79,6 @@ def take_rollouts(
         dataset: DatasetDict,
         n_solution_samples: int,
         max_seq_length: int,
-        batch_size: int = 10,
 ) -> Iterator[dict]:
     """
     Returns an iterator over problem, solution set, test set triples.  
@@ -90,11 +89,14 @@ def take_rollouts(
     """
     for x in dataset['test']:
         prompts = [models.format_question(x["problem"])]
-        rollouts = models.sample_model(model, tokenizer, prompts,
-                                       max_length=max_seq_length,
-                                       max_new_tokens=512,
-                                       do_sample=True, 
-                                       num_beams=1)
+        rollouts = models.sample_model(
+            model, 
+            tokenizer, 
+            prompts,
+            max_new_tokens=512,
+            do_sample=True, 
+            num_beams=1
+        )
         yield {
             **x, "rollouts": rollouts,
         }
@@ -129,7 +131,7 @@ def main():
     p.add_argument("--eval-steps", type=int, default=5000)
     p.add_argument("--n-solns", type=int, default=3)
     p.add_argument("--n-tests", type=int, default=3)
-    p.add_argument("--id", default="")
+    p.add_argument("--id")
 
     args = p.parse_args()
     if args.mode == "data":
@@ -140,7 +142,7 @@ def main():
             n_tests=args.n_tests
         )
     elif args.mode == "rollout":
-        assert args.dataset and args.model_name and args.kbit and args.max_seq_length
+        assert args.dataset and args.model_name and args.kbit and args.max_seq_length and args.out_dir
         dataset = DatasetDict.load_from_disk(args.dataset)
 
         # if args.model_name is a directory path, then load the best checkpoint from that directory
@@ -158,10 +160,6 @@ def main():
             model, tokenizer = models.load_model_and_tokenizer(model_name, k=args.kbit)
 
         ts = util.timestamp()
-        # dataset_name = dataset['train'].info.dataset_name
-        # suffix = f"{args.id}-{ts}" if args.id else f"{ts}"
-        batch_size = llama_set_batch_size(args.kbit, args.max_seq_length) \
-            if args.batch_size is None else args.batch_size
         generator = take_rollouts(
             model,
             tokenizer, 
@@ -169,6 +167,26 @@ def main():
             n_solution_samples=1,
             max_seq_length=args.max_seq_length,
         )
+
+        # put a metadata file in the same directory as the output
+        out_dir = f"{args.out_dir}/{ts}"
+        conf_path = f"{out_dir}/config.json"
+        rollouts_path = f"{out_dir}/rollouts.jsonl" 
+        os.makedirs(out_dir)
+
+        conf = {
+            **vars(args),
+            "model_name": model_name,
+            "timestamp": ts,
+        }
+        with open(conf_path, 'w') as f:
+            json.dump(conf, f, indent=4)
+
+        util.incrementally_save_jsonl(
+            filename=rollouts_path,
+            it=generator,
+        )
+
         for x in generator:
             print(x)
         
