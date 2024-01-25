@@ -26,8 +26,10 @@ from peft import PeftConfig, PeftModel, LoraConfig, get_peft_model
 from finetune.root import evaluate
 
 
-def load_model_and_tokenizer(model_name: str, 
-                             k: Optional[int] = None) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
+def load_model_and_tokenizer(
+        model_name: str, 
+        k: Optional[int] = None
+) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
     model = load_model(model_name, k if k is not None else 32)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
@@ -45,7 +47,7 @@ def load_model_and_tokenizer(model_name: str,
 
 
 def load_model(model_name: str, k: int = 32) -> PreTrainedModel:
-        if not k or k == 32:
+    if not k or k == 32:
         model = AutoModelForCausalLM.from_pretrained(model_name)
     elif k == 4:
         model = AutoModelForCausalLM.from_pretrained(
@@ -67,6 +69,16 @@ def load_model(model_name: str, k: int = 32) -> PreTrainedModel:
     else:
         raise ValueError(f"Invalid k for kbit model: k={k}")
     return model
+
+
+def load_peft_model_and_tokenizer(
+        model_name: str, 
+        k: int, 
+        adapter_name: str
+) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
+    model, tokenizer = load_model_and_tokenizer(model_name, k)
+    peft_model = PeftModel.from_pretrained(model, adapter_name)
+    return peft_model, tokenizer
 
 
 def format_prompt(q: str, a: str) -> str:
@@ -174,8 +186,10 @@ def sample_model(
         max_new_tokens: int,
         do_sample: bool,
         num_beams: int,
+        end_stamp="#DONE#",
 ) -> List[str]:
     tokenizer.padding_side = "left"
+    model = model
     input_ids = tokenizer(prompt_batch,
                           return_tensors="pt",
                           padding="max_length",
@@ -190,3 +204,4 @@ def sample_model(
     )
     outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
     return outputs
+

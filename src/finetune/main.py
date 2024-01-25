@@ -7,6 +7,8 @@ import wandb
 import sys
 import argparse
 import pdb
+import json
+import os
 from pprint import pp
 from pathlib import Path
 from transformers import PreTrainedModel, PreTrainedTokenizer, AutoTokenizer
@@ -40,6 +42,35 @@ def check_memorized(model: PreTrainedModel, tokenizer: PreTrainedTokenizer, data
                 break
         print(f"Matched {n_matches} tokens out of {n_tokens} ({n_matches / n_tokens:.2f})")
     print()
+
+
+def lowest_eval_loss_checkpoint(path: str) -> str:
+    """
+    Fetch the path of the checkpoint in `path` with the lowest eval_loss.
+    """
+    # get last checkpoint to get full trainer state
+    checkpoint_ids = [int(d.split("-")[1])
+                      for d in util.ls_subdirs(path)
+                      if d.startswith("checkpoint-")]
+    last_checkpoint_id = sorted(checkpoint_ids, reverse=True)[0]
+
+    # load last logged trainer state
+    trainer_state_path = f"{path}/checkpoint-{last_checkpoint_id}/trainer_state.json"
+    with open(trainer_state_path, "r") as json_file:
+        trainer_state = json.load(json_file)
+
+    # get dict with lowest 'eval_loss' in trainer state's 'log_history'
+    trainer_log = sorted(
+        [
+            d for d in trainer_state["log_history"]
+            if "eval_loss" in d
+        ],
+        key=lambda d: d["eval_loss"]
+    )
+    least_eval_loss_step = trainer_log[0]["step"]
+
+    # return path of checkpoint at least_eval_loss step
+    return f"{path}/checkpoint-{least_eval_loss_step}"
 
 
 def take_rollouts(
@@ -87,6 +118,7 @@ def main():
     p.add_argument("--out-dir")
     p.add_argument("--dataset")
     p.add_argument("--model-name", default="codellama/CodeLLama-7b-instruct-hf")
+    p.add_argument("--peft", action="store_true")
     p.add_argument("--max-seq-length", type=int, default=1024)
     p.add_argument("--batch-size", type=int)
     p.add_argument("--epochs", type=int, default=10)
@@ -110,7 +142,21 @@ def main():
     elif args.mode == "rollout":
         assert args.dataset and args.model_name and args.kbit and args.max_seq_length
         dataset = DatasetDict.load_from_disk(args.dataset)
-        model, tokenizer = models.load_model_and_tokenizer(args.model_name, k=args.kbit)
+
+        # if args.model_name is a directory path, then load the best checkpoint from that directory
+        model_name = (lowest_eval_loss_checkpoint(args.model_name)
+                      if os.path.exists(args.model_name) 
+                      else args.model_name)
+
+        if args.peft:
+            model, tokenizer = models.load_peft_model_and_tokenizer(
+                model_name, 
+                k=args.kbit, 
+                adapter_name=model_name,
+            )
+        else:
+            model, tokenizer = models.load_model_and_tokenizer(model_name, k=args.kbit)
+
         ts = util.timestamp()
         # dataset_name = dataset['train'].info.dataset_name
         # suffix = f"{args.id}-{ts}" if args.id else f"{ts}"
