@@ -11,10 +11,17 @@ from typing import *
 import matplotlib.pyplot as plt
 import time
 import sys
-from os import mkdir
+from os import mkdir, listdir, path
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from datetime import datetime
 from dataclasses import dataclass
+
+
+def ls_subdirs(dir_path: str) -> List[str]:
+    return [
+        d for d in listdir(dir_path)
+        if path.isdir(path.join(dir_path, d))
+    ]
 
 
 @dataclass
