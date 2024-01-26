@@ -16,7 +16,6 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizer,
     TrainingArguments,
-    EvalPrediction,
     BitsAndBytesConfig,
     StoppingCriteria,
     StoppingCriteriaList,
@@ -29,7 +28,7 @@ from finetune.root import evaluate
 
 
 def load_model_and_tokenizer(
-        model_name: str, 
+        model_name: str,
         k: Optional[int] = None
 ) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
     model = load_model(model_name, k if k is not None else 32)
@@ -53,7 +52,7 @@ def load_model(model_name: str, k: int = 32) -> PreTrainedModel:
         model = AutoModelForCausalLM.from_pretrained(model_name)
     elif k == 4:
         model = AutoModelForCausalLM.from_pretrained(
-            model_name, 
+            model_name,
             quantization_config=BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_use_double_quant=True,
@@ -63,7 +62,7 @@ def load_model(model_name: str, k: int = 32) -> PreTrainedModel:
         )
     elif k == 8:
         model = AutoModelForCausalLM.from_pretrained(
-            model_name, 
+            model_name,
             load_in_8bit=True,
         )
     elif k == 16:
@@ -74,8 +73,8 @@ def load_model(model_name: str, k: int = 32) -> PreTrainedModel:
 
 
 def load_peft_model_and_tokenizer(
-        model_name: str, 
-        k: int, 
+        model_name: str,
+        k: int,
         adapter_name: str
 ) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
     model, tokenizer = load_model_and_tokenizer(model_name, k)
@@ -222,4 +221,3 @@ def sample_model(
     )
     outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
     return outputs
-
