@@ -11,6 +11,27 @@
 #SBATCH -t 168:00:00                          # Time limit (hh:mm:ss)
 #SBATCH --partition=ellis                    # Request partition
 #SBATCH --gres=gpu:1                         # Request GPU
-#SBATCH --array=1-
+#SBATCH --array=1-25
 
-/home/djl328/prob-repl/slurm/rollout.sh
+# useful directories
+project_dir=/home/djl328/prob-repl
+script_dir=$project_dir/slurm/rollout
+
+# load config file
+config=$script_dir/tiny.cfg
+script=$project_dir/slurm/finetune.sh
+
+# fetch useful fields
+dataset=$(awk -v ID=$SLURM_ARRAY_TASK_ID '$1==ID {print $2}' $config)
+model=$(awk -v ID=$SLURM_ARRAY_TASK_ID '$1==ID {print $3}' $config)
+
+echo "dataset = $dataset, model = $model"
+
+# $script \
+#   --mode rollout \
+#   --dataset $dataset \
+#   --model-name $model \
+#   --kbit 8 \
+#   --max-seq-length 512 \
+#   --peft \
+#   --out-dir $project_dir/datasets/wiz/rollouts/

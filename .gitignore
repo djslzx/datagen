@@ -134,7 +134,7 @@ dmypy.json
 # Slurm outputs, scripts
 *.out
 *.err
-slurm/*
+# slurm/*
 
 # logs
 lightning_logs/*
