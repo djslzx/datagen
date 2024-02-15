@@ -12,7 +12,6 @@ from typing import List, Dict, Union
 from lang.tree import Tree
 from lang.lindenmayer import LSys
 from featurizers import ResnetFeaturizer
-from ns import extract_features
 import util
 
 
@@ -70,7 +69,8 @@ def render_run(prefix: str, run_id: str, stride: int):
 
 
 def viz_closest(lang: LSys, prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
-    def embed(s: Union[List[Tree], np.ndarray]): return extract_features(lang, s, n_samples=1, load_bar=True)
+    def embed(s: Union[List[Tree], np.ndarray]):
+        return lang.extract_features(s, n_samples=1, load_bar=True)
 
     df = pd.read_csv(f"{prefix}/{run_id}.csv")
     n_holdout = len(holdout)
@@ -100,7 +100,8 @@ def viz_closest(lang: LSys, prefix: str, run_id: str, holdout: List[str], stride
 
 
 def plot_avg_dist(lang: LSys, prefix: str, run_id: str, holdout: List[str], stride: int, n_neighbors=5):
-    def embed(s: Union[List[Tree], np.ndarray]): return extract_features(lang, s, n_samples=1, load_bar=True)
+    def embed(s: Union[List[Tree], np.ndarray]):
+        return lang.extract_features(s, n_samples=1, load_bar=True)
 
     df = pd.read_csv(f"{prefix}/{run_id}.csv")
     holdout_trees = [lang.parse(x) for x in holdout]

@@ -20,7 +20,6 @@ import featurizers as feat
 import util
 from lang.lindenmayer import LSys
 from lang.tree import Tree
-from ns import extract_features
 
 
 def plot_nearest_neighbors(targets: np.ndarray, guesses: np.ndarray,
@@ -59,7 +58,7 @@ def plot_nearest_neighbors(targets: np.ndarray, guesses: np.ndarray,
 def eval_and_embed(lang: LSys, xs: List[str]) -> Tuple[np.ndarray, np.ndarray]:
     trees = [lang.parse(s) for s in xs]
     imgs = np.array([lang.eval(t) for t in trees])
-    features = extract_features(lang, trees)
+    features = lang.extract_features(trees)
     return imgs, features
 
 

@@ -26,33 +26,6 @@ import util
 Distance = Callable[[np.ndarray, np.ndarray], float]
 
 
-def extract_features(L: Language, S: Collection[Tree], n_samples=1, batch_size=4, load_bar=False) -> np.ndarray:
-    # take samples from programs in S, then batch them and feed them through
-    # the feature extractor for L
-    def samples():
-        for x in S:
-            for _ in range(n_samples):
-                print(x)
-                yield L.eval(x)
-
-    ys = []
-    n_batches = ceil(len(S) * n_samples / batch_size)
-    batches = util.batched(samples(), batch_size=batch_size)
-    if load_bar: batches = tqdm(batches, total=n_batches)
-    for batch in batches:
-        y = L.featurizer.apply(batch)
-        if batch_size > 1 and len(batch) > 1:
-            ys.extend(y)
-        else:
-            ys.append(y)
-    out = np.array(ys)
-    # output shape: (|S|, n_samples, features)
-    assert out.shape[0] == (len(S) * n_samples), \
-        f"Expected to get {len(S)} * {n_samples} = {len(S) * n_samples} feature vectors, but got out:{out.shape}"
-    out = rearrange(out, "(s samples) features -> s (samples features)", s=len(S), samples=n_samples)
-    return out
-
-
 def take_samples(L: Language, n_samples: int, length_cap: int, simplify=False) -> np.ndarray:
     out = []
     while len(out) < n_samples:
@@ -170,7 +143,7 @@ def evo_search(L: Language,
     assert length_penalty_type in {"additive", "inverse", None}
 
     def embed(S):
-        return extract_features(L, S, n_samples=samples_per_program, batch_size=8)
+        return L.extract_features(S, n_samples=samples_per_program, batch_size=8)
 
     def update_archive(A, E_A, S, E_S):
         # just take the first `keep_per_iter` instead of random sampling?

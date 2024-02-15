@@ -2,13 +2,18 @@
 Defines Tree and Program
 """
 from __future__ import annotations
+
+from math import ceil
 from typing import *
 import lark
 import numpy as np
 from torch import Tensor
+from tqdm import tqdm
+from einops import rearrange
 
 from featurizers import Featurizer
 from grammar import Grammar
+import util
 
 
 class Tree:
@@ -183,6 +188,36 @@ class Language:
     def log_probability(self, t: Tree) -> Tensor:
         """Computes the probability of a tree in the language"""
         return self.model.log_probability(self.start, t.to_tuple())
+
+    def extract_features(self, trees: Collection[Tree], n_samples=1, batch_size=4, load_bar=False) -> np.ndarray:
+        """
+        Take samples from programs in S, then batch them and feed them through the feature extractor for L.
+        """
+        def samples():
+            for x in trees:
+                for _ in range(n_samples):
+                    print(x)
+                    yield self.eval(x)
+
+        ys = []
+        n_batches = ceil(len(trees) * n_samples / batch_size)
+        batches = util.batched(samples(), batch_size=batch_size)
+        if load_bar:
+            batches = tqdm(batches, total=n_batches)
+        for batch in batches:
+            y = self.featurizer.apply(batch)
+            if batch_size > 1 and len(batch) > 1:
+                ys.extend(y)
+            else:
+                ys.append(y)
+        out = np.array(ys)
+
+        # output shape: (|S|, n_samples, features)
+        assert out.shape[0] == (len(trees) * n_samples), \
+            f"Expected to get {len(trees)} * {n_samples} = {len(trees) * n_samples} feature vectors, but got out:{out.shape}"
+
+        out = rearrange(out, "(s samples) features -> s (samples features)", s=len(trees), samples=n_samples)
+        return out
 
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Any:
         """Executes a tree in the language"""
