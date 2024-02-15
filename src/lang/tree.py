@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import *
 import lark
 import numpy as np
+from torch import Tensor
 
 from featurizers import Featurizer
 from grammar import Grammar
@@ -178,6 +179,10 @@ class Language:
             self.model.from_bigram_counts_(counts, alpha=alpha)
         else:
             raise AttributeError(f"Cannot fit on grammar with gram={self.model.gram}")
+
+    def log_probability(self, t: Tree) -> Tensor:
+        """Computes the probability of a tree in the language"""
+        return self.model.log_probability(self.start, t.to_tuple())
 
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Any:
         """Executes a tree in the language"""
