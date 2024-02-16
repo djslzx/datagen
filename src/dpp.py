@@ -109,14 +109,14 @@ def dpp_points_single_sample(
 ):
     # assume uniform initial distribution
     coords = np.random.uniform(size=(n, 2))
-    x: np.ndarray[Tree] = np.array([lang.make_point(a, b) for a, b in coords])
+    x = [lang.make_point(a, b) for a, b in coords]
 
     for t in range(n_steps):
         # singleton sliding window
         i = t % n
 
         # sample from proposal distribution
-        lang.fit(x[None, i])
+        lang.fit(x)
         s = lang.sample()
         x_feat = lang.extract_features(x)
         s_feat = lang.extract_features([s])[0]
