@@ -49,12 +49,8 @@ def dpp_points(
         det_x = np.linalg.det(L_x)
         det_s = np.linalg.det(L_updated)
 
-        assert det_x > 0 and det_s > 0, f"det_x: {det_x}, det_s: {det_s}"
-
-        if det_x <= 0 or det_s <= 0:
-            continue
-        else:
-            log_f = np.log(det_x) - np.log(det_s)
+        # assert det_x > 0 and det_s > 0, f"det_x: {det_x}, det_s: {det_s}"
+        log_f = np.log(det_x) - np.log(det_s)
 
         # (2) log q(x|x') - log q(x'|x)
         #   = log nov(xi|x\i) - log nov(xi'|x\i) + log p(xi|G(xi')) - log p(xi'|G(xi))
@@ -70,17 +66,22 @@ def dpp_points(
 
         # stochastically accept/reject
         if np.random.uniform(low=0, high=1) < np.exp(log_accept):
-            # accept
-            x[best_i] = best_sample
+            # accept: update x[i] with best sample
+            x[i] = best_sample
         else:
-            # reject
+            # reject: keep x[i] as is
             pass
 
         # yield current step point coords for animation
         yield {
-            "points": np.stack([lang.eval(point) for point in x]),
+            "points": [lang.eval(p) for p in x],
+            "samples": [lang.eval(p) for p in samples],
+            "best_i": best_i,
+            "i": i,
+            "t": t,
             "det(L_x)": det_x,
             "det(L_x')": det_s,
+            "det < 0": int(det_x <= 0 or det_s <= 0),
             "log f(x') - log f(x)": log_f,
             "log q(x|x') - log q(x'|x)": log_q,
             "log A(x'|x)": log_accept,
@@ -108,41 +109,57 @@ def animate_points(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: 
     ax.set_aspect('equal')
 
     def update(frame):
-        i, data = frame
-        ax.set_title(f"{title}, frame: {i}")
-        scatter.set_offsets(data)
+        i = frame["i"]
+        t = frame["t"]
+        points = frame["points"]
+        samples = frame["samples"]
+        best_i = frame["best_i"]
+
+        ax.set_title(f"{title}, frame: {t}")
+        scatter.set_offsets(points + samples)
+        colors = ["blue"] * len(points) + ["gray"] * len(samples)
+        colors[i] = "red"
+        colors[best_i + len(points)] = "green"
+        scatter.set_color(colors)
         return scatter,
 
-    return FuncAnimation(fig, update, frames=enumerate(x["points"] for x in data_gen), blit=False)
+    return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=500)
 
 
 def plot_stats(data: List[dict]):
-    fig, ax = plt.subplots()
-    ax.plot([np.exp(x["log A(x'|x)"]) for x in data], label="A(x'|x)")
+    plt.plot([np.exp(x["log A(x'|x)"]) for x in data], label="A(x'|x)")
     plt.legend()
     plt.show()
 
-    ax.plot([x["log f(x') - log f(x)"] for x in data], label="log f(x') - log f(x)")
-    ax.plot([x["log q(x|x') - log q(x'|x)"] for x in data], label="log q(x|x') - log q(x'|x)")
-    ax.plot([x["det(L_x)"] for x in data], label="det(L_x)")
-    ax.plot([x["det(L_x')"] for x in data], label="det(L_x')")
+    plt.plot([x["log f(x') - log f(x)"] for x in data], label="log f(x') - log f(x)")
+    plt.plot([x["log q(x|x') - log q(x'|x)"] for x in data], label="log q(x|x') - log q(x'|x)")
+    plt.plot([x["det < 0"] for x in data], label="det < 0", color="red")
+    plt.yscale("log")
+    plt.legend()
+    plt.show()
+
+    plt.plot([x["det(L_x)"] for x in data], label="det(L_x)")
+    plt.plot([x["det(L_x')"] for x in data], label="det(L_x')")
     plt.legend()
     plt.show()
 
 
 if __name__ == "__main__":
-    N_STEPS = 1000
+    N_STEPS = 100
+    N_SAMPLES = 3
+    POPN_SIZE = 100
+
     generator = dpp_points(
         lang=point.RealPoint(xlim=10, ylim=10),
-        n=10,
-        n_samples=3,
+        n=POPN_SIZE,
+        n_samples=N_SAMPLES,
         n_steps=N_STEPS,
     )
     xs = list(tqdm(generator, total=N_STEPS))
-    plot_stats(xs)
+    # plot_stats(xs)
     anim = animate_points(
         xs,
-        title=f"n_samples=3",
+        title=f"N={POPN_SIZE}, samples={N_SAMPLES}, steps={N_STEPS}",
         xlim=(-10, 10),
         ylim=(-10, 10)
     )
