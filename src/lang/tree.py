@@ -185,9 +185,9 @@ class Language:
         else:
             raise AttributeError(f"Cannot fit on grammar with gram={self.model.gram}")
 
-    def log_probability(self, t: Tree) -> Tensor:
+    def log_probability(self, t: Tree) -> float:
         """Computes the probability of a tree in the language"""
-        return self.model.log_probability(self.start, t.to_tuple())
+        return self.model.log_probability(self.start, t.to_tuple()).item()
 
     def extract_features(self, trees: Collection[Tree], n_samples=1, batch_size=4, load_bar=False) -> np.ndarray:
         """
@@ -196,7 +196,6 @@ class Language:
         def samples():
             for x in trees:
                 for _ in range(n_samples):
-                    print(x)
                     yield self.eval(x)
 
         ys = []
