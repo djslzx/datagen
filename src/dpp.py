@@ -1,9 +1,9 @@
 from typing import List, Iterator, Tuple
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-# import matplotlib;matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from tqdm import tqdm
 
 from lang.tree import Language, Tree
 from lang import lindenmayer, point, arc
@@ -17,11 +17,10 @@ def dpp_points(
         n_steps: int,
 ):
     # assume uniform initial distribution
-    coords = np.random.uniform(size=(n, 2)) * 10
+    coords = np.random.uniform(size=(n, 2))
     x: np.ndarray[Tree] = np.array([lang.make_point(a, b) for a, b in coords], dtype=object)
-    yield coords
 
-    for t in range(1, n_steps):
+    for t in range(n_steps):
         # singleton sliding window
         i = t % n
 
@@ -45,9 +44,17 @@ def dpp_points(
         #   = log det((B^T B)_x') - log det((B^T B)_x)
         L_x = np.matmul(x_features, x_features.transpose())
         updated_features = x_features.copy()
-        updated_features[best_i] = sample_features[best_i]
+        updated_features[i] = sample_features[best_i]
         L_updated = np.matmul(updated_features, updated_features.transpose())
-        log_f = np.log(np.linalg.det(L_x)) - np.log(np.linalg.det(L_updated))
+        det_x = np.linalg.det(L_x)
+        det_s = np.linalg.det(L_updated)
+
+        assert det_x > 0 and det_s > 0, f"det_x: {det_x}, det_s: {det_s}"
+
+        if det_x <= 0 or det_s <= 0:
+            continue
+        else:
+            log_f = np.log(det_x) - np.log(det_s)
 
         # (2) log q(x|x') - log q(x'|x)
         #   = log nov(xi|x\i) - log nov(xi'|x\i) + log p(xi|G(xi')) - log p(xi'|G(xi))
@@ -70,7 +77,14 @@ def dpp_points(
             pass
 
         # yield current step point coords for animation
-        yield np.stack([lang.eval(point) for point in x])
+        yield {
+            "points": np.stack([lang.eval(point) for point in x]),
+            "det(L_x)": det_x,
+            "det(L_x')": det_s,
+            "log f(x') - log f(x)": log_f,
+            "log q(x|x') - log q(x'|x)": log_q,
+            "log A(x'|x)": log_accept,
+        }
 
 
 def lang_log_pr(lang: Language, query: Tree, data: Tree) -> float:
@@ -99,7 +113,21 @@ def animate_points(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: 
         scatter.set_offsets(data)
         return scatter,
 
-    return FuncAnimation(fig, update, frames=enumerate(data_gen), blit=False)
+    return FuncAnimation(fig, update, frames=enumerate(x["points"] for x in data_gen), blit=False)
+
+
+def plot_stats(data: List[dict]):
+    fig, ax = plt.subplots()
+    ax.plot([np.exp(x["log A(x'|x)"]) for x in data], label="A(x'|x)")
+    plt.legend()
+    plt.show()
+
+    ax.plot([x["log f(x') - log f(x)"] for x in data], label="log f(x') - log f(x)")
+    ax.plot([x["log q(x|x') - log q(x'|x)"] for x in data], label="log q(x|x') - log q(x'|x)")
+    ax.plot([x["det(L_x)"] for x in data], label="det(L_x)")
+    ax.plot([x["det(L_x')"] for x in data], label="det(L_x')")
+    plt.legend()
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -110,8 +138,10 @@ if __name__ == "__main__":
         n_samples=3,
         n_steps=N_STEPS,
     )
+    xs = list(tqdm(generator, total=N_STEPS))
+    plot_stats(xs)
     anim = animate_points(
-        generator,
+        xs,
         title=f"n_samples=3",
         xlim=(-10, 10),
         ylim=(-10, 10)
