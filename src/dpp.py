@@ -13,6 +13,7 @@ import util
 def dpp_points(
         lang: point.RealPoint,
         n: int,
+        accept_policy: str,
         n_samples: int,
         n_steps: int,
 ):
@@ -38,34 +39,51 @@ def dpp_points(
         best_i = np.argmax(dists)
         best_sample = samples[best_i]
 
-        # compute accept probability
-        # A(x *, xt) = min(1, f(x') / f(x) * q(x|x') / q(x'|x))
-        # (1) log f(x') - log f(x)
-        #   = log det((B^T B)_x') - log det((B^T B)_x)
-        L_x = np.matmul(x_features, x_features.transpose())
-        updated_features = x_features.copy()
-        updated_features[i] = sample_features[best_i]
-        L_updated = np.matmul(updated_features, updated_features.transpose())
-        det_x = np.linalg.det(L_x)
-        det_s = np.linalg.det(L_updated)
+        record = {}
+        if accept_policy == 'dpp':
+            # compute accept probability
+            # A(x *, xt) = min(1, f(x') / f(x) * q(x|x') / q(x'|x))
+            # (1) log f(x') - log f(x)
+            #   = log det((B^T B)_x') - log det((B^T B)_x)
+            L_x = np.matmul(x_features, x_features.transpose())
+            updated_features = x_features.copy()
+            updated_features[i] = sample_features[best_i]
+            L_updated = np.matmul(updated_features, updated_features.transpose())
+            det_x = np.linalg.det(L_x)
+            det_s = np.linalg.det(L_updated)
 
-        # assert det_x > 0 and det_s > 0, f"det_x: {det_x}, det_s: {det_s}"
-        log_f = np.log(det_x) - np.log(det_s)
+            # assert det_x > 0 and det_s > 0, f"det_x: {det_x}, det_s: {det_s}"
+            log_f = np.log(det_x) - np.log(det_s)
 
-        # (2) log q(x|x') - log q(x'|x)
-        #   = log nov(xi|x\i) - log nov(xi'|x\i) + log p(xi|G(xi')) - log p(xi'|G(xi))
-        log_q = (
-                np.log(novelty_scores(x_features[None, i], x_features)[0])  # log nov(xi|x)
-                - np.log(dists[best_i])  # log nov(xi'|x)
-                + lang_log_pr(lang, query=x[i], data=best_sample)  # log p(xi|G(xi'))
-                - lang_log_pr(lang, query=best_sample, data=x[i])  # log p(xi'|G(xi))
-        )
+            # (2) log q(x|x') - log q(x'|x)
+            #   = log nov(xi|x\i) - log nov(xi'|x\i) + log p(xi|G(xi')) - log p(xi'|G(xi))
+            log_q = (
+                    np.log(novelty_scores(x_features[None, i], x_features)[0])  # log nov(xi|x)
+                    - np.log(dists[best_i])  # log nov(xi'|x)
+                    + lang_log_pr(lang, query=x[i], data=best_sample)  # log p(xi|G(xi'))
+                    - lang_log_pr(lang, query=best_sample, data=x[i])  # log p(xi'|G(xi))
+            )
 
-        # (3) A = min(1, .) => log A = min(0, .)
-        log_accept = min(0, log_f + log_q)
+            # (3) A = min(1, .) => log A = min(0, .)
+            log_accept = min(0, log_f + log_q)
+            p_accept = np.exp(log_accept)
+
+            # log stuff
+            record.update({
+                "det(L_x)": det_x,
+                "det(L_x')": det_s,
+                "det < 0": int(det_x <= 0 or det_s <= 0),
+                "log f(x') - log f(x)": log_f,
+                "log q(x|x') - log q(x'|x)": log_q,
+                "log A(x'|x)": log_accept,
+            })
+        elif accept_policy == 'all':
+            p_accept = 1
+        else:
+            raise ValueError(f"Unknown accept policy: {accept_policy}")
 
         # stochastically accept/reject
-        if np.random.uniform(low=0, high=1) < np.exp(log_accept):
+        if np.random.uniform(low=0, high=1) < p_accept:
             # accept: update x[i] with best sample
             x[i] = best_sample
         else:
@@ -79,12 +97,7 @@ def dpp_points(
             "best_i": best_i,
             "i": i,
             "t": t,
-            "det(L_x)": det_x,
-            "det(L_x')": det_s,
-            "det < 0": int(det_x <= 0 or det_s <= 0),
-            "log f(x') - log f(x)": log_f,
-            "log q(x|x') - log q(x'|x)": log_q,
-            "log A(x'|x)": log_accept,
+            **record,
         }
 
 
@@ -101,7 +114,7 @@ def novelty_scores(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.n
     return dists
 
 
-def animate_points(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int]):
+def animate_points(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
     ax.set_xlim(*xlim)
@@ -123,7 +136,7 @@ def animate_points(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: 
         scatter.set_color(colors)
         return scatter,
 
-    return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=500)
+    return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
 
 
 def plot_stats(data: List[dict]):
@@ -148,20 +161,26 @@ if __name__ == "__main__":
     N_STEPS = 100
     N_SAMPLES = 3
     POPN_SIZE = 100
+    ACCEPT_POLICY = "all"
 
     generator = dpp_points(
         lang=point.RealPoint(xlim=10, ylim=10),
         n=POPN_SIZE,
+        accept_policy=ACCEPT_POLICY,
         n_samples=N_SAMPLES,
         n_steps=N_STEPS,
     )
     xs = list(tqdm(generator, total=N_STEPS))
-    # plot_stats(xs)
+
+    if ACCEPT_POLICY == "dpp":
+        plot_stats(xs)
+
     anim = animate_points(
         xs,
-        title=f"N={POPN_SIZE}, samples={N_SAMPLES}, steps={N_STEPS}",
+        title=f"N={POPN_SIZE}, samples={N_SAMPLES}, accept={ACCEPT_POLICY}, steps={N_STEPS}",
         xlim=(-10, 10),
-        ylim=(-10, 10)
+        ylim=(-10, 10),
+        # delay=100,
     )
     ts = util.timestamp()
     anim.save(f"../out/anim/ddp-points-{ts}.mp4")
