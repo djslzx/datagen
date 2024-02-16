@@ -10,7 +10,7 @@ from lang import lindenmayer, point, arc
 import util
 
 
-def dpp_points(
+def dpp_points_multiple_samples(
         lang: point.RealPoint,
         n: int,
         accept_policy: str,
@@ -19,7 +19,7 @@ def dpp_points(
 ):
     # assume uniform initial distribution
     coords = np.random.uniform(size=(n, 2))
-    x: np.ndarray[Tree] = np.array([lang.make_point(a, b) for a, b in coords], dtype=object)
+    x: np.ndarray[Tree] = np.array([lang.make_point(a, b) for a, b in coords])
 
     for t in range(n_steps):
         # singleton sliding window
@@ -101,6 +101,61 @@ def dpp_points(
         }
 
 
+def dpp_points_single_sample(
+        lang: point.RealPoint,
+        n: int,
+        accept_policy: str,
+        n_steps: int,
+):
+    # assume uniform initial distribution
+    coords = np.random.uniform(size=(n, 2))
+    x: np.ndarray[Tree] = np.array([lang.make_point(a, b) for a, b in coords])
+
+    for t in range(n_steps):
+        # singleton sliding window
+        i = t % n
+
+        # sample from proposal distribution
+        lang.fit(x[None, i])
+        s = lang.sample()
+        x_feat = lang.extract_features(x)
+        s_feat = lang.extract_features([s])[0]
+
+        if accept_policy == 'dpp':
+            # compute accept probability
+            # (1) log f(x') - log f(x) = log det((B^T B)_x') - log det((B^T B)_x)
+            L_x = np.matmul(x_feat, x_feat.transpose())
+            updated_features = x_feat.copy()
+            updated_features[i] = s_feat
+            L_updated = np.matmul(updated_features, updated_features.transpose())
+            det_x = np.linalg.det(L_x)
+            det_s = np.linalg.det(L_updated)
+
+            log_f = np.log(det_x) - np.log(det_s)
+
+            # (2) log q(x|x') - log q(x'|x)
+            log_q = lang_log_pr(lang, query=x[i], data=s) - lang_log_pr(lang, query=s, data=x[i])
+
+            # (3) A = min(1, .) => log A = min(0, .)
+            log_accept = min(0, log_f + log_q)
+            p_accept = np.exp(log_accept)
+
+        elif accept_policy == 'all':
+            p_accept = 1
+        else:
+            raise ValueError(f"Unknown accept policy: {accept_policy}")
+
+        # stochastically accept/reject
+        if np.random.uniform(low=0, high=1) < p_accept:
+            x[i] = s
+
+        yield {
+            "i": i,
+            "t": t,
+            "points": [lang.eval(p) for p in x],
+        }
+
+
 def lang_log_pr(lang: Language, query: Tree, data: Tree) -> float:
     lang.fit([data], alpha=1.0)
     return lang.log_probability(query)
@@ -114,7 +169,7 @@ def novelty_scores(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.n
     return dists
 
 
-def animate_points(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
+def animate_points_v1(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
     ax.set_xlim(*xlim)
@@ -139,6 +194,26 @@ def animate_points(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: 
     return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
 
 
+def animate_points_v2(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
+    fig, ax = plt.subplots()
+    scatter = ax.scatter([], [])
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    ax.set_aspect('equal')
+
+    def update(frame):
+        i = frame["i"]
+        t = frame["t"]
+        points = frame["points"]
+
+        ax.set_title(f"{title}, frame: {t}")
+        scatter.set_offsets(points)
+        scatter.set_color(["red" if j == i else "blue" for j in range(len(points))])
+        return scatter,
+
+    return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
+
+
 def plot_stats(data: List[dict]):
     plt.plot([np.exp(x["log A(x'|x)"]) for x in data], label="A(x'|x)")
     plt.legend()
@@ -158,29 +233,23 @@ def plot_stats(data: List[dict]):
 
 
 if __name__ == "__main__":
-    N_STEPS = 100
+    N_STEPS = 1000
     N_SAMPLES = 3
-    POPN_SIZE = 100
-    ACCEPT_POLICY = "all"
+    POPN_SIZE = 10
+    ACCEPT_POLICY = "dpp"
 
-    generator = dpp_points(
+    generator = tqdm(dpp_points_single_sample(
         lang=point.RealPoint(xlim=10, ylim=10),
         n=POPN_SIZE,
         accept_policy=ACCEPT_POLICY,
-        n_samples=N_SAMPLES,
         n_steps=N_STEPS,
-    )
-    xs = list(tqdm(generator, total=N_STEPS))
-
-    if ACCEPT_POLICY == "dpp":
-        plot_stats(xs)
-
-    anim = animate_points(
-        xs,
+    ), total=N_STEPS)
+    anim = animate_points_v2(
+        generator,
         title=f"N={POPN_SIZE}, samples={N_SAMPLES}, accept={ACCEPT_POLICY}, steps={N_STEPS}",
         xlim=(-10, 10),
         ylim=(-10, 10),
         # delay=100,
     )
     ts = util.timestamp()
-    anim.save(f"../out/anim/ddp-points-{ts}.mp4")
+    anim.save(f"../out/anim/ddp-v2-{ts}.mp4")
