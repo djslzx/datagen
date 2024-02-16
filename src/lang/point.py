@@ -11,6 +11,7 @@ from featurizers import Featurizer
 from lang.tree import Language, Tree
 import util
 
+
 class RealPoint(Language):
     grammar = r"""
         point: "(" num "," num ")" -> point
@@ -26,7 +27,7 @@ class RealPoint(Language):
         "real": ["Real"],
     }
 
-    def __init__(self):
+    def __init__(self, xlim: float, ylim: float, std: float = 1):
         super().__init__(
             parser_grammar=RealPoint.grammar,
             parser_start="point",
@@ -34,8 +35,16 @@ class RealPoint(Language):
             model=None,
             featurizer=PointFeaturizer(ndims=2)
         )
+        assert xlim > 0
+        assert ylim > 0
+        self.xlim = xlim
+        self.ylim = ylim
+        self.std = std
         self.x_distribution = None
         self.y_distribution = None
+
+    def make_point(self, x: float, y: float) -> Tree:
+        return self.parse(f"({x}, {y})")
 
     def none(self) -> Any:
         return np.array([0, 0])
@@ -60,13 +69,25 @@ class RealPoint(Language):
             x, y = self.eval(tree)
             xs.append(x)
             ys.append(y)
-        self.x_distribution = stats.gaussian_kde(xs)
-        self.y_distribution = stats.gaussian_kde(ys)
+        if len(xs) == 1:
+            self.x_distribution = GaussianSampler(xs[0], self.std)
+            self.y_distribution = GaussianSampler(ys[0], self.std)
+        else:
+            self.x_distribution = stats.gaussian_kde(xs, bw_method=self.std)
+            self.y_distribution = stats.gaussian_kde(ys, bw_method=self.std)
 
     def sample(self) -> Tree:
         x = self.x_distribution.resample(1).item()
         y = self.y_distribution.resample(1).item()
+        if self.xlim:
+            x = min(self.xlim, max(-self.xlim, x))
+        if self.xlim:
+            y = min(self.ylim, max(-self.ylim, y))
         return self.parse(f"({x}, {y})")
+
+    def log_probability(self, t: Tree) -> float:
+        x, y = self.eval(t)
+        return self.x_distribution.logpdf(x) + self.y_distribution.logpdf(y)
 
     @property
     def str_semantics(self) -> Dict:
@@ -91,8 +112,8 @@ class NatPoint(Language):
     """
     types = {
         "point": ["Nat", "Nat", "Point"],
-        "inc":   ["Nat", "Nat"],
-        "one":  ["Nat"],
+        "inc": ["Nat", "Nat"],
+        "one": ["Nat"],
     }
 
     def __init__(self):
@@ -120,7 +141,7 @@ class NatPoint(Language):
     @property
     def str_semantics(self) -> Dict:
         return {
-            "point": lambda x,y: f"({x}, {y})",
+            "point": lambda x, y: f"({x}, {y})",
             "inc": lambda n: f"(inc {n})",
             "one": lambda: "1",
         }
@@ -140,6 +161,19 @@ class PointFeaturizer(Featurizer):
     @property
     def n_features(self) -> int:
         return self.ndims
+
+
+class GaussianSampler:
+    def __init__(self, mean, std):
+        self.dist = stats.norm(loc=mean, scale=std)
+
+    def resample(self, *args):
+        # Generate a sample from the Gaussian distribution
+        sample = self.dist.rvs()
+        return sample
+
+    def logpdf(self, x):
+        return self.dist.logpdf(x)
 
 
 def test_RealPoint_parse():
