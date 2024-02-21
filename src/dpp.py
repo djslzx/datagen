@@ -104,6 +104,7 @@ def dpp_points_multiple_samples(
 def dpp_points_single_sample(
         lang: point.RealPoint,
         n: int,
+        fit_policy: str,
         accept_policy: str,
         n_steps: int,
 ):
@@ -116,7 +117,11 @@ def dpp_points_single_sample(
         i = t % n
 
         # sample from proposal distribution
-        lang.fit(x)
+        if fit_policy == 'all':
+            lang.fit(x)
+        elif fit_policy == 'single':
+            lang.fit([x[i]])
+
         s = lang.sample()
         x_feat = lang.extract_features(x)
         s_feat = lang.extract_features([s])[0]
@@ -233,20 +238,23 @@ def plot_stats(data: List[dict]):
 
 
 if __name__ == "__main__":
-    N_STEPS = 1000
-    N_SAMPLES = 3
-    POPN_SIZE = 10
+    N_STEPS = 2000
+    N_SAMPLES = 1
+    POPN_SIZE = 1000
+    FIT_POLICY = "single"
     ACCEPT_POLICY = "dpp"
 
     generator = tqdm(dpp_points_single_sample(
         lang=point.RealPoint(xlim=10, ylim=10),
         n=POPN_SIZE,
+        fit_policy=FIT_POLICY,
         accept_policy=ACCEPT_POLICY,
         n_steps=N_STEPS,
     ), total=N_STEPS)
+    points = list(tqdm(generator, total=N_STEPS))
     anim = animate_points_v2(
-        generator,
-        title=f"N={POPN_SIZE}, samples={N_SAMPLES}, accept={ACCEPT_POLICY}, steps={N_STEPS}",
+        points,
+        title=f"N={POPN_SIZE}, samples={N_SAMPLES}, fit_policy={FIT_POLICY}, accept={ACCEPT_POLICY}, steps={N_STEPS}",
         xlim=(-10, 10),
         ylim=(-10, 10),
         # delay=100,
