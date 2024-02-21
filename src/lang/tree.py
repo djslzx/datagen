@@ -205,13 +205,10 @@ class Language:
             batches = tqdm(batches, total=n_batches)
         for batch in batches:
             y = self.featurizer.apply(batch)
-            if batch_size > 1 and len(batch) > 1:
-                ys.extend(y)
-            else:
-                ys.append(y)
+            ys.extend(y)
         out = np.array(ys)
 
-        # output shape: (|S|, n_samples, features)
+        # output shape: (|S| * n_samples, features)
         assert out.shape[0] == (len(trees) * n_samples), \
             f"Expected to get {len(trees)} * {n_samples} = {len(trees) * n_samples} feature vectors, but got out:{out.shape}"
 
