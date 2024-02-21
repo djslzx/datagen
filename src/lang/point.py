@@ -40,8 +40,8 @@ class RealPoint(Language):
         self.xlim = xlim
         self.ylim = ylim
         self.std = std
-        self.x_distribution = None
-        self.y_distribution = None
+        self.x_distribution = GaussianSampler(0, self.std)
+        self.y_distribution = GaussianSampler(0, self.std)
 
     def make_point(self, x: float, y: float) -> Tree:
         return self.parse(f"({x}, {y})")
