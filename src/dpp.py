@@ -126,17 +126,17 @@ def dpp_points_single_sample(
         x_feat = lang.extract_features(x)
         s_feat = lang.extract_features([s])[0]
 
+        record = {}
         if accept_policy == 'dpp':
             # compute accept probability
             # (1) log f(x') - log f(x) = log det((B^T B)_x') - log det((B^T B)_x)
             L_x = np.matmul(x_feat, x_feat.transpose())
             updated_features = x_feat.copy()
             updated_features[i] = s_feat
-            L_updated = np.matmul(updated_features, updated_features.transpose())
-            det_x = np.linalg.det(L_x)
-            det_s = np.linalg.det(L_updated)
-
-            log_f = np.log(det_x) - np.log(det_s)
+            L_up = np.matmul(updated_features, updated_features.transpose())
+            s_x, log_det_x = np.linalg.slogdet(L_x)
+            s_s, log_det_s = np.linalg.slogdet(L_up)
+            log_f = s_x * log_det_x - s_s * log_det_s
 
             # (2) log q(x|x') - log q(x'|x)
             log_q = lang_log_pr(lang, query=x[i], data=s) - lang_log_pr(lang, query=s, data=x[i])
@@ -145,6 +145,10 @@ def dpp_points_single_sample(
             log_accept = min(0, log_f + log_q)
             p_accept = np.exp(log_accept)
 
+            record.update({
+                "L_x": L_x,
+                "L_up": L_up,
+            })
         elif accept_policy == 'all':
             p_accept = 1
         else:
@@ -158,6 +162,7 @@ def dpp_points_single_sample(
             "i": i,
             "t": t,
             "points": [lang.eval(p) for p in x],
+            **record,
         }
 
 
