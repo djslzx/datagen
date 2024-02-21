@@ -312,6 +312,18 @@ def plot_subplots(data: List[dict], keys: List[str]):
     plt.show()
 
 
+def plot_v_subplots(data: List[dict], keys: List[str]):
+    num_keys = len(keys)
+    fig, axes = plt.subplots(num_keys, 1, figsize=(12, 8))
+
+    for ax, key in zip(axes, keys):
+        ax.set_title(key)
+        ax.plot([x[key] for x in data], label=key)
+
+    plt.tight_layout()
+    plt.show()
+
+
 def transform_data(data: List[dict]) -> List[dict]:
     thresholds = [1e-10]
 
