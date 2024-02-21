@@ -219,22 +219,44 @@ def animate_points_v2(data_gen: Iterator, title: str, xlim: Tuple[int, int], yli
     return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
 
 
-def plot_stats(data: List[dict]):
-    plt.plot([np.exp(x["log A(x'|x)"]) for x in data], label="A(x'|x)")
-    plt.legend()
+def plot_subplots(data: List[dict], keys: List[str]):
+    num_keys = len(keys)
+    num_rows = int(num_keys ** 0.5)
+    num_cols = (num_keys + num_rows - 1) // num_rows
+
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(12, 8))
+
+    for i, key in enumerate(keys):
+        row = i // num_cols
+        col = i % num_cols
+        ax = axes[row, col] if num_rows > 1 else axes[col]
+        ax.set_title(key)
+        ax.plot([x[key] for x in data], label=key)
+
+    plt.tight_layout()
     plt.show()
 
-    plt.plot([x["log f(x') - log f(x)"] for x in data], label="log f(x') - log f(x)")
-    plt.plot([x["log q(x|x') - log q(x'|x)"] for x in data], label="log q(x|x') - log q(x'|x)")
-    plt.plot([x["det < 0"] for x in data], label="det < 0", color="red")
-    plt.yscale("log")
-    plt.legend()
-    plt.show()
 
-    plt.plot([x["det(L_x)"] for x in data], label="det(L_x)")
-    plt.plot([x["det(L_x')"] for x in data], label="det(L_x')")
-    plt.legend()
-    plt.show()
+def transform_data(data: List[dict]) -> List[dict]:
+    thresholds = [1e-5, 1e-10, 1e-20]
+
+    def map_fn(d: dict) -> dict:
+        L_x, L_up = d["L_x"], d["L_up"]
+        sgn_x, logdet_x = np.linalg.slogdet(L_x)
+        sgn_up, logdet_up = np.linalg.slogdet(L_up)
+
+        sparsities = {}
+        for thresh in thresholds:
+            sparsities[f"sparsity(L_x, {thresh})"] = np.sum(L_x < thresh)
+            sparsities[f"sparsity(L_x', {thresh})"] = np.sum(L_up < thresh)
+
+        return {
+            "log det(L_x)": sgn_x * logdet_x,
+            "log det(L_x')": sgn_up * logdet_up,
+            **sparsities,
+        }
+
+    return list(map(map_fn, data))
 
 
 if __name__ == "__main__":
@@ -250,8 +272,10 @@ if __name__ == "__main__":
         fit_policy=FIT_POLICY,
         accept_policy=ACCEPT_POLICY,
         n_steps=N_STEPS,
-    ), total=N_STEPS)
+    )
     points = list(tqdm(generator, total=N_STEPS))
+    data = transform_data(points)
+    plot_subplots(data, keys=sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up"}))
     anim = animate_points_v2(
         points,
         title=f"N={POPN_SIZE}, samples={N_SAMPLES}, fit_policy={FIT_POLICY}, accept={ACCEPT_POLICY}, steps={N_STEPS}",
