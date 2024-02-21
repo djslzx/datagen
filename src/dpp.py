@@ -259,6 +259,14 @@ def transform_data(data: List[dict]) -> List[dict]:
     return list(map(map_fn, data))
 
 
+def test_large_mat_dets():
+    with util.Timing("large_mat_dets"):
+        B = np.random.rand(10_000, 10_000)
+        M = np.matmul(B.transpose(), B)
+        det = np.linalg.det(M)
+    print(det)
+
+
 if __name__ == "__main__":
     N_STEPS = 2000
     N_SAMPLES = 1
