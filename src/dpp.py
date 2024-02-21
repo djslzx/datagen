@@ -10,7 +10,7 @@ from lang import lindenmayer, point, arc
 import util
 
 
-def dpp_points_multiple_samples(
+def dpp_points_roundrobin_multisample(
         lang: point.RealPoint,
         n: int,
         accept_policy: str,
@@ -101,7 +101,7 @@ def dpp_points_multiple_samples(
         }
 
 
-def dpp_points_single_sample(
+def dpp_points_roundrobin(
         lang: point.RealPoint,
         n: int,
         fit_policy: str,
