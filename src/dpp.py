@@ -1,4 +1,4 @@
-from typing import List, Iterator, Tuple
+from typing import List, Iterator, Tuple, Iterable
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
@@ -45,15 +45,15 @@ def dpp_points_roundrobin_multisample(
             # A(x *, xt) = min(1, f(x') / f(x) * q(x|x') / q(x'|x))
             # (1) log f(x') - log f(x)
             #   = log det((B^T B)_x') - log det((B^T B)_x)
-            L_x = np.matmul(x_features, x_features.transpose())
+            L_x = np.matmul(x_features, x_features.T)
             updated_features = x_features.copy()
             updated_features[i] = sample_features[best_i]
-            L_updated = np.matmul(updated_features, updated_features.transpose())
+            L_updated = np.matmul(updated_features, updated_features.T)
             det_x = np.linalg.det(L_x)
             det_s = np.linalg.det(L_updated)
 
             # assert det_x > 0 and det_s > 0, f"det_x: {det_x}, det_s: {det_s}"
-            log_f = np.log(det_x) - np.log(det_s)
+            log_f = np.log(det_s) - np.log(det_x)
 
             # (2) log q(x|x') - log q(x'|x)
             #   = log nov(xi|x\i) - log nov(xi'|x\i) + log p(xi|G(xi')) - log p(xi'|G(xi))
@@ -130,32 +130,41 @@ def dpp_points_roundrobin(
         if accept_policy == 'dpp':
             # compute accept probability
             # (1) log f(x') - log f(x) = log det((B^T B)_x') - log det((B^T B)_x)
-            L_x = np.matmul(x_feat, x_feat.transpose())
-            updated_features = x_feat.copy()
-            updated_features[i] = s_feat
-            L_up = np.matmul(updated_features, updated_features.transpose())
-            s_x, log_det_x = np.linalg.slogdet(L_x)
-            s_s, log_det_s = np.linalg.slogdet(L_up)
-            log_f = s_x * log_det_x - s_s * log_det_s
+            L_x = np.matmul(x_feat, x_feat.T)
+            logdet_x = np.prod(np.linalg.slogdet(L_x))
+
+            up_feat = x_feat.copy()
+            up_feat[i] = s_feat
+            L_up = np.matmul(up_feat, up_feat.T)
+            logdet_up = np.prod(np.linalg.slogdet(L_up))
+
+            log_f = logdet_up - logdet_x
 
             # (2) log q(x|x') - log q(x'|x)
             log_q = lang_log_pr(lang, query=x[i], data=s) - lang_log_pr(lang, query=s, data=x[i])
 
             # (3) A = min(1, .) => log A = min(0, .)
             log_accept = min(0, log_f + log_q)
-            p_accept = np.exp(log_accept)
 
             record.update({
                 "L_x": L_x,
                 "L_up": L_up,
+                "log det(L_x)": logdet_x,
+                "log det(L_x')": logdet_up,
+                "log f(x')/f(x)": log_f,
+                "log q(x|x')/q(x'|x)": log_q,
+                "log A(x', x)": log_accept,
             })
         elif accept_policy == 'all':
-            p_accept = 1
+            log_accept = 0
         else:
             raise ValueError(f"Unknown accept policy: {accept_policy}")
 
         # stochastically accept/reject
-        if np.random.uniform(low=0, high=1) < p_accept:
+        u = np.random.uniform()
+        while u == 0:
+            u = np.random.uniform()
+        if np.log(u) < log_accept:
             x[i] = s
 
         yield {
@@ -166,9 +175,72 @@ def dpp_points_roundrobin(
         }
 
 
+def dpp_points_wholesale(
+        lang: point.RealPoint,
+        n: int,
+        fit_policy: str,
+        accept_policy: str,
+        n_steps: int,
+):
+    # assume uniform initial distribution
+    coords = np.random.uniform(size=(n, 2))
+    x = [lang.make_point(a, b) for a, b in coords]
+
+    for t in range(n_steps):
+        if fit_policy == 'all':
+            lang.fit(x)
+            s = [lang.sample() for _ in range(n)]
+        elif fit_policy == 'single':
+            s = [None] * n
+            for i in range(n):
+                lang.fit([x[i]])
+                s[i] = lang.sample()
+        else:
+            raise ValueError(f"Unknown fit policy: {fit_policy}")
+
+        x_feat = lang.extract_features(x)
+        s_feat = lang.extract_features(s)
+
+        if accept_policy == 'all':
+            log_p_accept = 0
+        elif accept_policy == 'dpp':
+            # (1) log f(x') - log f(x)
+            L_x = np.matmul(x_feat, x_feat.T)
+            L_s = np.matmul(s_feat, s_feat.T)
+            logdet_x = np.prod(np.linalg.slogdet(L_x))
+            logdet_s = np.prod(np.linalg.slogdet(L_s))
+            log_f = logdet_s - logdet_x
+
+            # (2) log q(x|x') - log q(x'|x)
+            log_q = lang_log_pr_multi(lang, x, s) - lang_log_pr_multi(lang, s, x)
+
+            # (3) A = min(1, .) => log A = min(0, .)
+            log_p_accept = min(0, log_f + log_q)
+        else:
+            raise ValueError(f"Unknown accept policy: {accept_policy}")
+
+        # stochastically accept/reject
+        u = np.random.uniform()
+        while u == 0:
+            u = np.random.uniform()
+
+        if np.log(u) < log_p_accept:
+            x = s
+
+        yield {
+            "t": t,
+            "points": [lang.eval(p) for p in x],
+        }
+
+
 def lang_log_pr(lang: Language, query: Tree, data: Tree) -> float:
     lang.fit([data], alpha=1.0)
     return lang.log_probability(query)
+
+
+def lang_log_pr_multi(lang: Language, query: List[Tree], data: List[Tree]) -> float:
+    lang.fit(data, alpha=1.0)
+    return sum(lang.log_probability(q) for q in query)
 
 
 def novelty_scores(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.ndarray:
@@ -204,7 +276,7 @@ def animate_points_v1(data_gen: Iterator, title: str, xlim: Tuple[int, int], yli
     return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
 
 
-def animate_points_v2(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
+def animate_points_v2(data_gen: Iterable, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
     ax.set_xlim(*xlim)
@@ -212,13 +284,11 @@ def animate_points_v2(data_gen: Iterator, title: str, xlim: Tuple[int, int], yli
     ax.set_aspect('equal')
 
     def update(frame):
-        i = frame["i"]
         t = frame["t"]
         points = frame["points"]
 
         ax.set_title(f"{title}, frame: {t}")
         scatter.set_offsets(points)
-        scatter.set_color(["red" if j == i else "blue" for j in range(len(points))])
         return scatter,
 
     return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
@@ -243,21 +313,17 @@ def plot_subplots(data: List[dict], keys: List[str]):
 
 
 def transform_data(data: List[dict]) -> List[dict]:
-    thresholds = [1e-5, 1e-10, 1e-20]
+    thresholds = [1e-10]
 
     def map_fn(d: dict) -> dict:
         L_x, L_up = d["L_x"], d["L_up"]
-        sgn_x, logdet_x = np.linalg.slogdet(L_x)
-        sgn_up, logdet_up = np.linalg.slogdet(L_up)
-
         sparsities = {}
         for thresh in thresholds:
             sparsities[f"sparsity(L_x, {thresh})"] = np.sum(L_x < thresh)
             sparsities[f"sparsity(L_x', {thresh})"] = np.sum(L_up < thresh)
 
         return {
-            "log det(L_x)": sgn_x * logdet_x,
-            "log det(L_x')": sgn_up * logdet_up,
+            **d,
             **sparsities,
         }
 
@@ -267,7 +333,7 @@ def transform_data(data: List[dict]) -> List[dict]:
 def test_large_mat_dets():
     with util.Timing("large_mat_dets"):
         B = np.random.rand(10_000, 10_000)
-        M = np.matmul(B.transpose(), B)
+        M = np.matmul(B.T, B)
         det = np.linalg.det(M)
     print(det)
 
@@ -280,6 +346,8 @@ if __name__ == "__main__":
     ACCEPT_POLICY = "dpp"
 
     generator = tqdm(dpp_points_single_sample(
+    generator = dpp_points_roundrobin(
+        # generator = dpp_points_wholesale(
         lang=point.RealPoint(xlim=10, ylim=10),
         n=POPN_SIZE,
         fit_policy=FIT_POLICY,
@@ -287,8 +355,9 @@ if __name__ == "__main__":
         n_steps=N_STEPS,
     )
     points = list(tqdm(generator, total=N_STEPS))
-    data = transform_data(points)
-    plot_subplots(data, keys=sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up"}))
+    if ACCEPT_POLICY == "dpp":
+        data = transform_data(points)
+        plot_subplots(data, keys=sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up"}))
     anim = animate_points_v2(
         points,
         title=f"N={POPN_SIZE}, samples={N_SAMPLES}, fit_policy={FIT_POLICY}, accept={ACCEPT_POLICY}, steps={N_STEPS}",
