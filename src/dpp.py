@@ -106,7 +106,9 @@ def dpp_points_roundrobin(
         n: int,
         fit_policy: str,
         accept_policy: str,
+        kernel_type: str,
         n_steps: int,
+        gamma=1,
 ):
     # assume uniform initial distribution
     coords = np.random.uniform(size=(n, 2))
@@ -125,35 +127,39 @@ def dpp_points_roundrobin(
         s = lang.sample()
         x_feat = lang.extract_features(x)
         s_feat = lang.extract_features([s])[0]
+        up_feat = x_feat.copy()
+        up_feat[i] = s_feat
 
         record = {}
         if accept_policy == 'dpp':
             # compute accept probability
-            # (1) log f(x') - log f(x) = log det((B^T B)_x') - log det((B^T B)_x)
-            L_x = np.matmul(x_feat, x_feat.T)
-            logdet_x = np.prod(np.linalg.slogdet(L_x))
+            # (1) log f(x') - log f(x) = log det(L_x') - log det(L_x)
+            if kernel_type == 'linear':
+                # L_x[i,j] = <phi_i, phi_j>
+                L_x = np.matmul(x_feat, x_feat.T)
+                L_up = np.matmul(up_feat, up_feat.T)
+            elif kernel_type == 'rbf':
+                # L_x[i,j] = exp(-gamma * ||phi_i - phi_j||^2)
+                L_x = np.exp(-gamma * np.linalg.norm(x_feat[:, None] - x_feat[None], axis=-1) ** 2)
+                L_up = np.exp(-gamma * np.linalg.norm(up_feat[:, None] - up_feat[None], axis=-1) ** 2)
+            else:
+                raise ValueError(f"Unknown kernel type: {kernel_type}")
 
-            up_feat = x_feat.copy()
-            up_feat[i] = s_feat
-            L_up = np.matmul(up_feat, up_feat.T)
-            logdet_up = np.prod(np.linalg.slogdet(L_up))
-
-            log_f = logdet_up - logdet_x
+            log_f = logdet(L_up) - logdet(L_x)
 
             # (2) log q(x|x') - log q(x'|x)
-            log_q = lang_log_pr(lang, query=x[i], data=s) - lang_log_pr(lang, query=s, data=x[i])
+            log_q = lang_log_pr(lang, x[i], s) - \
+                    lang_log_pr(lang, s, x[i])
 
             # (3) A = min(1, .) => log A = min(0, .)
-            log_accept = min(0, log_f + log_q)
+            log_accept = np.min([0, log_f + log_q])
 
             record.update({
                 "L_x": L_x,
                 "L_up": L_up,
-                "log det(L_x)": logdet_x,
-                "log det(L_x')": logdet_up,
                 "log f(x')/f(x)": log_f,
                 "log q(x|x')/q(x'|x)": log_q,
-                "log A(x', x)": log_accept,
+                "log A(x',x)": log_accept,
             })
         elif accept_policy == 'all':
             log_accept = 0
@@ -233,6 +239,10 @@ def dpp_points_wholesale(
         }
 
 
+def logdet(m: np.ndarray) -> float:
+    return np.prod(np.linalg.slogdet(m))
+
+
 def lang_log_pr(lang: Language, query: Tree, data: Tree) -> float:
     lang.fit([data], alpha=1.0)
     return lang.log_probability(query)
@@ -294,6 +304,30 @@ def animate_points_v2(data_gen: Iterable, title: str, xlim: Tuple[int, int], yli
     return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
 
 
+def animate_matrix_spy(data_gen: Iterable, precision, delay=200):
+    # animation where each frame is a spy plot of a matrix
+    fig = plt.figure(figsize=(10, 5))
+
+    def update(frame):
+        t = frame["t"]
+        L_x = frame["L_x"]
+        L_up = frame["L_up"]
+
+        plt.clf()  # Clear current plot
+
+        # Plot the first matrix
+        plt.subplot(1, 2, 1)
+        plt.spy(L_x, precision=precision)
+        plt.title(f'L_x @ {t}')
+
+        # Plot the second matrix
+        plt.subplot(1, 2, 2)
+        plt.spy(L_up, precision=precision)
+        plt.title(f'L_up @ {t}')
+
+    return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
+
+
 def plot_subplots(data: List[dict], keys: List[str]):
     num_keys = len(keys)
     num_rows = int(num_keys ** 0.5)
@@ -309,7 +343,6 @@ def plot_subplots(data: List[dict], keys: List[str]):
         ax.plot([x[key] for x in data], label=key)
 
     plt.tight_layout()
-    plt.show()
 
 
 def plot_v_subplots(data: List[dict], keys: List[str]):
@@ -319,22 +352,31 @@ def plot_v_subplots(data: List[dict], keys: List[str]):
     for ax, key in zip(axes, keys):
         ax.set_title(key)
         ax.plot([x[key] for x in data], label=key)
+        if key.startswith("log"):
+            ax.set_yscale("symlog")
+        if key.startswith("sparsity"):
+            ax.set_ylim(0, 1)
+            ax.set_ylabel("sparsity")
 
     plt.tight_layout()
-    plt.show()
+    return fig
 
 
 def transform_data(data: List[dict]) -> List[dict]:
     thresholds = [1e-10]
 
     def map_fn(d: dict) -> dict:
-        L_x, L_up = d["L_x"], d["L_up"]
         sparsities = {}
-        for thresh in thresholds:
-            sparsities[f"sparsity(L_x, {thresh})"] = np.sum(L_x < thresh)
-            sparsities[f"sparsity(L_x', {thresh})"] = np.sum(L_up < thresh)
+        try:
+            L_x, L_up = d["L_x"], d["L_up"]
+            for thresh in thresholds:
+                sparsities[f"sparsity(L_x, {thresh})"] = np.sum(L_x < thresh) / L_x.size
+                sparsities[f"sparsity(L_x', {thresh})"] = np.sum(L_up < thresh) / L_up.size
+        except KeyError:
+            pass
 
         return {
+            "A(x,x')": np.exp(d["log A(x',x)"]),
             **d,
             **sparsities,
         }
@@ -350,32 +392,77 @@ def test_large_mat_dets():
     print(det)
 
 
-if __name__ == "__main__":
-    N_STEPS = 2000
-    N_SAMPLES = 1
-    POPN_SIZE = 1000
-    FIT_POLICY = "single"
-    ACCEPT_POLICY = "dpp"
-
-    generator = tqdm(dpp_points_single_sample(
+def main(
+        id: int,
+        n_steps: int,
+        popn_size: int,
+        fit_policy: str,
+        accept_policy: str,
+        kernel_type: str,
+):
     generator = dpp_points_roundrobin(
         # generator = dpp_points_wholesale(
         lang=point.RealPoint(xlim=10, ylim=10),
-        n=POPN_SIZE,
-        fit_policy=FIT_POLICY,
-        accept_policy=ACCEPT_POLICY,
-        n_steps=N_STEPS,
+        n=popn_size,
+        fit_policy=fit_policy,
+        accept_policy=accept_policy,
+        n_steps=n_steps,
+        kernel_type=kernel_type,
     )
-    points = list(tqdm(generator, total=N_STEPS))
-    if ACCEPT_POLICY == "dpp":
+    points = list(tqdm(generator, total=n_steps))
+
+    title = (f"N={popn_size}"
+             f",fit={fit_policy}"
+             f",accept={accept_policy}"
+             f",kernel={kernel_type}"
+             f",steps={n_steps}")
+
+    # make run directory
+    try:
+        util.mkdir(f"../out/dpp/{id}/")
+    except FileExistsError:
+        pass
+
+    util.mkdir(f"../out/dpp/{id}/{title}")
+    dirname = f"../out/dpp/{id}/{title}"
+
+    if accept_policy == "dpp":
         data = transform_data(points)
-        plot_subplots(data, keys=sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up"}))
+        keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up"})
+        fig = plot_v_subplots(data, keys)
+        fig.savefig(f"{dirname}/plot.png")
+        plt.cla()
+
+    # Save animation
     anim = animate_points_v2(
         points,
-        title=f"N={POPN_SIZE}, samples={N_SAMPLES}, fit_policy={FIT_POLICY}, accept={ACCEPT_POLICY}, steps={N_STEPS}",
+        title=title,
         xlim=(-10, 10),
         ylim=(-10, 10),
-        # delay=100,
+        delay=100,
     )
+    print("Saving animation...")
+    anim.save(f"{dirname}/anim.mp4")
+
+    # Save spy animation
+    spy_anim = animate_matrix_spy(points, delay=100, precision=1e-10)
+    print("Saving spy animation...")
+    spy_anim.save(f"{dirname}/spy.mp4")
+
+
+if __name__ == "__main__":
+    N_STEPS = 100
+    POPN_SIZE = 10
+
     ts = util.timestamp()
-    anim.save(f"../out/anim/ddp-v2-{ts}.mp4")
+    for fit in ["all", "single"]:
+        for accept in ["dpp"]:
+            for kernel in ["linear", "rbf"]:
+                main(
+                    n_steps=N_STEPS,
+                    popn_size=POPN_SIZE,
+                    fit_policy=fit,
+                    accept_policy=accept,
+                    kernel_type=kernel,
+                    id=ts,
+                )
