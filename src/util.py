@@ -172,7 +172,7 @@ def test_strip_markdown():
 
 
 def timestamp():
-    return datetime.now().isoformat()
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 class IdGen:
@@ -521,5 +521,3 @@ def try_mkdir(dir: str):
         mkdir(dir)
     except IsADirectoryError:
         pass
-
-
