@@ -108,6 +108,8 @@ class Grammar:
         else:
             raise ValueError(f"Expected gram in {{1, 2}} but got {gram}")
 
+    # todo: incremental updating using new counts
+
     def from_unigram_counts_(self, counts: Dict[str, int], alpha=0.):
         assert self.gram == 1
         for nt, prods in self.rules.items():

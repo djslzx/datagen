@@ -43,4 +43,4 @@ if __name__ == "__main__":
     pp(df["summary"].head(1).values[0])
 
     df = get_sft_runs()
-    df.to_csv("sft-runs.csv")
+    df.to_csv("sft-runs-filtered.csv")
