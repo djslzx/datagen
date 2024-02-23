@@ -74,7 +74,7 @@ def dpp_points_roundrobin_multisample(
                 "det(L_x')": det_s,
                 "det < 0": int(det_x <= 0 or det_s <= 0),
                 "log f(x') - log f(x)": log_f,
-                "log q(x|x') - log q(x'|x)": log_q,
+                "log q(x|x')/(x'|x)": log_q,
                 "log A(x'|x)": log_accept,
             })
         elif accept_policy == 'all':
@@ -145,7 +145,9 @@ def dpp_points_roundrobin(
             else:
                 raise ValueError(f"Unknown kernel type: {kernel_type}")
 
-            log_f = logdet(L_up) - logdet(L_x)
+            logdet_up = logdet(L_up)
+            logdet_x = logdet(L_x)
+            log_f = logdet_up - logdet_x
 
             # (2) log q(x|x') - log q(x'|x)
             log_q = lang_log_pr(lang, x[i], s) - \
@@ -157,6 +159,8 @@ def dpp_points_roundrobin(
             record.update({
                 "L_x": L_x,
                 "L_up": L_up,
+                "log det L_x": logdet_x,
+                "log det L_up": logdet_up,
                 "log f(x')/f(x)": log_f,
                 "log q(x|x')/q(x'|x)": log_q,
                 "log A(x',x)": log_accept,
@@ -177,6 +181,8 @@ def dpp_points_roundrobin(
             "i": i,
             "t": t,
             "points": [lang.eval(p) for p in x],
+            "x_feat": x_feat,
+            "s_feat": s_feat,
             **record,
         }
 
@@ -363,20 +369,33 @@ def plot_v_subplots(data: List[dict], keys: List[str]):
 
 
 def transform_data(data: List[dict]) -> List[dict]:
-    thresholds = [1e-10]
+    threshold = 1e-10
+    rm_keys = {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat",
+               "log q(x|x')/q(x'|x)", "log det L_x", "log A(x',x)"}
 
     def map_fn(d: dict) -> dict:
+        # compute sparsities
         sparsities = {}
         try:
             L_x, L_up = d["L_x"], d["L_up"]
-            for thresh in thresholds:
-                sparsities[f"sparsity(L_x, {thresh})"] = np.sum(L_x < thresh) / L_x.size
-                sparsities[f"sparsity(L_x', {thresh})"] = np.sum(L_up < thresh) / L_up.size
+            # sparsities[f"sparsity(L_x, {threshold})"] = np.sum(L_x < threshold) / L_x.size
+            sparsities[f"sparsity(L_up, {threshold})"] = np.sum(L_up < threshold) / L_up.size
         except KeyError:
             pass
 
+        # knn of new sample point
+        x_feat = d["x_feat"]
+        s_feat = d["s_feat"]
+        dists = novelty_scores(queries=s_feat[None], data=x_feat)
+        d["knn_dist"] = dists[0]
+
+        # exp of log A
+        d["A(x,x')"] = np.exp(d["log A(x',x)"])
+
+        # filter keys
+        d = {k: v for k, v in d.items() if k not in rm_keys}
+
         return {
-            "A(x,x')": np.exp(d["log A(x',x)"]),
             **d,
             **sparsities,
         }
@@ -399,6 +418,8 @@ def main(
         fit_policy: str,
         accept_policy: str,
         kernel_type: str,
+        animate=True,
+        spy=False,
 ):
     generator = dpp_points_roundrobin(
         # generator = dpp_points_wholesale(
@@ -428,41 +449,49 @@ def main(
 
     if accept_policy == "dpp":
         data = transform_data(points)
-        keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up"})
+        keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat"})
         fig = plot_v_subplots(data, keys)
         fig.savefig(f"{dirname}/plot.png")
         plt.cla()
 
     # Save animation
-    anim = animate_points_v2(
-        points,
-        title=title,
-        xlim=(-10, 10),
-        ylim=(-10, 10),
-        delay=100,
-    )
-    print("Saving animation...")
-    anim.save(f"{dirname}/anim.mp4")
+    if animate:
+        anim = animate_points_v2(
+            points,
+            title=title,
+            xlim=(-10, 10),
+            ylim=(-10, 10),
+            delay=100,
+        )
+        print("Saving animation...")
+        anim.save(f"{dirname}/anim.mp4")
 
     # Save spy animation
-    spy_anim = animate_matrix_spy(points, delay=100, precision=1e-10)
-    print("Saving spy animation...")
-    spy_anim.save(f"{dirname}/spy.mp4")
+    if spy:
+        spy_anim = animate_matrix_spy(points, delay=100, precision=1e-10)
+        print("Saving spy animation...")
+        spy_anim.save(f"{dirname}/spy.mp4")
 
 
 if __name__ == "__main__":
-    N_STEPS = 100
-    POPN_SIZE = 10
+    N_STEPS = [1000]
+    POPN_SIZE = [100, 10]
+    ACCEPT_POLICY = ["dpp"]
+    FIT_POLICY = ["all", "single"]
+    KERNEL_TYPE = ["linear", "rbf"]
 
     ts = util.timestamp()
-    for fit in ["all", "single"]:
-        for accept in ["dpp"]:
-            for kernel in ["linear", "rbf"]:
-                main(
-                    n_steps=N_STEPS,
-                    popn_size=POPN_SIZE,
-                    fit_policy=fit,
-                    accept_policy=accept,
-                    kernel_type=kernel,
-                    id=ts,
-                )
+    for t in N_STEPS:
+        for n in POPN_SIZE:
+            for fit in FIT_POLICY:
+                for kernel in KERNEL_TYPE:
+                    main(
+                        n_steps=t,
+                        popn_size=n,
+                        fit_policy=fit,
+                        accept_policy="dpp",
+                        kernel_type=kernel,
+                        id=ts,
+                        anim=True,
+                        spy=False,
+                    )
