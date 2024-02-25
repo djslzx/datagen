@@ -187,64 +187,6 @@ def dpp_points_roundrobin(
         }
 
 
-def dpp_points_wholesale(
-        lang: point.RealPoint,
-        n: int,
-        fit_policy: str,
-        accept_policy: str,
-        n_steps: int,
-):
-    # assume uniform initial distribution
-    coords = np.random.uniform(size=(n, 2))
-    x = [lang.make_point(a, b) for a, b in coords]
-
-    for t in range(n_steps):
-        if fit_policy == 'all':
-            lang.fit(x)
-            s = [lang.sample() for _ in range(n)]
-        elif fit_policy == 'single':
-            s = [None] * n
-            for i in range(n):
-                lang.fit([x[i]])
-                s[i] = lang.sample()
-        else:
-            raise ValueError(f"Unknown fit policy: {fit_policy}")
-
-        x_feat = lang.extract_features(x)
-        s_feat = lang.extract_features(s)
-
-        if accept_policy == 'all':
-            log_p_accept = 0
-        elif accept_policy == 'dpp':
-            # (1) log f(x') - log f(x)
-            L_x = np.matmul(x_feat, x_feat.T)
-            L_s = np.matmul(s_feat, s_feat.T)
-            logdet_x = np.prod(np.linalg.slogdet(L_x))
-            logdet_s = np.prod(np.linalg.slogdet(L_s))
-            log_f = logdet_s - logdet_x
-
-            # (2) log q(x|x') - log q(x'|x)
-            log_q = lang_log_pr_multi(lang, x, s) - lang_log_pr_multi(lang, s, x)
-
-            # (3) A = min(1, .) => log A = min(0, .)
-            log_p_accept = min(0, log_f + log_q)
-        else:
-            raise ValueError(f"Unknown accept policy: {accept_policy}")
-
-        # stochastically accept/reject
-        u = np.random.uniform()
-        while u == 0:
-            u = np.random.uniform()
-
-        if np.log(u) < log_p_accept:
-            x = s
-
-        yield {
-            "t": t,
-            "points": [lang.eval(p) for p in x],
-        }
-
-
 def logdet(m: np.ndarray) -> float:
     return np.prod(np.linalg.slogdet(m))
 
@@ -422,7 +364,6 @@ def main(
         spy=False,
 ):
     generator = dpp_points_roundrobin(
-        # generator = dpp_points_wholesale(
         lang=point.RealPoint(xlim=10, ylim=10),
         n=popn_size,
         fit_policy=fit_policy,
@@ -475,10 +416,10 @@ def main(
 
 if __name__ == "__main__":
     N_STEPS = [1000]
-    POPN_SIZE = [100, 10]
+    POPN_SIZE = [100]
     ACCEPT_POLICY = ["dpp"]
     FIT_POLICY = ["all", "single"]
-    KERNEL_TYPE = ["linear", "rbf"]
+    KERNEL_TYPE = ["rbf"]
 
     ts = util.timestamp()
     for t in N_STEPS:
@@ -486,12 +427,12 @@ if __name__ == "__main__":
             for fit in FIT_POLICY:
                 for kernel in KERNEL_TYPE:
                     main(
+                        id=ts,
                         n_steps=t,
                         popn_size=n,
                         fit_policy=fit,
                         accept_policy="dpp",
                         kernel_type=kernel,
-                        id=ts,
-                        anim=True,
+                        animate=True,
                         spy=False,
                     )
