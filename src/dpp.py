@@ -111,7 +111,8 @@ def dpp_points_roundrobin(
         gamma=1,
 ):
     # assume uniform initial distribution
-    coords = np.random.uniform(size=(n, 2))
+    coords = np.random.uniform(size=(n, 2)) * 2
+    # coords = np.random.uniform(size=(n, 2)) * 5 - 2.5
     x = [lang.make_point(a, b) for a, b in coords]
 
     for t in range(n_steps):
@@ -294,8 +295,8 @@ def plot_subplots(data: List[dict], keys: List[str]):
 
 
 def plot_v_subplots(data: List[dict], keys: List[str]):
-    num_keys = len(keys)
-    fig, axes = plt.subplots(num_keys, 1, figsize=(12, 8))
+    n_keys = len(keys)
+    fig, axes = plt.subplots(n_keys, 1, figsize=(12, 2 * n_keys))
 
     for ax, key in zip(axes, keys):
         ax.set_title(key)
@@ -331,8 +332,20 @@ def transform_data(data: List[dict]) -> List[dict]:
         dists = novelty_scores(queries=s_feat[None], data=x_feat)
         d["knn_dist"] = dists[0]
 
-        # exp of log A
-        d["A(x,x')"] = np.exp(d["log A(x',x)"])
+        # measure overlap of i-th point wrt rest of points
+        i = d["i"]
+        d["overlap"] = np.sum(np.isclose(np.delete(x_feat, i, axis=0), x_feat[i], atol=1e-5))
+
+        # measure avg radius of all points in d["points"]
+        d["mean radius"] = np.mean(np.linalg.norm(np.array(d["points"])[:, None] -
+                                                  np.array(d["points"]),
+                                                  axis=-1))
+
+        # accept probability
+        d["A(x',x)"] = np.exp(d["log A(x',x)"])
+
+        # average accept probability
+        d["mean A(x',x)"] = np.mean([np.exp(x["log A(x',x)"]) for x in data])
 
         # filter keys
         d = {k: v for k, v in d.items() if k not in rm_keys}
@@ -360,6 +373,7 @@ def main(
         fit_policy: str,
         accept_policy: str,
         kernel_type: str,
+        run: int,
         animate=True,
         spy=False,
 ):
@@ -377,7 +391,8 @@ def main(
              f",fit={fit_policy}"
              f",accept={accept_policy}"
              f",kernel={kernel_type}"
-             f",steps={n_steps}")
+             f",steps={n_steps}"
+             f",run={run}")
 
     # make run directory
     try:
@@ -415,24 +430,27 @@ def main(
 
 
 if __name__ == "__main__":
-    N_STEPS = [1000]
+    N_STEPS = [1000 * 2]
     POPN_SIZE = [100]
     ACCEPT_POLICY = ["dpp"]
     FIT_POLICY = ["all", "single"]
     KERNEL_TYPE = ["rbf"]
+    N_RUNS = 10
 
     ts = util.timestamp()
     for t in N_STEPS:
         for n in POPN_SIZE:
             for fit in FIT_POLICY:
                 for kernel in KERNEL_TYPE:
-                    main(
-                        id=ts,
-                        n_steps=t,
-                        popn_size=n,
-                        fit_policy=fit,
-                        accept_policy="dpp",
-                        kernel_type=kernel,
-                        animate=True,
-                        spy=False,
-                    )
+                    for run in range(N_RUNS):
+                        main(
+                            id=ts,
+                            n_steps=t,
+                            popn_size=n,
+                            fit_policy=fit,
+                            accept_policy="dpp",
+                            kernel_type=kernel,
+                            run=run,
+                            animate=True,
+                            spy=False,
+                        )
