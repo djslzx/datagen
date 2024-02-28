@@ -173,6 +173,17 @@ class Language:
         t = Tree.from_tuple(s)
         return t
 
+    def samples(self, n_samples: int, length_cap: int) -> List[Tree]:
+        out = []
+        while len(out) < n_samples:
+            try:
+                t = self.sample()
+            except RecursionError:
+                continue  # retry
+            if len(t) <= length_cap:
+                out.append(t)
+        return out
+
     def fit(self, corpus: List[Tree], alpha):
         weights = np.ones(len(corpus))
         if self.model.gram == 1:
@@ -193,14 +204,15 @@ class Language:
         """
         Take samples from programs in S, then batch them and feed them through the feature extractor for L.
         """
-        def samples():
+
+        def evaluate_trees():
             for x in trees:
                 for _ in range(n_samples):
                     yield self.eval(x)
 
         ys = []
         n_batches = ceil(len(trees) * n_samples / batch_size)
-        batches = util.batched(samples(), batch_size=batch_size)
+        batches = util.batched(evaluate_trees(), batch_size=batch_size)
         if load_bar:
             batches = tqdm(batches, total=n_batches)
         for batch in batches:
