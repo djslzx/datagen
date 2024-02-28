@@ -4,9 +4,11 @@ from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from tqdm import tqdm
+from sklearn.manifold import MDS
 
 from lang.tree import Language, Tree
 from lang import lindenmayer, point, arc
+import featurizers as feat
 import util
 
 
@@ -308,7 +310,8 @@ def dpp_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> float:
     return logdet(L_up) - logdet(L_x)
 
 
-def animate_points(data_gen: Iterable, title: str, xlim: Optional[Tuple[int, int]], ylim: Optional[Tuple[int, int]], delay=200):
+def animate_points(data_gen: Iterable, title: str, xlim: Optional[Tuple[int, int]], ylim: Optional[Tuple[int, int]],
+                   delay=200):
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
     if xlim is not None:
@@ -320,6 +323,9 @@ def animate_points(data_gen: Iterable, title: str, xlim: Optional[Tuple[int, int
     def update(frame):
         t = frame["t"]
         points = frame["points"]
+
+        # check that points are in 2d
+        assert points.shape[1] == 2, f"points.shape: {points.shape}"
 
         ax.set_title(f"{title}, frame: {t}")
         ax.title.set_fontsize(8)
@@ -436,6 +442,23 @@ def transform_data(data: List[dict]) -> List[dict]:
     return [map_fn(i, d) for i, d in enumerate(data)]
 
 
+def transform_points(data: List[dict]) -> List[dict]:
+    # transform points from n dimensions to 2 dimensions
+    n_dim = len(data[0]["points"][0])
+    if n_dim < 2:
+        raise ValueError(f"Expected n_dim >= 2, got n_dim: {n_dim}")
+    elif n_dim == 2:
+        return data
+    else:
+        # use MDS to reduce dimensionality
+        mds = MDS(n_components=2)
+        n_points = len(data[0]["points"])
+        all_points = [p for d in data for p in d["points"]]
+        points_2d = mds.fit_transform(all_points)
+        return [{**d, "points": points_2d[i * n_points:(i + 1) * n_points]}
+                for i, d in enumerate(data)]
+
+
 def test_large_mat_dets():
     with util.Timing("large_mat_dets"):
         B = np.random.rand(10_000, 10_000)
@@ -455,12 +478,55 @@ def main(
         animate=True,
         spy=False,
 ):
-    lim=None
-    lang = point.RealPoint(lim=lim, std=1)
+    lim = None
+    # # point domain
+    # lang = point.RealPoint(lim=lim, std=1)
+    # coords = np.random.uniform(size=(n, 2)) * spread
+    # x_init = [lang.make_point(a, b) for a, b in coords]
 
-    # assume uniform initial distribution
-    coords = np.random.uniform(size=(n, 2)) * spread
-    x_init = [lang.make_point(a, b) for a, b in coords]
+    # lsystem domain
+    lang = lindenmayer.LSys(
+        kind="deterministic",
+        featurizer=feat.ResnetFeaturizer(),
+        step_length=3,
+        render_depth=4,
+        n_rows=128,
+        n_cols=128,
+        aa=True,
+        vary_color=False,
+    )
+    lsystems = [
+        "20;F;F~F",
+        "90;F;F~FF",
+        "45;F[+F][-F]FF;F~FF",
+        "60;F+F-F;F~F+FF",
+        "60;F;F~F[+F][-F]F",
+        "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F",
+        "90;-F;F~F+F-F-F+F",
+        "90;F-F-F-F;F~FF-F-F-F-F-F+F",
+        "90;F-F-F-F;F~FF-F-F-F-FF",
+        "90;F-F-F-F;F~FF-F+F-F-FF",
+        "90;F-F-F-F;F~FF-F--F-F",
+        "90;F-F-F-F;F~F-FF--F-F",
+        "90;F-F-F-F;F~F-F+F-F-F",
+        "20;F;F~F[+F]F[-F]F",
+        "20;F;F~F[+F]F[-F][F]",
+        "20;F;F~FF-[-F+F+F]+[+F-F-F]",
+        # "90;F;F~F[+F]F[-F]F",
+        # "90;F;F~F[+F]F[-F][F]",
+        # "20;F;F~FF-[-F+F+F]+[+F-F-F]",
+        # "20;F;F~FF+[+F-F-F]-[-F+F+F]",
+        # "60;F;F~F[+F]F[-F]F",
+        # "60;F;F~F[+F]F[-F][F]",
+        # "45;F;F~FF-[-F+F+F]+[+F-F-F]",
+        # "45;F;F~FF+[+F-F-F]-[-F+F+F]",
+    ]
+    x_init = [lang.parse(lsys) for lsys in lsystems]
+    # # draw x_init
+    # for lsys in lsystems:
+    #     img = lang.eval(lang.parse(lsys))
+    #     plt.imshow(img)
+    #     plt.show()
 
     # init generator
     # generator = mcmc_points_roundrobin(
@@ -497,6 +563,10 @@ def main(
         fig.savefig(f"{dirname}/plot.png")
         plt.cla()
 
+    # Save data
+    print("Saving data...")
+    np.save(f"{dirname}/data.npy", np.array(raw_data))
+
     # Save animation
     if animate:
         if lim is not None:
@@ -505,8 +575,9 @@ def main(
         else:
             xlim = None
             ylim = None
+        points = transform_points(raw_data)
         anim = animate_points(
-            raw_data,
+            points,
             title=title,
             xlim=xlim,
             ylim=ylim,
@@ -523,8 +594,8 @@ def main(
 
 
 if __name__ == "__main__":
-    N_STEPS = [1000 * 2]
-    POPN_SIZE = [100]
+    N_STEPS = [10 * 2]
+    POPN_SIZE = [10]
     ACCEPT_POLICY = ["energy", "dpp"]
     FIT_POLICY = ["all", "single"]
     N_RUNS = 1
