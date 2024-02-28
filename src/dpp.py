@@ -232,11 +232,10 @@ def slow_energy_update(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
 
 
 def fast_energy_update(x_feat: np.ndarray, up_feat: np.ndarray, i: int) -> float:
-    # energy-based acceptance probability:
     # log f(x') - log f(x) =
     #     sum_{i != k} exp -d(x_i', x_k') - exp -d(x_i, x_k)
     #   + sum_{j != k} exp -d(x_k', x_j') - exp -d(x_k, x_j)
-    # where d(x, y) = ||x - y||^2
+    # = 2 * sum_{i != k} exp -d(x_i', x_k') - exp -d(x_i, x_k) by symmetry
     return 2 * np.sum(-np.exp(-np.linalg.norm(up_feat - up_feat[i], axis=-1))
                       + np.exp(-np.linalg.norm(x_feat - x_feat[i], axis=-1)))
 
@@ -303,8 +302,16 @@ def plot_v_subplots(data: List[dict], keys: List[str]):
 
 def transform_data(data: List[dict]) -> List[dict]:
     threshold = 1e-10
-    rm_keys = {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat",
-               "log q(x|x')/q(x'|x)", "log det L_x", "log A(x',x)"}
+    rm_keys = {
+        "i",
+        "t",
+        "points",
+        "L_x", "L_up",
+        "s_feat", "x_feat",
+        "log q(x|x')/q(x'|x)",
+        "log det L_x",
+        "log A(x',x)"
+    }
 
     def map_fn(d: dict) -> dict:
         # compute sparsities
@@ -431,7 +438,7 @@ def main(
 
 
 if __name__ == "__main__":
-    N_STEPS = [1000 * 2]
+    N_STEPS = [1000 * 5]
     POPN_SIZE = [100]
     ACCEPT_POLICY = ["energy"]
     FIT_POLICY = ["all", "single"]
