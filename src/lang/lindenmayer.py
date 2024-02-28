@@ -62,7 +62,7 @@ class LSystem:
     @staticmethod
     def draw(s: str, d: float, theta: float,
              n_rows: int = 512, n_cols: int = 512, aa=True, include_alpha=True,
-             vary_color=True, hue_start=0, hue_end=360, hue_step=0.5) -> np.ndarray:  # pragma: no cover
+             vary_color=True, hue_start=0, hue_end=360, hue_step=0.5, fill_in_alpha=True) -> np.ndarray:  # pragma: no cover
         """
         Draw the turtle interpretation of the string `s` onto a `n_rows` x `n_cols` array,
         using scikit-image's drawing library (with anti-aliasing).
@@ -74,6 +74,8 @@ class LSystem:
         heading = 90  # parser_start facing up (logo)
         stack = []
         canvas = np.zeros((n_rows, n_cols, 4), dtype=np.uint8)
+        if fill_in_alpha:
+            canvas[..., 3] = 255
         hue_angle = 0
         for char in s:
             if char == 'F':
@@ -533,7 +535,7 @@ def compare_gaussian_blur(L: LSys, templates: List[str]):
 
 if __name__ == "__main__":
     # demo_draw()
-    L = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=4)
+    L = LSys(kind="deterministic", featurizer=ResnetFeaturizer(), step_length=3, render_depth=4, vary_color=False)
     templates = [
         "F;F~F[+F][-F]F",
         "F;F~FF+-F[+][-][[+--]]",
