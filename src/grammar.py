@@ -60,7 +60,7 @@ class Grammar:
         return -np.inf
 
     @staticmethod
-    def from_components(components: Dict[Symbol, List[Symbol]], gram) -> 'Grammar':
+    def from_components(components: Dict[Symbol, List[Symbol]], gram: int) -> 'Grammar':
         """
         Builds and returns a `Grammar` (ie PCFG) from typed DSL components
         Initializes the probabilities to be the same for every single rule
@@ -99,7 +99,7 @@ class Grammar:
                 for comp, comp_t in components.items():
                     if comp_t[-1] == sym_t:
                         if len(comp_t) == 1:
-                            form = comp
+                            form = str(comp)  # need to wrap as string in case we have numbers
                         else:
                             form = tuple([comp] + [(comp, arg_i, arg_t)
                                                    for arg_i, arg_t in enumerate(comp_t[:-1])])

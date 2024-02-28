@@ -303,7 +303,7 @@ class LSys(Language):
         "-": ["Term"],
     }
     sol_types.update({nt: ["Nonterm"] for nt in EXTRA_NONTERMINALS})
-    sol_types.update({angle: ["Num"] for angle in ANGLES})
+    sol_types.update({str(angle): ["Num"] for angle in ANGLES})
 
     dol_metagrammar = r"""
         lsystem: angle ";" axiom ";" rule   -> lsystem
@@ -337,7 +337,7 @@ class LSys(Language):
         "-": ["Term"],
     }
     dol_types.update({nt: ["Nonterm"] for nt in EXTRA_NONTERMINALS})
-    dol_types.update({angle: ["Num"] for angle in ANGLES})
+    dol_types.update({str(angle): ["Num"] for angle in ANGLES})
 
     def __init__(self, kind: str, featurizer: Featurizer, step_length: int, render_depth: int,
                  n_rows=128, n_cols=128, aa=True, vary_color=True):
