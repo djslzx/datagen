@@ -105,13 +105,14 @@ def mcmc_points_roundrobin_multisample(
 
 def mcmc_points_roundrobin(
         lang: point.RealPoint,
-        x_init: np.ndarray[Tree],
+        x_init: List[Tree],
         n: int,
         fit_policy: str,
         accept_policy: str,
         kernel_type: str,
         n_steps: int,
         gamma=1,
+        length_cap=50,
 ):
     x = x_init
     for t in range(n_steps):
@@ -124,7 +125,7 @@ def mcmc_points_roundrobin(
         elif fit_policy == 'single':
             lang.fit([x[i]])
 
-        s = lang.sample()
+        s = lang.samples(n_samples=1, length_cap=length_cap)[0]
         x_feat = lang.extract_features(x)
         s_feat = lang.extract_features([s])[0]
         up_feat = x_feat.copy()
@@ -213,6 +214,7 @@ def mcmc_lang_rr(
         fit_policy: str,
         accept_policy: str,
         gamma=1,
+        length_cap=50,
 ):
     x = x_init
     x_feat = lang.extract_features(x)
@@ -228,7 +230,9 @@ def mcmc_lang_rr(
             raise ValueError(f"Unknown fit policy: {fit_policy}")
 
         # sample and featurize
-        s = lang.sample()
+        s = lang.samples(n_samples=1, length_cap=length_cap)[0]
+        print(f"t: {t}, i: {i}, |s|: {len(s)}")
+
         s_feat = lang.extract_features([s])[0]
         up_feat = x_feat.copy()
         up_feat[i] = s_feat
@@ -594,7 +598,7 @@ def main(
 
 
 if __name__ == "__main__":
-    N_STEPS = [10 * 2]
+    N_STEPS = [100 * 2]
     POPN_SIZE = [10]
     ACCEPT_POLICY = ["energy", "dpp"]
     FIT_POLICY = ["all", "single"]
