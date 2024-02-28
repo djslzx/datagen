@@ -2,7 +2,7 @@
 Languages for testing novelty search with "point programs".
 Programs are 2D points, and novelty is the Euclidean distance between them.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import numpy as np
 import scipy.stats as stats
 
@@ -27,7 +27,7 @@ class RealPoint(Language):
         "real": ["Real"],
     }
 
-    def __init__(self, xlim: float, ylim: float, std: float = 1):
+    def __init__(self, xlim: Optional[float] = None, ylim: Optional[float] = None, std: float = 1):
         super().__init__(
             parser_grammar=RealPoint.grammar,
             parser_start="point",
@@ -35,8 +35,8 @@ class RealPoint(Language):
             model=None,
             featurizer=PointFeaturizer(ndims=2)
         )
-        assert xlim > 0
-        assert ylim > 0
+        assert xlim is None or xlim > 0
+        assert ylim is None or ylim > 0
         self.xlim = xlim
         self.ylim = ylim
         self.std = std
