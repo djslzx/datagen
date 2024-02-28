@@ -10,7 +10,7 @@ from lang import lindenmayer, point, arc
 import util
 
 
-def dpp_points_roundrobin_multisample(
+def mcmc_points_roundrobin_multisample(
         lang: point.RealPoint,
         n: int,
         accept_policy: str,
