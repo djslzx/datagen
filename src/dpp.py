@@ -556,16 +556,16 @@ def main(
     util.mkdir(f"../out/dpp/{id}/{title}")
     dirname = f"../out/dpp/{id}/{title}"
 
+    # Save data
+    print("Saving data...")
+    np.save(f"{dirname}/data.npy", np.array(raw_data), allow_pickle=True)
+
     if accept_policy in {"dpp", "energy"}:
         data = transform_data(raw_data)
         keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat"})
         fig = plot_v_subplots(data, keys)
         fig.savefig(f"{dirname}/plot.png")
         plt.cla()
-
-    # Save data
-    print("Saving data...")
-    np.save(f"{dirname}/data.npy", np.array(raw_data))
 
     # Save animation
     if animate:
