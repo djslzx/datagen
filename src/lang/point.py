@@ -27,7 +27,7 @@ class RealPoint(Language):
         "real": ["Real"],
     }
 
-    def __init__(self, xlim: Optional[float] = None, ylim: Optional[float] = None, std: float = 1):
+    def __init__(self, lim: Optional[float] = None, std: float = 1):
         super().__init__(
             parser_grammar=RealPoint.grammar,
             parser_start="point",
@@ -35,10 +35,8 @@ class RealPoint(Language):
             model=None,
             featurizer=PointFeaturizer(ndims=2)
         )
-        assert xlim is None or xlim > 0
-        assert ylim is None or ylim > 0
-        self.xlim = xlim
-        self.ylim = ylim
+        assert lim is None or lim > 0
+        self.lim = lim
         self.std = std
         self.x_distribution = GaussianSampler(0, self.std)
         self.y_distribution = GaussianSampler(0, self.std)
@@ -79,10 +77,9 @@ class RealPoint(Language):
     def sample(self) -> Tree:
         x = self.x_distribution.resample(1).item()
         y = self.y_distribution.resample(1).item()
-        if self.xlim:
-            x = min(self.xlim, max(-self.xlim, x))
-        if self.xlim:
-            y = min(self.ylim, max(-self.ylim, y))
+        if self.lim is not None:
+            x = min(self.lim, max(-self.lim, x))
+            y = min(self.lim, max(-self.lim, y))
         return self.parse(f"({x}, {y})")
 
     def log_probability(self, t: Tree) -> float:
