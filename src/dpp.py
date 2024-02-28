@@ -1,4 +1,4 @@
-from typing import List, Iterator, Tuple, Iterable
+from typing import List, Iterator, Tuple, Iterable, Optional
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
@@ -203,6 +203,68 @@ def mcmc_points_roundrobin(
         }
 
 
+def mcmc_lang_rr(
+        lang: Language,
+        x_init: List[Tree],
+        n: int,
+        n_steps: int,
+        fit_policy: str,
+        accept_policy: str,
+        gamma=1,
+):
+    x = x_init
+    x_feat = lang.extract_features(x)
+
+    for t in range(n_steps):
+        i = t % n
+
+        if fit_policy == 'all':
+            lang.fit(x, alpha=1.0)
+        elif fit_policy == 'single':
+            lang.fit([x[i]], alpha=1.0)
+        else:
+            raise ValueError(f"Unknown fit policy: {fit_policy}")
+
+        # sample and featurize
+        s = lang.sample()
+        s_feat = lang.extract_features([s])[0]
+        up_feat = x_feat.copy()
+        up_feat[i] = s_feat
+
+        # accept policy only affects log_f
+        if accept_policy == "dpp":
+            log_f = dpp_update(x_feat, up_feat, gamma)
+        elif accept_policy == "energy":
+            log_f = fast_energy_update(x_feat, up_feat, i)
+        elif accept_policy == "all":
+            log_f = 0
+        else:
+            raise ValueError(f"Unknown accept policy: {accept_policy}")
+
+        log_q = lang_log_pr(lang, x[i], s) - lang_log_pr(lang, s, x[i])
+        log_accept = np.min([0, log_f + log_q])
+
+        # stochastically accept/reject
+        u = np.random.uniform()
+        while u == 0:
+            u = np.random.uniform()
+        if np.log(u) < log_accept:
+            x[i] = s
+            x_feat[i] = s_feat
+
+        yield {
+            "i": i,
+            "t": t,
+            "x": x,
+            "s": s,
+            "x_feat": x_feat.copy(),
+            "s_feat": s_feat.copy(),
+            "log f(x')/f(x)": log_f,
+            "log q(x|x')/q(x'|x)": log_q,
+            "log A(x',x)": log_accept,
+        }
+
+
 def logdet(m: np.ndarray) -> float:
     return np.prod(np.linalg.slogdet(m))
 
@@ -240,11 +302,19 @@ def fast_energy_update(x_feat: np.ndarray, up_feat: np.ndarray, i: int) -> float
                       + np.exp(-np.linalg.norm(x_feat - x_feat[i], axis=-1)))
 
 
-def animate_points(data_gen: Iterable, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
+def dpp_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> float:
+    L_x = np.exp(-gamma * np.linalg.norm(x_feat[:, None] - x_feat[None], axis=-1) ** 2)
+    L_up = np.exp(-gamma * np.linalg.norm(up_feat[:, None] - up_feat[None], axis=-1) ** 2)
+    return logdet(L_up) - logdet(L_x)
+
+
+def animate_points(data_gen: Iterable, title: str, xlim: Optional[Tuple[int, int]], ylim: Optional[Tuple[int, int]], delay=200):
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
-    ax.set_xlim(*xlim)
-    ax.set_ylim(*ylim)
+    if xlim is not None:
+        ax.set_xlim(*xlim)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
     ax.set_aspect('equal')
 
     def update(frame):
@@ -254,6 +324,12 @@ def animate_points(data_gen: Iterable, title: str, xlim: Tuple[int, int], ylim: 
         ax.set_title(f"{title}, frame: {t}")
         ax.title.set_fontsize(8)
         scatter.set_offsets(points)
+
+        if xlim is None:
+            ax.set_xlim(min(p[0] for p in points), max(p[0] for p in points))
+        if ylim is None:
+            ax.set_ylim(min(p[1] for p in points), max(p[1] for p in points))
+
         return scatter,
 
     return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
@@ -305,15 +381,16 @@ def transform_data(data: List[dict]) -> List[dict]:
     rm_keys = {
         "i",
         "t",
+        "x", "s",
+        "x_feat", "s_feat",
         "points",
         "L_x", "L_up",
-        "s_feat", "x_feat",
         "log q(x|x')/q(x'|x)",
         "log det L_x",
         "log A(x',x)"
     }
 
-    def map_fn(d: dict) -> dict:
+    def map_fn(t: int, d: dict) -> dict:
         # compute sparsities
         sparsities = {}
         try:
@@ -329,11 +406,14 @@ def transform_data(data: List[dict]) -> List[dict]:
         dists = novelty_scores(queries=s_feat[None], data=x_feat)
         d["knn_dist"] = dists[0]
 
-        # measure overlap of i-th point wrt rest of points
+        # measure overlap of i-th embedding wrt rest of embeddings
         i = d["i"]
         d["overlap"] = np.sum(np.isclose(np.delete(x_feat, i, axis=0), x_feat[i], atol=1e-5))
 
-        # measure avg radius of all points in d["points"]
+        # rename embeddings as points
+        d["points"] = d["x_feat"]
+
+        # measure avg radius of all embeddings in d["points"]
         d["mean radius"] = np.mean(np.linalg.norm(np.array(d["points"])[:, None] -
                                                   np.array(d["points"]),
                                                   axis=-1))
@@ -341,8 +421,9 @@ def transform_data(data: List[dict]) -> List[dict]:
         # accept probability
         d["A(x',x)"] = np.exp(d["log A(x',x)"])
 
-        # average accept probability
-        d["mean A(x',x)"] = np.mean([np.exp(x["log A(x',x)"]) for x in data])
+        # average accept probability over time
+        # show how mean changes over time
+        d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in data[:t + 1]]) / (t + 1)
 
         # filter keys
         d = {k: v for k, v in d.items() if k not in rm_keys}
@@ -352,7 +433,7 @@ def transform_data(data: List[dict]) -> List[dict]:
             **sparsities,
         }
 
-    return list(map(map_fn, data))
+    return [map_fn(i, d) for i, d in enumerate(data)]
 
 
 def test_large_mat_dets():
@@ -369,35 +450,33 @@ def main(
         popn_size: int,
         fit_policy: str,
         accept_policy: str,
-        kernel_type: str,
         run: int,
         spread=1.0,
         animate=True,
         spy=False,
 ):
-    # lang = point.RealPoint(std=1)  # unbounded
-    lang = point.RealPoint(xlim=10, ylim=10, std=1)  # bounded
+    lim=None
+    lang = point.RealPoint(lim=lim, std=1)
 
     # assume uniform initial distribution
     coords = np.random.uniform(size=(n, 2)) * spread
     x_init = [lang.make_point(a, b) for a, b in coords]
 
     # init generator
-    generator = mcmc_points_roundrobin(
+    # generator = mcmc_points_roundrobin(
+    generator = mcmc_lang_rr(
         lang=lang,
         x_init=x_init,
         n=popn_size,
+        n_steps=n_steps,
         fit_policy=fit_policy,
         accept_policy=accept_policy,
-        n_steps=n_steps,
-        kernel_type=kernel_type,
     )
-    points = list(tqdm(generator, total=n_steps))
+    raw_data = list(tqdm(generator, total=n_steps))
 
     title = (f"N={popn_size}"
              f",fit={fit_policy}"
              f",accept={accept_policy}"
-             f",kernel={kernel_type}"
              f",steps={n_steps}"
              f",spread={spread}"
              f",run={run}")
@@ -412,7 +491,7 @@ def main(
     dirname = f"../out/dpp/{id}/{title}"
 
     if accept_policy in {"dpp", "energy"}:
-        data = transform_data(points)
+        data = transform_data(raw_data)
         keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat"})
         fig = plot_v_subplots(data, keys)
         fig.savefig(f"{dirname}/plot.png")
@@ -420,11 +499,17 @@ def main(
 
     # Save animation
     if animate:
+        if lim is not None:
+            xlim = lang.lim
+            ylim = lang.lim
+        else:
+            xlim = None
+            ylim = None
         anim = animate_points(
-            points,
+            raw_data,
             title=title,
-            xlim=(-10, 10),
-            ylim=(-10, 10),
+            xlim=xlim,
+            ylim=ylim,
             delay=100,
         )
         print("Saving animation...")
@@ -432,37 +517,34 @@ def main(
 
     # Save spy animation
     if spy:
-        spy_anim = animate_matrix_spy(points, delay=100, precision=1e-10)
+        spy_anim = animate_matrix_spy(raw_data, delay=100, precision=1e-10)
         print("Saving spy animation...")
         spy_anim.save(f"{dirname}/spy.mp4")
 
 
 if __name__ == "__main__":
-    N_STEPS = [1000 * 5]
+    N_STEPS = [1000 * 2]
     POPN_SIZE = [100]
-    ACCEPT_POLICY = ["energy"]
+    ACCEPT_POLICY = ["energy", "dpp"]
     FIT_POLICY = ["all", "single"]
-    KERNEL_TYPE = ["rbf"]
     N_RUNS = 1
-    SPREAD = [1, 2]
+    SPREAD = [1]
 
     ts = util.timestamp()
     for t in N_STEPS:
         for n in POPN_SIZE:
             for accept in ACCEPT_POLICY:
                 for fit in FIT_POLICY:
-                    for kernel in KERNEL_TYPE:
-                        for spread in SPREAD:
-                            for run in range(N_RUNS):
-                                main(
-                                    id=ts,
-                                    n_steps=t,
-                                    popn_size=n,
-                                    fit_policy=fit,
-                                    accept_policy=accept,
-                                    kernel_type=kernel,
-                                    run=run,
-                                    spread=spread,
-                                    animate=True,
-                                    spy=False,
-                                )
+                    for spread in SPREAD:
+                        for run in range(N_RUNS):
+                            main(
+                                id=ts,
+                                n_steps=t,
+                                popn_size=n,
+                                fit_policy=fit,
+                                accept_policy=accept,
+                                run=run,
+                                spread=spread,
+                                animate=True,
+                                spy=False,
+                            )
