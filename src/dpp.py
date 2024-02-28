@@ -101,8 +101,9 @@ def dpp_points_roundrobin_multisample(
         }
 
 
-def dpp_points_roundrobin(
+def mcmc_points_roundrobin(
         lang: point.RealPoint,
+        x_init: np.ndarray[Tree],
         n: int,
         fit_policy: str,
         accept_policy: str,
@@ -110,11 +111,7 @@ def dpp_points_roundrobin(
         n_steps: int,
         gamma=1,
 ):
-    # assume uniform initial distribution
-    coords = np.random.uniform(size=(n, 2)) * 2
-    # coords = np.random.uniform(size=(n, 2)) * 5 - 2.5
-    x = [lang.make_point(a, b) for a, b in coords]
-
+    x = x_init
     for t in range(n_steps):
         # singleton sliding window
         i = t % n
@@ -166,6 +163,24 @@ def dpp_points_roundrobin(
                 "log q(x|x')/q(x'|x)": log_q,
                 "log A(x',x)": log_accept,
             })
+        elif accept_policy == 'energy':
+            # energy-based acceptance probability:
+            # log P(x) = -sum_i,j exp -d(x_i, x_j)
+            log_f = fast_energy_update(x_feat, up_feat, i)
+            # assert np.isclose(log_f, fast_log_f), f"log_f: {log_f}, fast_log_f: {fast_log_f}"
+
+            # log q(x|x') - log q(x'|x)
+            log_q = lang_log_pr(lang, x[i], s) - \
+                    lang_log_pr(lang, s, x[i])
+
+            # log A = min(1, log f(x') - log f(x) + log q(x|x') - log q(x'|x))
+            log_accept = np.min([0, log_f + log_q])
+
+            record.update({
+                "log f(x')/f(x)": log_f,
+                "log q(x|x')/q(x'|x)": log_q,
+                "log A(x',x)": log_accept,
+            })
         elif accept_policy == 'all':
             log_accept = 0
         else:
@@ -210,32 +225,23 @@ def novelty_scores(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.n
     return dists
 
 
-def animate_points_v1(data_gen: Iterator, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
-    fig, ax = plt.subplots()
-    scatter = ax.scatter([], [])
-    ax.set_xlim(*xlim)
-    ax.set_ylim(*ylim)
-    ax.set_aspect('equal')
-
-    def update(frame):
-        i = frame["i"]
-        t = frame["t"]
-        points = frame["points"]
-        samples = frame["samples"]
-        best_i = frame["best_i"]
-
-        ax.set_title(f"{title}, frame: {t}")
-        scatter.set_offsets(points + samples)
-        colors = ["blue"] * len(points) + ["gray"] * len(samples)
-        colors[i] = "red"
-        colors[best_i + len(points)] = "green"
-        scatter.set_color(colors)
-        return scatter,
-
-    return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
+def slow_energy_update(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
+    log_p_up = -np.sum(np.exp(-np.linalg.norm(up_feat[:, None] - up_feat[None], axis=-1)))
+    log_p_x = -np.sum(np.exp(-np.linalg.norm(x_feat[:, None] - x_feat[None], axis=-1)))
+    return log_p_up - log_p_x
 
 
-def animate_points_v2(data_gen: Iterable, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
+def fast_energy_update(x_feat: np.ndarray, up_feat: np.ndarray, i: int) -> float:
+    # energy-based acceptance probability:
+    # log f(x') - log f(x) =
+    #     sum_{i != k} exp -d(x_i', x_k') - exp -d(x_i, x_k)
+    #   + sum_{j != k} exp -d(x_k', x_j') - exp -d(x_k, x_j)
+    # where d(x, y) = ||x - y||^2
+    return 2 * np.sum(-np.exp(-np.linalg.norm(up_feat - up_feat[i], axis=-1))
+                      + np.exp(-np.linalg.norm(x_feat - x_feat[i], axis=-1)))
+
+
+def animate_points(data_gen: Iterable, title: str, xlim: Tuple[int, int], ylim: Tuple[int, int], delay=200):
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
     ax.set_xlim(*xlim)
@@ -247,6 +253,7 @@ def animate_points_v2(data_gen: Iterable, title: str, xlim: Tuple[int, int], yli
         points = frame["points"]
 
         ax.set_title(f"{title}, frame: {t}")
+        ax.title.set_fontsize(8)
         scatter.set_offsets(points)
         return scatter,
 
@@ -275,23 +282,6 @@ def animate_matrix_spy(data_gen: Iterable, precision, delay=200):
         plt.title(f'L_up @ {t}')
 
     return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
-
-
-def plot_subplots(data: List[dict], keys: List[str]):
-    num_keys = len(keys)
-    num_rows = int(num_keys ** 0.5)
-    num_cols = (num_keys + num_rows - 1) // num_rows
-
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=(12, 8))
-
-    for i, key in enumerate(keys):
-        row = i // num_cols
-        col = i % num_cols
-        ax = axes[row, col] if num_rows > 1 else axes[col]
-        ax.set_title(key)
-        ax.plot([x[key] for x in data], label=key)
-
-    plt.tight_layout()
 
 
 def plot_v_subplots(data: List[dict], keys: List[str]):
@@ -374,11 +364,21 @@ def main(
         accept_policy: str,
         kernel_type: str,
         run: int,
+        spread=1.0,
         animate=True,
         spy=False,
 ):
-    generator = dpp_points_roundrobin(
-        lang=point.RealPoint(xlim=10, ylim=10),
+    # lang = point.RealPoint(std=1)  # unbounded
+    lang = point.RealPoint(xlim=10, ylim=10, std=1)  # bounded
+
+    # assume uniform initial distribution
+    coords = np.random.uniform(size=(n, 2)) * spread
+    x_init = [lang.make_point(a, b) for a, b in coords]
+
+    # init generator
+    generator = mcmc_points_roundrobin(
+        lang=lang,
+        x_init=x_init,
         n=popn_size,
         fit_policy=fit_policy,
         accept_policy=accept_policy,
@@ -392,6 +392,7 @@ def main(
              f",accept={accept_policy}"
              f",kernel={kernel_type}"
              f",steps={n_steps}"
+             f",spread={spread}"
              f",run={run}")
 
     # make run directory
@@ -403,7 +404,7 @@ def main(
     util.mkdir(f"../out/dpp/{id}/{title}")
     dirname = f"../out/dpp/{id}/{title}"
 
-    if accept_policy == "dpp":
+    if accept_policy in {"dpp", "energy"}:
         data = transform_data(points)
         keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat"})
         fig = plot_v_subplots(data, keys)
@@ -412,7 +413,7 @@ def main(
 
     # Save animation
     if animate:
-        anim = animate_points_v2(
+        anim = animate_points(
             points,
             title=title,
             xlim=(-10, 10),
@@ -432,25 +433,29 @@ def main(
 if __name__ == "__main__":
     N_STEPS = [1000 * 2]
     POPN_SIZE = [100]
-    ACCEPT_POLICY = ["dpp"]
+    ACCEPT_POLICY = ["energy"]
     FIT_POLICY = ["all", "single"]
     KERNEL_TYPE = ["rbf"]
-    N_RUNS = 10
+    N_RUNS = 1
+    SPREAD = [1, 2]
 
     ts = util.timestamp()
     for t in N_STEPS:
         for n in POPN_SIZE:
-            for fit in FIT_POLICY:
-                for kernel in KERNEL_TYPE:
-                    for run in range(N_RUNS):
-                        main(
-                            id=ts,
-                            n_steps=t,
-                            popn_size=n,
-                            fit_policy=fit,
-                            accept_policy="dpp",
-                            kernel_type=kernel,
-                            run=run,
-                            animate=True,
-                            spy=False,
-                        )
+            for accept in ACCEPT_POLICY:
+                for fit in FIT_POLICY:
+                    for kernel in KERNEL_TYPE:
+                        for spread in SPREAD:
+                            for run in range(N_RUNS):
+                                main(
+                                    id=ts,
+                                    n_steps=t,
+                                    popn_size=n,
+                                    fit_policy=fit,
+                                    accept_policy=accept,
+                                    kernel_type=kernel,
+                                    run=run,
+                                    spread=spread,
+                                    animate=True,
+                                    spy=False,
+                                )
