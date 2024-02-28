@@ -205,6 +205,8 @@ class Language:
             batches = tqdm(batches, total=n_batches)
         for batch in batches:
             y = self.featurizer.apply(batch)
+            if y.ndim == 1:
+                y = y.reshape(1, -1)
             ys.extend(y)
         out = np.array(ys)
 
