@@ -389,6 +389,14 @@ def test_large_mat_dets():
     print(det)
 
 
+def npy_to_images(npy_dir: str, img_dir: str):
+    """
+    Read npy data files in `npy_dir` directory and write image renders
+    of npy files to `img_dir`.
+    """
+    raise NotImplementedError
+
+
 def main(
         id: int,
         n_steps: int,
@@ -403,42 +411,45 @@ def main(
 ):
     lim = None
 
-    # point domain
-    lang = point.RealPoint(lim=lim, std=1)
-    coords = np.random.uniform(size=(n, 2)) * spread
-    x_init = [lang.make_point(a, b) for a, b in coords]
+    # # point domain
+    # lang = point.RealPoint(lim=lim, std=1)
+    # coords = np.random.uniform(size=(n, 2)) * spread
+    # x_init = [lang.make_point(a, b) for a, b in coords]
 
-    # # lsystem domain
-    # lang = lindenmayer.LSys(
-    #     kind="deterministic",
-    #     featurizer=feat.ResnetFeaturizer(),
-    #     step_length=3,
-    #     render_depth=4,
-    #     n_rows=128,
-    #     n_cols=128,
-    #     aa=True,
-    #     vary_color=False,
-    # )
-    # lsystems = [
-    #     "20;F;F~F",
-    #     "90;F;F~FF",
-    #     "45;F[+F][-F]FF;F~FF",
-    #     "60;F+F-F;F~F+FF",
-    #     "60;F;F~F[+F][-F]F",
-    #     "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F",
-    #     "90;-F;F~F+F-F-F+F",
-    #     "90;F-F-F-F;F~FF-F-F-F-F-F+F",
-    #     "90;F-F-F-F;F~FF-F-F-F-FF",
-    #     "90;F-F-F-F;F~FF-F+F-F-FF",
-    #     "90;F-F-F-F;F~FF-F--F-F",
-    #     "90;F-F-F-F;F~F-FF--F-F",
-    #     "90;F-F-F-F;F~F-F+F-F-F",
-    #     "20;F;F~F[+F]F[-F]F",
-    #     "20;F;F~F[+F]F[-F][F]",
-    #     "20;F;F~FF-[-F+F+F]+[+F-F-F]",
-    # ]
-    # lang.fit([lang.parse(lsys) for lsys in lsystems], alpha=1.0)
-    # x_init = lang.samples(popn_size, length_cap=50)
+    # lsystem domain
+    lang = lindenmayer.LSys(
+        kind="deterministic",
+        featurizer=feat.ResnetFeaturizer(),
+        step_length=3,
+        render_depth=4,
+        n_rows=128,
+        n_cols=128,
+        aa=True,
+        vary_color=False,
+    )
+
+    # lsystem initial popn: x0 + samples from G(x0)
+    lsystem_strs = [
+        "20;F;F~F",
+        "90;F;F~FF",
+        "45;F[+F][-F]FF;F~FF",
+        "60;F+F-F;F~F+FF",
+        "60;F;F~F[+F][-F]F",
+        "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F",
+        "90;-F;F~F+F-F-F+F",
+        "90;F-F-F-F;F~FF-F-F-F-F-F+F",
+        "90;F-F-F-F;F~FF-F-F-F-FF",
+        "90;F-F-F-F;F~FF-F+F-F-FF",
+        "90;F-F-F-F;F~FF-F--F-F",
+        "90;F-F-F-F;F~F-FF--F-F",
+        "90;F-F-F-F;F~F-F+F-F-F",
+        "20;F;F~F[+F]F[-F]F",
+        "20;F;F~F[+F]F[-F][F]",
+        "20;F;F~FF-[-F+F+F]+[+F-F-F]",
+    ]
+    lsystems = [lang.parse(lsys) for lsys in lsystem_strs]
+    lang.fit(lsystems, alpha=1.0)
+    x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=50)
 
     # init generator
     generator = mcmc_lang_rr(
@@ -506,12 +517,13 @@ def main(
 
 
 if __name__ == "__main__":
-    N_STEPS = [1000 * 5]
-    POPN_SIZE = [10]
-    ACCEPT_POLICY = ["energy", "dpp"]
+    N_STEPS = [100 * 100]
+    POPN_SIZE = [100]
+    ACCEPT_POLICY = ["energy"]
     FIT_POLICY = ["all", "single"]
     N_RUNS = 1
     SPREAD = [1]
+    SAVE = True
 
     ts = util.timestamp()
     for t in N_STEPS:
@@ -528,7 +540,7 @@ if __name__ == "__main__":
                                 accept_policy=accept,
                                 run=run,
                                 spread=spread,
-                                save_data=False,
+                                save_data=SAVE,
                                 animate_embeddings=True,
                                 spy=False,
                             )
