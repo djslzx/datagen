@@ -12,97 +12,6 @@ import featurizers as feat
 import util
 
 
-def mcmc_points_roundrobin_multisample(
-        lang: point.RealPoint,
-        n: int,
-        accept_policy: str,
-        n_samples: int,
-        n_steps: int,
-):
-    # assume uniform initial distribution
-    coords = np.random.uniform(size=(n, 2))
-    x: np.ndarray[Tree] = np.array([lang.make_point(a, b) for a, b in coords])
-
-    for t in range(n_steps):
-        # singleton sliding window
-        i = t % n
-
-        # sample from proposal distribution
-        lang.fit(x[None, i])
-        samples = [lang.sample() for _ in range(n_samples)]
-
-        # choose sample with best novelty score
-        # (1) compute novelty score
-        x_features = lang.extract_features(x)
-        sample_features = lang.extract_features(samples)
-        dists = novelty_scores(queries=sample_features, data=x_features)
-
-        # (2) choose best sample wrt novelty score
-        best_i = np.argmax(dists)
-        best_sample = samples[best_i]
-
-        record = {}
-        if accept_policy == 'dpp':
-            # compute accept probability
-            # A(x *, xt) = min(1, f(x') / f(x) * q(x|x') / q(x'|x))
-            # (1) log f(x') - log f(x)
-            #   = log det((B^T B)_x') - log det((B^T B)_x)
-            L_x = np.matmul(x_features, x_features.T)
-            updated_features = x_features.copy()
-            updated_features[i] = sample_features[best_i]
-            L_updated = np.matmul(updated_features, updated_features.T)
-            det_x = np.linalg.det(L_x)
-            det_s = np.linalg.det(L_updated)
-
-            # assert det_x > 0 and det_s > 0, f"det_x: {det_x}, det_s: {det_s}"
-            log_f = np.log(det_s) - np.log(det_x)
-
-            # (2) log q(x|x') - log q(x'|x)
-            #   = log nov(xi|x\i) - log nov(xi'|x\i) + log p(xi|G(xi')) - log p(xi'|G(xi))
-            log_q = (
-                    np.log(novelty_scores(x_features[None, i], x_features)[0])  # log nov(xi|x)
-                    - np.log(dists[best_i])  # log nov(xi'|x)
-                    + lang_log_pr(lang, query=x[i], data=best_sample)  # log p(xi|G(xi'))
-                    - lang_log_pr(lang, query=best_sample, data=x[i])  # log p(xi'|G(xi))
-            )
-
-            # (3) A = min(1, .) => log A = min(0, .)
-            log_accept = min(0, log_f + log_q)
-            p_accept = np.exp(log_accept)
-
-            # log stuff
-            record.update({
-                "det(L_x)": det_x,
-                "det(L_x')": det_s,
-                "det < 0": int(det_x <= 0 or det_s <= 0),
-                "log f(x') - log f(x)": log_f,
-                "log q(x|x')/(x'|x)": log_q,
-                "log A(x'|x)": log_accept,
-            })
-        elif accept_policy == 'all':
-            p_accept = 1
-        else:
-            raise ValueError(f"Unknown accept policy: {accept_policy}")
-
-        # stochastically accept/reject
-        if np.random.uniform(low=0, high=1) < p_accept:
-            # accept: update x[i] with best sample
-            x[i] = best_sample
-        else:
-            # reject: keep x[i] as is
-            pass
-
-        # yield current step point coords for animation
-        yield {
-            "points": [lang.eval(p) for p in x],
-            "samples": [lang.eval(p) for p in samples],
-            "best_i": best_i,
-            "i": i,
-            "t": t,
-            **record,
-        }
-
-
 def mcmc_points_roundrobin(
         lang: point.RealPoint,
         x_init: List[Tree],
@@ -231,8 +140,6 @@ def mcmc_lang_rr(
 
         # sample and featurize
         s = lang.samples(n_samples=1, length_cap=length_cap)[0]
-        print(f"t: {t}, i: {i}, |s|: {len(s)}")
-
         s_feat = lang.extract_features([s])[0]
         up_feat = x_feat.copy()
         up_feat[i] = s_feat
@@ -261,7 +168,7 @@ def mcmc_lang_rr(
         yield {
             "i": i,
             "t": t,
-            "x": x,
+            "x": [lang.to_str(p) for p in x],
             "s": s,
             "x_feat": x_feat.copy(),
             "s_feat": s_feat.copy(),
@@ -285,7 +192,7 @@ def lang_log_pr_multi(lang: Language, query: List[Tree], data: List[Tree]) -> fl
     return sum(lang.log_probability(q) for q in query)
 
 
-def novelty_scores(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.ndarray:
+def knn_dist_sum(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.ndarray:
     knn = NearestNeighbors(n_neighbors=n_neighbors)
     knn.fit(data)
     dists, indices = knn.kneighbors(queries)
@@ -322,7 +229,7 @@ def animate_points(data_gen: Iterable, title: str, xlim: Optional[Tuple[int, int
         ax.set_xlim(*xlim)
     if ylim is not None:
         ax.set_ylim(*ylim)
-    ax.set_aspect('equal')
+    ax.set_box_aspect(1)
 
     def update(frame):
         t = frame["t"]
@@ -386,7 +293,7 @@ def plot_v_subplots(data: List[dict], keys: List[str]):
     return fig
 
 
-def transform_data(data: List[dict]) -> List[dict]:
+def transform_data(data: List[dict], verbose=False) -> List[dict]:
     threshold = 1e-10
     rm_keys = {
         "i",
@@ -395,7 +302,7 @@ def transform_data(data: List[dict]) -> List[dict]:
         "x_feat", "s_feat",
         "points",
         "L_x", "L_up",
-        "log q(x|x')/q(x'|x)",
+        # "log q(x|x')/q(x'|x)",
         "log det L_x",
         "log A(x',x)"
     }
@@ -404,8 +311,7 @@ def transform_data(data: List[dict]) -> List[dict]:
         # compute sparsities
         sparsities = {}
         try:
-            L_x, L_up = d["L_x"], d["L_up"]
-            # sparsities[f"sparsity(L_x, {threshold})"] = np.sum(L_x < threshold) / L_x.size
+            L_up = d["L_up"]
             sparsities[f"sparsity(L_up, {threshold})"] = np.sum(L_up < threshold) / L_up.size
         except KeyError:
             pass
@@ -413,12 +319,15 @@ def transform_data(data: List[dict]) -> List[dict]:
         # knn of new sample point
         x_feat = d["x_feat"]
         s_feat = d["s_feat"]
-        dists = novelty_scores(queries=s_feat[None], data=x_feat)
+        dists = knn_dist_sum(queries=s_feat[None], data=x_feat, n_neighbors=min(5, len(x_feat)))
         d["knn_dist"] = dists[0]
 
         # measure overlap of i-th embedding wrt rest of embeddings
         i = d["i"]
-        d["overlap"] = np.sum(np.isclose(np.delete(x_feat, i, axis=0), x_feat[i], atol=1e-5))
+        d["overlap"] = np.sum(np.all(np.isclose(x_feat[i],
+                                                np.delete(x_feat, i, axis=0),
+                                                atol=1e-5),
+                                     axis=0))
 
         # rename embeddings as points
         d["points"] = d["x_feat"]
@@ -427,6 +336,9 @@ def transform_data(data: List[dict]) -> List[dict]:
         d["mean radius"] = np.mean(np.linalg.norm(np.array(d["points"])[:, None] -
                                                   np.array(d["points"]),
                                                   axis=-1))
+
+        # program sample length
+        d["sample length"] = len(d["s"])
 
         # accept probability
         d["A(x',x)"] = np.exp(d["log A(x',x)"])
@@ -443,11 +355,17 @@ def transform_data(data: List[dict]) -> List[dict]:
             **sparsities,
         }
 
-    return [map_fn(i, d) for i, d in enumerate(data)]
+    if verbose:
+        return [map_fn(i, d) for i, d in enumerate(tqdm(data, desc="Transforming data"))]
+    else:
+        return [map_fn(i, d) for i, d in enumerate(data)]
 
 
 def transform_points(data: List[dict]) -> List[dict]:
-    # transform points from n dimensions to 2 dimensions
+    """
+    Transform points from n dimensions to 2 dimensions using MDS
+    """
+
     n_dim = len(data[0]["points"][0])
     if n_dim < 2:
         raise ValueError(f"Expected n_dim >= 2, got n_dim: {n_dim}")
@@ -478,62 +396,51 @@ def main(
         fit_policy: str,
         accept_policy: str,
         run: int,
+        save_data: bool,
         spread=1.0,
-        animate=True,
+        animate_embeddings=True,
         spy=False,
 ):
     lim = None
-    # # point domain
-    # lang = point.RealPoint(lim=lim, std=1)
-    # coords = np.random.uniform(size=(n, 2)) * spread
-    # x_init = [lang.make_point(a, b) for a, b in coords]
 
-    # lsystem domain
-    lang = lindenmayer.LSys(
-        kind="deterministic",
-        featurizer=feat.ResnetFeaturizer(),
-        step_length=3,
-        render_depth=4,
-        n_rows=128,
-        n_cols=128,
-        aa=True,
-        vary_color=False,
-    )
-    lsystems = [
-        "20;F;F~F",
-        "90;F;F~FF",
-        "45;F[+F][-F]FF;F~FF",
-        "60;F+F-F;F~F+FF",
-        "60;F;F~F[+F][-F]F",
-        "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F",
-        "90;-F;F~F+F-F-F+F",
-        "90;F-F-F-F;F~FF-F-F-F-F-F+F",
-        "90;F-F-F-F;F~FF-F-F-F-FF",
-        "90;F-F-F-F;F~FF-F+F-F-FF",
-        "90;F-F-F-F;F~FF-F--F-F",
-        "90;F-F-F-F;F~F-FF--F-F",
-        "90;F-F-F-F;F~F-F+F-F-F",
-        "20;F;F~F[+F]F[-F]F",
-        "20;F;F~F[+F]F[-F][F]",
-        "20;F;F~FF-[-F+F+F]+[+F-F-F]",
-        # "90;F;F~F[+F]F[-F]F",
-        # "90;F;F~F[+F]F[-F][F]",
-        # "20;F;F~FF-[-F+F+F]+[+F-F-F]",
-        # "20;F;F~FF+[+F-F-F]-[-F+F+F]",
-        # "60;F;F~F[+F]F[-F]F",
-        # "60;F;F~F[+F]F[-F][F]",
-        # "45;F;F~FF-[-F+F+F]+[+F-F-F]",
-        # "45;F;F~FF+[+F-F-F]-[-F+F+F]",
-    ]
-    x_init = [lang.parse(lsys) for lsys in lsystems]
-    # # draw x_init
-    # for lsys in lsystems:
-    #     img = lang.eval(lang.parse(lsys))
-    #     plt.imshow(img)
-    #     plt.show()
+    # point domain
+    lang = point.RealPoint(lim=lim, std=1)
+    coords = np.random.uniform(size=(n, 2)) * spread
+    x_init = [lang.make_point(a, b) for a, b in coords]
+
+    # # lsystem domain
+    # lang = lindenmayer.LSys(
+    #     kind="deterministic",
+    #     featurizer=feat.ResnetFeaturizer(),
+    #     step_length=3,
+    #     render_depth=4,
+    #     n_rows=128,
+    #     n_cols=128,
+    #     aa=True,
+    #     vary_color=False,
+    # )
+    # lsystems = [
+    #     "20;F;F~F",
+    #     "90;F;F~FF",
+    #     "45;F[+F][-F]FF;F~FF",
+    #     "60;F+F-F;F~F+FF",
+    #     "60;F;F~F[+F][-F]F",
+    #     "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F",
+    #     "90;-F;F~F+F-F-F+F",
+    #     "90;F-F-F-F;F~FF-F-F-F-F-F+F",
+    #     "90;F-F-F-F;F~FF-F-F-F-FF",
+    #     "90;F-F-F-F;F~FF-F+F-F-FF",
+    #     "90;F-F-F-F;F~FF-F--F-F",
+    #     "90;F-F-F-F;F~F-FF--F-F",
+    #     "90;F-F-F-F;F~F-F+F-F-F",
+    #     "20;F;F~F[+F]F[-F]F",
+    #     "20;F;F~F[+F]F[-F][F]",
+    #     "20;F;F~FF-[-F+F+F]+[+F-F-F]",
+    # ]
+    # lang.fit([lang.parse(lsys) for lsys in lsystems], alpha=1.0)
+    # x_init = lang.samples(popn_size, length_cap=50)
 
     # init generator
-    # generator = mcmc_points_roundrobin(
     generator = mcmc_lang_rr(
         lang=lang,
         x_init=x_init,
@@ -542,8 +449,6 @@ def main(
         fit_policy=fit_policy,
         accept_policy=accept_policy,
     )
-    raw_data = list(tqdm(generator, total=n_steps))
-
     title = (f"N={popn_size}"
              f",fit={fit_policy}"
              f",accept={accept_policy}"
@@ -559,20 +464,23 @@ def main(
 
     util.mkdir(f"../out/dpp/{id}/{title}")
     dirname = f"../out/dpp/{id}/{title}"
+    util.mkdir(f"{dirname}/data/")
 
     # Save data
-    print("Saving data...")
-    np.save(f"{dirname}/data.npy", np.array(raw_data), allow_pickle=True)
+    raw_data = []
+    for i, d in enumerate(tqdm(generator, total=n_steps, desc="Generating data")):
+        if save_data:
+            np.save(f"{dirname}/data/part-{i}.npy", d, allow_pickle=True)
+        raw_data.append(d)
 
     if accept_policy in {"dpp", "energy"}:
-        data = transform_data(raw_data)
+        data = transform_data(raw_data, verbose=True)
         keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat"})
         fig = plot_v_subplots(data, keys)
         fig.savefig(f"{dirname}/plot.png")
         plt.cla()
-
     # Save animation
-    if animate:
+    if animate_embeddings:
         if lim is not None:
             xlim = lang.lim
             ylim = lang.lim
@@ -588,7 +496,7 @@ def main(
             delay=100,
         )
         print("Saving animation...")
-        anim.save(f"{dirname}/anim.mp4")
+        anim.save(f"{dirname}/embed.mp4")
 
     # Save spy animation
     if spy:
@@ -598,7 +506,7 @@ def main(
 
 
 if __name__ == "__main__":
-    N_STEPS = [100 * 2]
+    N_STEPS = [1000 * 5]
     POPN_SIZE = [10]
     ACCEPT_POLICY = ["energy", "dpp"]
     FIT_POLICY = ["all", "single"]
@@ -620,6 +528,7 @@ if __name__ == "__main__":
                                 accept_policy=accept,
                                 run=run,
                                 spread=spread,
-                                animate=True,
+                                save_data=False,
+                                animate_embeddings=True,
                                 spy=False,
                             )
