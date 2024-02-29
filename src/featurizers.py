@@ -1,3 +1,4 @@
+import pdb
 import json
 from typing import *
 import matplotlib.pyplot as plt
@@ -18,6 +19,13 @@ import util
 # set default device to cuda if available
 if T.cuda.is_available():
     T.set_default_device('cuda')
+
+if T.cuda.is_available():
+    device = T.device("cuda")
+    print("CUDA is available. Using GPU.")
+else:
+    device = T.device("cpu")
+    print("CUDA is not available. Using CPU.")
 
 
 class Featurizer:
@@ -141,14 +149,14 @@ class ResnetFeaturizer(Featurizer):
 
         # run resnet
         batch = T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w"))  # remove alpha channel, reshape
-        batch = self.preprocess(batch)
+        batch = self.preprocess(batch).to(device)
         features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
 
         # softmax
         if self.softmax_outputs:
             features = features.softmax(-1)
 
-        return features.detach().numpy()
+        return features.detach().cpu().numpy()
 
     def top_k_classes(self, features: np.ndarray, k: int) -> List[str]:
         top_class_ids = [int(x) for x in (-features).argsort()[:k]]
