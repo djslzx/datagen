@@ -20,13 +20,6 @@ import util
 if T.cuda.is_available():
     T.set_default_device('cuda')
 
-if T.cuda.is_available():
-    device = T.device("cuda")
-    print("CUDA is available. Using GPU.")
-else:
-    device = T.device("cpu")
-    print("CUDA is not available. Using CPU.")
-
 
 class Featurizer:
     def apply(self, batch: Any) -> np.ndarray:
@@ -118,6 +111,14 @@ class ResnetFeaturizer(Featurizer):
         self.softmax_outputs = softmax_outputs
         self.sigma = sigma
 
+        if T.cuda.is_available():
+            self.device = T.device("cuda")
+            print("CUDA is available. Using GPU.")
+        else:
+            self.device = T.device("cpu")
+            print("CUDA is not available. Using CPU.")
+
+
     def __repr__(self) -> str:
         return ("<ResnetFeaturizer: "
                 f"disable_last_layer={self.disable_last_layer}, softmax_outputs={self.softmax_outputs}>")
@@ -149,7 +150,7 @@ class ResnetFeaturizer(Featurizer):
 
         # run resnet
         batch = T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w"))  # remove alpha channel, reshape
-        batch = self.preprocess(batch).to(device)
+        batch = self.preprocess(batch).to(self.device)
         features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
 
         # softmax
