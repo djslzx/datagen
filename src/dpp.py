@@ -398,6 +398,7 @@ def npy_to_images(lang: Language, npy_dir: str, img_dir: str):
     of npy files to `img_dir`.
     """
     # iterate through .npy files in npy_dir, checking extension
+    seen = set()
     for filename in tqdm(sorted(os.listdir(npy_dir))):
         if filename.endswith(".npy"):
             # load npy file
@@ -410,21 +411,27 @@ def npy_to_images(lang: Language, npy_dir: str, img_dir: str):
             basename = os.path.splitext(filename)[0]
             n = int(basename.split("-")[1])
 
-            # render all programs in x for gen 0, then only render the i-th program
+            # render all programs in x for gen 0, then only render the i-th program if we haven't seen it before
             if n == 0:
                 for i, p in enumerate(frame["x"]):
+                    seen.add(p)
                     tree = lang.parse(p)
                     img = lang.eval(tree)
                     plt.imshow(img)
+                    plt.title(p)
                     plt.savefig(os.path.join(img_dir, f"{n}-{i:06d}.png"))
                     plt.clf()
             else:
                 i = frame["i"]
-                tree = lang.parse(frame["x"][i])
-                img = lang.eval(tree)
-                plt.imshow(img)
-                plt.savefig(os.path.join(img_dir, f"{n}-{i:06d}.png"))
-                plt.clf()
+                p = frame["x"][i]
+                if p not in seen:
+                    seen.add(p)
+                    tree = lang.parse(frame["x"][i])
+                    img = lang.eval(tree)
+                    plt.imshow(img)
+                    plt.title(p)
+                    plt.savefig(os.path.join(img_dir, f"{n}-{i:06d}.png"))
+                    plt.clf()
 
 
 def run_search_iter(
