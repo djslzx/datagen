@@ -478,7 +478,7 @@ def npy_to_batched_images(lang: Language, npy_dir: str, img_dir: str):
                 images.append(img)
             fig = plot_square_subplots(np.stack(images), title=f"gen-{n}")
             fig.savefig(os.path.join(img_dir, f"{n}.png"))
-            plt.clf()
+            plt.close(fig)
 
 
 def run_search_iter(
@@ -488,10 +488,12 @@ def run_search_iter(
         fit_policy: str,
         accept_policy: str,
         run: int,
-        save_data: bool,
+        save_data=True,
         spread=1.0,
+        sigma=0,
         animate_embeddings=True,
         spy=False,
+        plot=False,
 ):
     lim = None
 
@@ -503,7 +505,7 @@ def run_search_iter(
     # lsystem domain
     lang = lindenmayer.LSys(
         kind="deterministic",
-        featurizer=feat.ResnetFeaturizer(),
+        featurizer=feat.ResnetFeaturizer(sigma=sigma),
         step_length=3,
         render_depth=4,
         n_rows=128,
@@ -568,6 +570,12 @@ def run_search_iter(
             np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
         raw_data.append(d)
 
+    # Plot images
+    if plot:
+        assert save_data
+        util.mkdir(f"{dirname}/images/")
+        npy_to_batched_images(lang, f"{dirname}/data/", f"{dirname}/images/")
+
     if accept_policy in {"dpp", "energy"}:
         data = transform_data(raw_data, verbose=True)
         keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat"})
@@ -602,13 +610,13 @@ def run_search_iter(
 
 
 def run_search_space():
-    N_STEPS = [100 * 10]
-    POPN_SIZE = [10]
+    N_STEPS = [100 * 100]
+    POPN_SIZE = [100]
     ACCEPT_POLICY = ["energy"]
     FIT_POLICY = ["all", "single"]
-    N_RUNS = 1
     SPREAD = [1]
-    SAVE = True
+    SIGMA = [0, 1.0, 2.0]
+    N_RUNS = 1
 
     ts = util.timestamp()
     for t in N_STEPS:
@@ -616,19 +624,22 @@ def run_search_space():
             for accept in ACCEPT_POLICY:
                 for fit in FIT_POLICY:
                     for spread in SPREAD:
-                        for run in range(N_RUNS):
-                            run_search_iter(
-                                id=ts,
-                                n_steps=t,
-                                popn_size=n,
-                                fit_policy=fit,
-                                accept_policy=accept,
-                                run=run,
-                                spread=spread,
-                                save_data=SAVE,
-                                animate_embeddings=True,
-                                spy=False,
-                            )
+                        for sigma in SIGMA:
+                            for run in range(N_RUNS):
+                                run_search_iter(
+                                    id=ts,
+                                    n_steps=t,
+                                    popn_size=n,
+                                    fit_policy=fit,
+                                    accept_policy=accept,
+                                    run=run,
+                                    spread=spread,
+                                    save_data=True,
+                                    animate_embeddings=True,
+                                    spy=False,
+                                    sigma=sigma,
+                                    plot=True,
+                                )
 
 
 if __name__ == "__main__":
