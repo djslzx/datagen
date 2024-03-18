@@ -383,7 +383,6 @@ def transform_points(data: List[dict]) -> List[dict]:
     """
     Transform points from n dimensions to 2 dimensions using MDS
     """
-
     n_dim = len(data[0]["points"][0])
     if n_dim < 2:
         raise ValueError(f"Expected n_dim >= 2, got n_dim: {n_dim}")
@@ -483,6 +482,7 @@ def npy_to_batched_images(lang: Language, npy_dir: str, img_dir: str):
 
 def run_search_iter(
         id: int,
+        domain: str,
         n_steps: int,
         popn_size: int,
         fit_policy: str,
@@ -492,50 +492,52 @@ def run_search_iter(
         spread=1.0,
         sigma=0.,
         animate_embeddings=True,
+        anim_stride=1,
+        analysis_stride=1,
         spy=False,
         plot=False,
 ):
     lim = None
 
-    # # point domain
-    # lang = point.RealPoint(lim=lim, std=1)
-    # coords = np.random.uniform(size=(n, 2)) * spread
-    # x_init = [lang.make_point(a, b) for a, b in coords]
-
-    # lsystem domain
-    lang = lindenmayer.LSys(
-        kind="deterministic",
-        featurizer=feat.ResnetFeaturizer(sigma=sigma),
-        step_length=3,
-        render_depth=4,
-        n_rows=128,
-        n_cols=128,
-        aa=True,
-        vary_color=False,
-    )
-
-    # lsystem initial popn: x0 + samples from G(x0)
-    lsystem_strs = [
-        "20;F;F~F",
-        "90;F;F~FF",
-        "45;F[+F][-F]FF;F~FF",
-        "60;F+F-F;F~F+FF",
-        "60;F;F~F[+F][-F]F",
-        "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F",
-        "90;-F;F~F+F-F-F+F",
-        "90;F-F-F-F;F~FF-F-F-F-F-F+F",
-        "90;F-F-F-F;F~FF-F-F-F-FF",
-        "90;F-F-F-F;F~FF-F+F-F-FF",
-        "90;F-F-F-F;F~FF-F--F-F",
-        "90;F-F-F-F;F~F-FF--F-F",
-        "90;F-F-F-F;F~F-F+F-F-F",
-        "20;F;F~F[+F]F[-F]F",
-        "20;F;F~F[+F]F[-F][F]",
-        "20;F;F~FF-[-F+F+F]+[+F-F-F]",
-    ]
-    lsystems = [lang.parse(lsys) for lsys in lsystem_strs]
-    lang.fit(lsystems, alpha=1.0)
-    x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=50)
+    if domain == "point":
+        lang = point.RealPoint(lim=lim, std=1)
+        coords = np.random.uniform(size=(popn_size, 2)) * spread
+        x_init = [lang.make_point(a, b) for a, b in coords]
+    elif domain == "lsystem":
+        lang = lindenmayer.LSys(
+            kind="deterministic",
+            featurizer=feat.ResnetFeaturizer(sigma=sigma),
+            step_length=3,
+            render_depth=4,
+            n_rows=128,
+            n_cols=128,
+            aa=True,
+            vary_color=False,
+        )
+        # lsystem initial popn: x0 + samples from G(x0)
+        lsystem_strs = [
+            "20;F;F~F",
+            "90;F;F~FF",
+            "45;F[+F][-F]FF;F~FF",
+            "60;F+F-F;F~F+FF",
+            "60;F;F~F[+F][-F]F",
+            "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F",
+            "90;-F;F~F+F-F-F+F",
+            "90;F-F-F-F;F~FF-F-F-F-F-F+F",
+            "90;F-F-F-F;F~FF-F-F-F-FF",
+            "90;F-F-F-F;F~FF-F+F-F-FF",
+            "90;F-F-F-F;F~FF-F--F-F",
+            "90;F-F-F-F;F~F-FF--F-F",
+            "90;F-F-F-F;F~F-F+F-F-F",
+            "20;F;F~F[+F]F[-F]F",
+            "20;F;F~F[+F]F[-F][F]",
+            "20;F;F~FF-[-F+F+F]+[+F-F-F]",
+        ]
+        lsystems = [lang.parse(lsys) for lsys in lsystem_strs]
+        lang.fit(lsystems, alpha=1.0)
+        x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=50)
+    else:
+        raise ValueError(f"Unknown domain: {domain}")
 
     # init generator
     generator = mcmc_lang_rr(
@@ -572,13 +574,13 @@ def run_search_iter(
         raw_data.append(d)
 
     # Plot images
-    if plot:
+    if plot and domain == "lsystem":
         assert save_data
         util.mkdir(f"{dirname}/images/")
         npy_to_batched_images(lang, f"{dirname}/data/", f"{dirname}/images/")
 
     if accept_policy in {"dpp", "energy"}:
-        data = transform_data(raw_data, verbose=True)
+        data = transform_data(raw_data[::analysis_stride], verbose=True)
         keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat"})
         fig = plot_v_subplots(data, keys)
         fig.savefig(f"{dirname}/plot.png")
@@ -592,7 +594,7 @@ def run_search_iter(
         else:
             xlim = None
             ylim = None
-        points = transform_points(raw_data)
+        points = transform_points(raw_data[::anim_stride])
         anim = animate_points(
             points,
             title=title,
@@ -610,9 +612,7 @@ def run_search_iter(
         spy_anim.save(f"{dirname}/spy.mp4")
 
 
-def run_search_space():
-    N_STEPS = [100 * 10 * 100]  # 100 iters * 10x samples * 100 popn size
-    POPN_SIZE = [100]
+def run_search_space(domain: str, popn_size: int, n_steps: int):
     ACCEPT_POLICY = ["energy"]
     FIT_POLICY = ["all", "single"]
     SPREAD = [1]
@@ -620,39 +620,40 @@ def run_search_space():
     N_RUNS = 1
 
     ts = util.timestamp()
-    for t in N_STEPS:
-        for n in POPN_SIZE:
-            for accept in ACCEPT_POLICY:
-                for fit in FIT_POLICY:
-                    for spread in SPREAD:
-                        for sigma in SIGMA:
-                            for run in range(N_RUNS):
-                                run_search_iter(
-                                    id=ts,
-                                    n_steps=t,
-                                    popn_size=n,
-                                    fit_policy=fit,
-                                    accept_policy=accept,
-                                    run=run,
-                                    spread=spread,
-                                    save_data=True,
-                                    animate_embeddings=False,
-                                    spy=False,
-                                    sigma=sigma,
-                                    plot=True,
-                                )
+    for accept in ACCEPT_POLICY:
+        for fit in FIT_POLICY:
+            for spread in SPREAD:
+                for sigma in SIGMA:
+                    for run in range(N_RUNS):
+                        run_search_iter(
+                            id=ts,
+                            domain=domain,
+                            n_steps=n_steps,
+                            popn_size=popn_size,
+                            fit_policy=fit,
+                            accept_policy=accept,
+                            run=run,
+                            spread=spread,
+                            save_data=True,
+                            animate_embeddings=True,
+                            spy=False,
+                            sigma=sigma,
+                            plot=True,
+                        )
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--mode", type=str, required=True, choices=["search", "npy-to-images"])
+    p.add_argument("--domain", type=str, required=True, choices=["point", "lsystem"])
     p.add_argument("--npy-dir", type=str)
     p.add_argument("--img-dir", type=str)
     p.add_argument("--batched", action="store_true", default=False)
     args = p.parse_args()
 
     if args.mode == "search":
-        run_search_space()
+        n_steps = 100 * 10 * 100  # 100 iters * 10x samples * 100 popn size
+        run_search_space(domain=args.domain, popn_size=100, n_steps=n_steps)
     elif args.mode == "npy-to-images":
         lang = lindenmayer.LSys(
             kind="deterministic",
