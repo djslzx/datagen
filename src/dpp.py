@@ -296,6 +296,21 @@ def plot_v_subplots(data: List[dict], keys: List[str]):
     return fig
 
 
+def plot_square_subplots(images: np.ndarray, title: str):
+    n_images = len(images)
+    n_cols = int(np.ceil(np.sqrt(n_images)))
+    n_rows = int(np.ceil(n_images / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2, n_rows * 2))
+
+    for ax, img in zip(axes.flatten(), images):
+        ax.imshow(img)
+        ax.axis("off")
+
+    plt.suptitle(title)
+    plt.tight_layout()
+    return fig
+
+
 def transform_data(data: List[dict], verbose=False) -> List[dict]:
     threshold = 1e-10
     rm_keys = {
@@ -432,6 +447,38 @@ def npy_to_images(lang: Language, npy_dir: str, img_dir: str):
                     plt.title(p)
                     plt.savefig(os.path.join(img_dir, f"{n}-{i:06d}.png"))
                     plt.clf()
+
+
+def parse_part_n(filename: str) -> int:
+    basename = os.path.splitext(filename)[0]
+    return int(basename.split("-")[1])
+
+
+def npy_to_batched_images(lang: Language, npy_dir: str, img_dir: str):
+    """
+    Read npy data files in `npy_dir` directory and write image renders
+    at every N-th iteration, where N is the size of the MCMC matrix.
+    """
+    filenames = [name for name in os.listdir(npy_dir) if name.endswith(".npy")]
+    filenames_with_n = sorted([(parse_part_n(name), name) for name in filenames])
+
+    # extract N from part-0.npy
+    data_0 = np.load(os.path.join(npy_dir, filenames_with_n[0][1]), allow_pickle=True).tolist()
+    N = len(data_0["x"])
+
+    # get every N-th iteration, starting from 0
+    for n, filename in tqdm(filenames_with_n):
+        if n % N == 0:
+            frame = np.load(os.path.join(npy_dir, filename), allow_pickle=True).tolist()
+            # plot all programs in frame["x"] in a single plot and save to img_dir
+            images = []
+            for i, p in enumerate(frame["x"]):
+                tree = lang.parse(p)
+                img = lang.eval(tree)
+                images.append(img)
+            fig = plot_square_subplots(np.stack(images), title=f"gen-{n}")
+            fig.savefig(os.path.join(img_dir, f"{n}.png"))
+            plt.clf()
 
 
 def run_search_iter(
@@ -589,6 +636,7 @@ if __name__ == "__main__":
     p.add_argument("--mode", type=str, required=True, choices=["search", "npy-to-images"])
     p.add_argument("--npy-dir", type=str)
     p.add_argument("--img-dir", type=str)
+    p.add_argument("--batched", action="store_true", default=False)
     args = p.parse_args()
 
     if args.mode == "search":
@@ -604,4 +652,7 @@ if __name__ == "__main__":
             aa=True,
             vary_color=False,
         )
-        npy_to_images(lang, args.npy_dir, args.img_dir)
+        if args.batched:
+            npy_to_batched_images(lang, args.npy_dir, args.img_dir)
+        else:
+            npy_to_images(lang, args.npy_dir, args.img_dir)
