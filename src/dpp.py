@@ -611,12 +611,12 @@ def run_search_iter(
 
 
 def run_search_space():
-    N_STEPS = [100 * 100]
+    N_STEPS = [100 * 10 * 100]  # 100 iters * 10x samples * 100 popn size
     POPN_SIZE = [100]
     ACCEPT_POLICY = ["energy"]
     FIT_POLICY = ["all", "single"]
     SPREAD = [1]
-    SIGMA = [0, 1.0, 2.0]
+    SIGMA = [0., 3.]
     N_RUNS = 1
 
     ts = util.timestamp()
@@ -636,7 +636,7 @@ def run_search_space():
                                     run=run,
                                     spread=spread,
                                     save_data=True,
-                                    animate_embeddings=True,
+                                    animate_embeddings=False,
                                     spy=False,
                                     sigma=sigma,
                                     plot=True,
