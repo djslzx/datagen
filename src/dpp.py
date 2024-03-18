@@ -209,13 +209,13 @@ def slow_energy_update(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
     return log_p_up - log_p_x
 
 
-def fast_energy_update(x_feat: np.ndarray, up_feat: np.ndarray, i: int) -> float:
+def fast_energy_update(x_feat: np.ndarray, up_feat: np.ndarray, k: int) -> float:
     # log f(x') - log f(x) =
     #     sum_{i != k} exp -d(x_i', x_k') - exp -d(x_i, x_k)
     #   + sum_{j != k} exp -d(x_k', x_j') - exp -d(x_k, x_j)
     # = 2 * sum_{i != k} exp -d(x_i', x_k') - exp -d(x_i, x_k) by symmetry
-    return 2 * np.sum(-np.exp(-np.linalg.norm(up_feat - up_feat[i], axis=-1))
-                      + np.exp(-np.linalg.norm(x_feat - x_feat[i], axis=-1)))
+    return 2 * np.sum(-np.exp(-np.linalg.norm(up_feat - up_feat[k], axis=-1))
+                      + np.exp(-np.linalg.norm(x_feat - x_feat[k], axis=-1)))
 
 
 def dpp_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> float:
