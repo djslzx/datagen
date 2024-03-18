@@ -611,7 +611,7 @@ def run_search_iter(
 
 
 def run_search_space():
-    N_STEPS = [2] # [100 * 100]
+    N_STEPS = [100 * 100]
     POPN_SIZE = [100]
     ACCEPT_POLICY = ["energy"]
     FIT_POLICY = ["all", "single"]
