@@ -490,7 +490,7 @@ def run_search_iter(
         run: int,
         save_data=True,
         spread=1.0,
-        sigma=0,
+        sigma=0.,
         animate_embeddings=True,
         spy=False,
         plot=False,
