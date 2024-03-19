@@ -567,11 +567,9 @@ def run_search_iter(
     util.mkdir(f"{dirname}/data/")
 
     # Save data
-    raw_data = []
     for i, d in enumerate(tqdm(generator, total=n_steps, desc="Generating data")):
         if save_data:
             np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
-        raw_data.append(d)
 
     # Plot images
     if plot and domain == "lsystem":
@@ -635,10 +633,12 @@ def run_search_space(domain: str, popn_size: int, n_steps: int):
                             run=run,
                             spread=spread,
                             save_data=True,
-                            animate_embeddings=True,
+                            animate_embeddings=False,
                             spy=False,
                             sigma=sigma,
                             plot=True,
+                            anim_stride=popn_size,
+                            analysis_stride=popn_size,
                         )
 
 
