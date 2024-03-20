@@ -97,7 +97,7 @@ class ResnetFeaturizer(Featurizer):
 
     def __init__(self, disable_last_layer=True, softmax_outputs=False, center=False, sigma=0.):
         weights = ResNet50_Weights.DEFAULT
-        resnet = resnet50(weights=weights)
+        resnet = resnet50(weights=weights, antialias=True)
 
         self.center = center
         self.preprocess = weights.transforms()
