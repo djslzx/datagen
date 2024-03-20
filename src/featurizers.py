@@ -150,11 +150,11 @@ class ResnetFeaturizer(Featurizer):
 
         # run resnet
         batch = T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w"))  # remove alpha channel, reshape
-        batch = self.preprocess(batch).to(self.device)
 
-        # catch UserWarnings from resnet
+        # suppress UserWarnings from resnet
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
+            batch = self.preprocess(batch).to(self.device)
             features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
 
         # softmax
