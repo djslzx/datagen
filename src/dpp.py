@@ -1,121 +1,18 @@
 import os
 import pdb
-from typing import List, Iterator, Tuple, Iterable, Optional
+from typing import List, Iterator, Tuple, Iterable, Optional, Set
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from tqdm import tqdm
-from sklearn.manifold import MDS
+from sklearn.random_projection import SparseRandomProjection
 import featurizers as feat
 import argparse
 
 from lang.tree import Language, Tree
 from lang import lindenmayer, point, arc
 import util
-
-
-def mcmc_points_roundrobin(
-        lang: point.RealPoint,
-        x_init: List[Tree],
-        n: int,
-        fit_policy: str,
-        accept_policy: str,
-        kernel_type: str,
-        n_steps: int,
-        gamma=1,
-        length_cap=50,
-):
-    x = x_init
-    for t in range(n_steps):
-        # singleton sliding window
-        i = t % n
-
-        # sample from proposal distribution
-        if fit_policy == 'all':
-            lang.fit(x)
-        elif fit_policy == 'single':
-            lang.fit([x[i]])
-
-        s = lang.samples(n_samples=1, length_cap=length_cap)[0]
-        x_feat = lang.extract_features(x)
-        s_feat = lang.extract_features([s])[0]
-        up_feat = x_feat.copy()
-        up_feat[i] = s_feat
-
-        record = {}
-        if accept_policy == 'dpp':
-            # compute accept probability
-            # (1) log f(x') - log f(x) = log det(L_x') - log det(L_x)
-            if kernel_type == 'linear':
-                # L_x[i,j] = <phi_i, phi_j>
-                L_x = np.matmul(x_feat, x_feat.T)
-                L_up = np.matmul(up_feat, up_feat.T)
-            elif kernel_type == 'rbf':
-                # L_x[i,j] = exp(-gamma * ||phi_i - phi_j||^2)
-                L_x = np.exp(-gamma * np.linalg.norm(x_feat[:, None] - x_feat[None], axis=-1) ** 2)
-                L_up = np.exp(-gamma * np.linalg.norm(up_feat[:, None] - up_feat[None], axis=-1) ** 2)
-            else:
-                raise ValueError(f"Unknown kernel type: {kernel_type}")
-
-            logdet_up = logdet(L_up)
-            logdet_x = logdet(L_x)
-            log_f = logdet_up - logdet_x
-
-            # (2) log q(x|x') - log q(x'|x)
-            log_q = lang_log_pr(lang, x[i], s) - \
-                    lang_log_pr(lang, s, x[i])
-
-            # (3) A = min(1, .) => log A = min(0, .)
-            log_accept = np.min([0, log_f + log_q])
-
-            record.update({
-                "L_x": L_x,
-                "L_up": L_up,
-                "log det L_x": logdet_x,
-                "log det L_up": logdet_up,
-                "log f(x')/f(x)": log_f,
-                "log q(x|x')/q(x'|x)": log_q,
-                "log A(x',x)": log_accept,
-            })
-        elif accept_policy == 'energy':
-            # energy-based acceptance probability:
-            # log P(x) = -sum_i,j exp -d(x_i, x_j)
-            log_f = fast_energy_update(x_feat, up_feat, i)
-            # assert np.isclose(log_f, fast_log_f), f"log_f: {log_f}, fast_log_f: {fast_log_f}"
-
-            # log q(x|x') - log q(x'|x)
-            log_q = lang_log_pr(lang, x[i], s) - \
-                    lang_log_pr(lang, s, x[i])
-
-            # log A = min(1, log f(x') - log f(x) + log q(x|x') - log q(x'|x))
-            log_accept = np.min([0, log_f + log_q])
-
-            record.update({
-                "log f(x')/f(x)": log_f,
-                "log q(x|x')/q(x'|x)": log_q,
-                "log A(x',x)": log_accept,
-            })
-        elif accept_policy == 'all':
-            log_accept = 0
-        else:
-            raise ValueError(f"Unknown accept policy: {accept_policy}")
-
-        # stochastically accept/reject
-        u = np.random.uniform()
-        while u == 0:
-            u = np.random.uniform()
-        if np.log(u) < log_accept:
-            x[i] = s
-
-        yield {
-            "i": i,
-            "t": t,
-            "points": [lang.eval(p) for p in x],
-            "x_feat": x_feat,
-            "s_feat": s_feat,
-            **record,
-        }
 
 
 def mcmc_lang_rr(
@@ -149,7 +46,7 @@ def mcmc_lang_rr(
 
         # accept policy only affects log_f
         if accept_policy == "dpp":
-            log_f = dpp_update(x_feat, up_feat, gamma)
+            log_f = dpp_rbf_update(x_feat, up_feat, gamma)
         elif accept_policy == "energy":
             log_f = fast_energy_update(x_feat, up_feat, i)
         elif accept_policy == "all":
@@ -218,14 +115,19 @@ def fast_energy_update(x_feat: np.ndarray, up_feat: np.ndarray, k: int) -> float
                       + np.exp(-np.linalg.norm(x_feat - x_feat[k], axis=-1)))
 
 
-def dpp_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> float:
+def dpp_rbf_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> float:
     L_x = np.exp(-gamma * np.linalg.norm(x_feat[:, None] - x_feat[None], axis=-1) ** 2)
     L_up = np.exp(-gamma * np.linalg.norm(up_feat[:, None] - up_feat[None], axis=-1) ** 2)
     return logdet(L_up) - logdet(L_x)
 
 
-def animate_points(data_gen: Iterable, title: str, xlim: Optional[Tuple[int, int]], ylim: Optional[Tuple[int, int]],
-                   delay=200):
+def animate_points(
+        data_gen: Iterable[np.ndarray],
+        title: str,
+        xlim: Optional[Tuple[int, int]],
+        ylim: Optional[Tuple[int, int]],
+        delay=200
+):
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
     if xlim is not None:
@@ -234,14 +136,12 @@ def animate_points(data_gen: Iterable, title: str, xlim: Optional[Tuple[int, int
         ax.set_ylim(*ylim)
     ax.set_box_aspect(1)
 
-    def update(frame):
-        t = frame["t"]
-        points = frame["points"]
-
+    @util.count_calls
+    def update(points):
         # check that points are in 2d
         assert points.shape[1] == 2, f"points.shape: {points.shape}"
 
-        ax.set_title(f"{title}, frame: {t}")
+        ax.set_title(f"{title}, frame: {update.calls}")
         ax.title.set_fontsize(8)
         scatter.set_offsets(points)
 
@@ -251,30 +151,6 @@ def animate_points(data_gen: Iterable, title: str, xlim: Optional[Tuple[int, int
             ax.set_ylim(min(p[1] for p in points), max(p[1] for p in points))
 
         return scatter,
-
-    return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
-
-
-def animate_matrix_spy(data_gen: Iterable, precision, delay=200):
-    # animation where each frame is a spy plot of a matrix
-    fig = plt.figure(figsize=(10, 5))
-
-    def update(frame):
-        t = frame["t"]
-        L_x = frame["L_x"]
-        L_up = frame["L_up"]
-
-        plt.clf()  # Clear current plot
-
-        # Plot the first matrix
-        plt.subplot(1, 2, 1)
-        plt.spy(L_x, precision=precision)
-        plt.title(f'L_x @ {t}')
-
-        # Plot the second matrix
-        plt.subplot(1, 2, 2)
-        plt.spy(L_up, precision=precision)
-        plt.title(f'L_up @ {t}')
 
     return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
 
@@ -311,91 +187,62 @@ def plot_square_subplots(images: np.ndarray, title: str):
     return fig
 
 
-def transform_data(data: List[dict], verbose=False) -> List[dict]:
+def analyze_run_iteration(d: dict, threshold: float) -> dict:
+    # compute sparsity
+    sparsity = {}
+    try:
+        L_up = d["L_up"]
+        sparsity[f"sparsity(L_up, {threshold})"] = np.sum(L_up < threshold) / L_up.size
+    except KeyError:
+        pass
+
+    # knn of new sample point
+    x_feat = d["x_feat"]
+    s_feat = d["s_feat"]
+    dists = knn_dist_sum(queries=s_feat[None], data=x_feat, n_neighbors=min(5, len(x_feat)))
+    d["knn_dist"] = dists[0]
+
+    # measure overlap of i-th embedding wrt rest of embeddings
+    i = d["i"]
+    d["overlap"] = np.sum(np.all(np.isclose(x_feat[i],
+                                            np.delete(x_feat, i, axis=0),
+                                            atol=1e-5),
+                                 axis=0))
+
+    # measure avg radius of all embeddings in d["points"]
+    d["mean radius"] = np.mean(np.linalg.norm(np.array(d["x_feat"])[:, None] -
+                                              np.array(d["x_feat"]),
+                                              axis=-1))
+
+    # program sample length
+    d["sample length"] = len(d["s"])
+
+    # accept probability
+    d["A(x',x)"] = np.exp(d["log A(x',x)"])
+
+    return {
+        **d,
+        **sparsity,
+    }
+
+
+def transform_data(data: List[dict], verbose=False) -> Iterator[dict]:
     threshold = 1e-10
     rm_keys = {
         "i",
         "t",
         "x", "s",
         "x_feat", "s_feat",
-        "points",
-        "L_x", "L_up",
         # "log q(x|x')/q(x'|x)",
         "log det L_x",
         "log A(x',x)"
     }
 
-    def map_fn(t: int, d: dict) -> dict:
-        # compute sparsities
-        sparsities = {}
-        try:
-            L_up = d["L_up"]
-            sparsities[f"sparsity(L_up, {threshold})"] = np.sum(L_up < threshold) / L_up.size
-        except KeyError:
-            pass
-
-        # knn of new sample point
-        x_feat = d["x_feat"]
-        s_feat = d["s_feat"]
-        dists = knn_dist_sum(queries=s_feat[None], data=x_feat, n_neighbors=min(5, len(x_feat)))
-        d["knn_dist"] = dists[0]
-
-        # measure overlap of i-th embedding wrt rest of embeddings
-        i = d["i"]
-        d["overlap"] = np.sum(np.all(np.isclose(x_feat[i],
-                                                np.delete(x_feat, i, axis=0),
-                                                atol=1e-5),
-                                     axis=0))
-
-        # rename embeddings as points
-        d["points"] = d["x_feat"]
-
-        # measure avg radius of all embeddings in d["points"]
-        d["mean radius"] = np.mean(np.linalg.norm(np.array(d["points"])[:, None] -
-                                                  np.array(d["points"]),
-                                                  axis=-1))
-
-        # program sample length
-        d["sample length"] = len(d["s"])
-
-        # accept probability
-        d["A(x',x)"] = np.exp(d["log A(x',x)"])
-
-        # average accept probability over time
-        # show how mean changes over time
-        d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in data[:t + 1]]) / (t + 1)
-
-        # filter keys
-        d = {k: v for k, v in d.items() if k not in rm_keys}
-
-        return {
-            **d,
-            **sparsities,
-        }
-
     if verbose:
-        return [map_fn(i, d) for i, d in enumerate(tqdm(data, desc="Transforming data"))]
+        return (analyze_run_iteration(d, threshold, rm_keys) for i, d in
+                enumerate(tqdm(data, desc="Transforming data")))
     else:
-        return [map_fn(i, d) for i, d in enumerate(data)]
-
-
-def transform_points(data: List[dict]) -> List[dict]:
-    """
-    Transform points from n dimensions to 2 dimensions using MDS
-    """
-    n_dim = len(data[0]["points"][0])
-    if n_dim < 2:
-        raise ValueError(f"Expected n_dim >= 2, got n_dim: {n_dim}")
-    elif n_dim == 2:
-        return data
-    else:
-        # use MDS to reduce dimensionality
-        mds = MDS(n_components=2)
-        n_points = len(data[0]["points"])
-        all_points = [p for d in data for p in d["points"]]
-        points_2d = mds.fit_transform(all_points)
-        return [{**d, "points": points_2d[i * n_points:(i + 1) * n_points]}
-                for i, d in enumerate(data)]
+        return (analyze_run_iteration(d, threshold, rm_keys) for i, d in enumerate(data))
 
 
 def test_large_mat_dets():
@@ -469,15 +316,25 @@ def npy_to_batched_images(lang: Language, npy_dir: str, img_dir: str):
     for n, filename in tqdm(filenames_with_n):
         if n % N == 0:
             frame = np.load(os.path.join(npy_dir, filename), allow_pickle=True).tolist()
-            # plot all programs in frame["x"] in a single plot and save to img_dir
-            images = []
-            for i, p in enumerate(frame["x"]):
-                tree = lang.parse(p)
-                img = lang.eval(tree)
-                images.append(img)
-            fig = plot_square_subplots(np.stack(images), title=f"gen-{n}")
-            fig.savefig(os.path.join(img_dir, f"{n}.png"))
-            plt.close(fig)
+            save_path = os.path.join(img_dir, f"{n}.png")
+            plot_batched_images(lang,
+                                programs=frame["x"],
+                                save_path=save_path,
+                                title=f"gen-{n}")
+
+
+def plot_batched_images(lang: Language, programs: List[str], save_path: str, title: str):
+    """
+    Plot all programs in `programs` in a single plot and save to `save_path` with title `title`.
+    """
+    images = []
+    for i, p in enumerate(programs):
+        tree = lang.parse(p)
+        img = lang.eval(tree)
+        images.append(img)
+    fig = plot_square_subplots(np.stack(images), title=title)
+    fig.savefig(save_path)
+    plt.close(fig)
 
 
 def run_search_iter(
@@ -492,9 +349,7 @@ def run_search_iter(
         spread=1.0,
         sigma=0.,
         animate_embeddings=True,
-        anim_stride=1,
         analysis_stride=1,
-        spy=False,
         plot=False,
 ):
     lim = None
@@ -565,49 +420,59 @@ def run_search_iter(
     util.mkdir(f"../out/dpp/{id}/{title}")
     dirname = f"../out/dpp/{id}/{title}"
     util.mkdir(f"{dirname}/data/")
+    util.mkdir(f"{dirname}/images/")
 
-    # Save data
+    anim_coords = []  # save 2d embeddings for animation
+    srp = SparseRandomProjection(n_components=2)
+    srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
+
+    analysis_data = []
+
     for i, d in enumerate(tqdm(generator, total=n_steps, desc="Generating data")):
+        # Save data
         if save_data:
             np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
 
-    # Plot images
-    if plot and domain == "lsystem":
-        assert save_data
-        util.mkdir(f"{dirname}/images/")
-        npy_to_batched_images(lang, f"{dirname}/data/", f"{dirname}/images/")
+        # Plot images
+        if plot and domain == "lsystem" and i % analysis_stride == 0:
+            plot_batched_images(lang, d["x"], f"{dirname}/images/{i:06d}.png", title=f"gen-{i}")
 
-    if accept_policy in {"dpp", "energy"}:
-        data = transform_data(raw_data[::analysis_stride], verbose=True)
-        keys = sorted(data[0].keys() - {"i", "t", "points", "L_x", "L_up", "s_feat", "x_feat"})
-        fig = plot_v_subplots(data, keys)
-        fig.savefig(f"{dirname}/plot.png")
-        plt.cla()
+        # Analysis
+        if i % analysis_stride == 0:
+            analysis_data.append(analyze_run_iteration(d, threshold=1e-10))
 
-    # Save animation
+        # Animation
+        if animate_embeddings and i % popn_size == 0:
+            x_feat = d["x_feat"]
+            if x_feat.ndim < 2:
+                # if x_feat is 1d, add a dimension to make it 2d
+                coords = np.stack([x_feat, np.zeros_like(x_feat)], axis=-1)
+            elif x_feat.ndim == 2:
+                coords = x_feat
+            else:
+                coords = srp.transform(d["x_feat"])
+
+            anim_coords.append(coords)
+
     if animate_embeddings:
-        if lim is not None:
-            xlim = lang.lim
-            ylim = lang.lim
-        else:
-            xlim = None
-            ylim = None
-        points = transform_points(raw_data[::anim_stride])
         anim = animate_points(
-            points,
+            anim_coords,
             title=title,
-            xlim=xlim,
-            ylim=ylim,
+            xlim=lim,
+            ylim=lim,
             delay=100,
         )
         print("Saving animation...")
         anim.save(f"{dirname}/embed.mp4")
 
-    # Save spy animation
-    if spy:
-        spy_anim = animate_matrix_spy(raw_data, delay=100, precision=1e-10)
-        print("Saving spy animation...")
-        spy_anim.save(f"{dirname}/spy.mp4")
+    # Plot analysis
+    for i, d in enumerate(analysis_data):
+        d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in analysis_data[:i + 1]]) / (i + 1)
+
+    keys = sorted(analysis_data[0].keys() - {"i", "t", "s", "x", "s_feat", "x_feat"})
+    fig = plot_v_subplots(analysis_data, keys)
+    fig.savefig(f"{dirname}/plot.png")
+    plt.cla()
 
 
 def run_search_space(domain: str, popn_size: int, n_steps: int):
@@ -633,12 +498,10 @@ def run_search_space(domain: str, popn_size: int, n_steps: int):
                             run=run,
                             spread=spread,
                             save_data=True,
-                            animate_embeddings=False,
-                            spy=False,
+                            animate_embeddings=True,
                             sigma=sigma,
                             plot=True,
-                            anim_stride=popn_size,
-                            analysis_stride=popn_size,
+                            analysis_stride=10,
                         )
 
 

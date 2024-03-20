@@ -17,6 +17,19 @@ from datetime import datetime
 from dataclasses import dataclass
 
 
+def count_calls(func):
+    """
+    A decorator that counts the number of times a function is called.
+    """
+
+    def wrapper(*args, **kwargs):
+        wrapper.calls += 1
+        return func(*args, **kwargs)
+
+    wrapper.calls = 0
+    return wrapper
+
+
 def ls_subdirs(dir_path: str) -> List[str]:
     return [
         d for d in listdir(dir_path)
