@@ -153,7 +153,8 @@ class ResnetFeaturizer(Featurizer):
         batch = self.preprocess(batch).to(self.device)
 
         # catch UserWarnings from resnet
-        with warnings.catch_warnings(action="ignore"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
             features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
 
         # softmax
