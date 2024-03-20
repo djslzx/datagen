@@ -25,6 +25,15 @@ def mcmc_lang_rr(
         gamma=1,
         length_cap=50,
 ):
+    """
+    MCMC with target distribution f(x) and proposal distribution q(x'|x),
+    chosen via f=accept_policy and q=fit_policy.
+
+    We update x in a round-robin fashion, where x' differs from x at a
+    single position i.  If fit_policy is "all", we fit the model to x;
+    if it is "single", we fit the model to x[i].
+    """
+
     assert accept_policy in {"dpp", "energy", "all"}
     assert fit_policy in {"all", "single"}
 
@@ -90,16 +99,24 @@ def mcmc_lang_rr(
         }
 
 
-def mcmc_lang_fullstep(
+def mcmc_lang_full_step(
         lang: Language,
         x_init: List[Tree],
         popn_size: int,
         n_steps: int,
-        fit_policy: str,
         accept_policy: str,
         gamma=1,
         length_cap=50,
+        **kwargs
 ):
+    """
+    MCMC with target distribution f(x) and proposal distribution q(x'|x),
+    chosen via f=accept_policy and q=fit_policy.
+
+    At each iteration, x' consists of |x| independent samples from G(x).
+    """
+    assert accept_policy in {"dpp", "energy"}
+
     x = x_init
     x_feat = lang.extract_features(x)
 
@@ -108,6 +125,7 @@ def mcmc_lang_fullstep(
         x_new = lang.samples(n_samples=popn_size, length_cap=length_cap)
         x_new_feat = lang.extract_features(x_new)
 
+        # compute log f(x')/f(x)
         if accept_policy == "dpp":
             log_f = dpp_rbf_update(x_feat, x_new_feat, gamma)
         elif accept_policy == "energy":
@@ -115,8 +133,27 @@ def mcmc_lang_fullstep(
         else:
             raise ValueError(f"Unknown accept policy: {accept_policy}")
 
-        log_q = lang_sum_log_pr(lang, x_new, x) - lang_sum_log_pr(lang, x, x_new)
+        # compute log q(x|x')/q(x'|x)
+        log_q = lang_sum_log_pr(lang, x, x_new) - lang_sum_log_pr(lang, x_new, x)
 
+        log_accept = np.min([0, log_f + log_q])
+        u = np.random.uniform()
+        while u == 0:
+            u = np.random.uniform()
+        if np.log(u) < log_accept:
+            x = x_new
+            x_feat = x_new_feat
+
+        yield {
+            "t": t,
+            "x": [lang.to_str(p) for p in x],
+            "x_feat": x_feat.copy(),
+            "x'": [lang.to_str(p) for p in x_new],
+            "x'_feat": x_new_feat.copy(),
+            "log f(x')/f(x)": log_f,
+            "log q(x|x')/q(x'|x)": log_q,
+            "log A(x',x)": log_accept,
+        }
 
 
 def logdet(m: np.ndarray) -> float:
