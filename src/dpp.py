@@ -445,10 +445,11 @@ def run_search_iter(
         # Animation
         if animate_embeddings and i % anim_stride == 0:
             x_feat = d["x_feat"]
-            if x_feat.ndim < 2:
+            dim = x_feat.shape[1]
+            if dim < 2:
                 # if x_feat is 1d, add a dimension to make it 2d
                 coords = np.stack([x_feat, np.zeros_like(x_feat)], axis=-1)
-            elif x_feat.ndim == 2:
+            elif dim == 2:
                 coords = x_feat
             else:
                 coords = srp.transform(d["x_feat"])
@@ -476,37 +477,6 @@ def run_search_iter(
     plt.cla()
 
 
-def run_search_space(domain: str, popn_size: int, n_steps: int):
-    ACCEPT_POLICY = ["energy"]
-    FIT_POLICY = ["all", "single"]
-    SPREAD = [1]
-    SIGMA = [0., 3.]
-    N_RUNS = 1
-
-    ts = util.timestamp()
-    for accept in ACCEPT_POLICY:
-        for fit in FIT_POLICY:
-            for spread in SPREAD:
-                for sigma in SIGMA:
-                    for run in range(N_RUNS):
-                        run_search_iter(
-                            id=ts,
-                            domain=domain,
-                            n_steps=n_steps,
-                            popn_size=popn_size,
-                            fit_policy=fit,
-                            accept_policy=accept,
-                            run=run,
-                            spread=spread,
-                            save_data=True,
-                            animate_embeddings=True,
-                            sigma=sigma,
-                            plot=True,
-                            analysis_stride=1000,
-                            anim_stride=1000,
-                        )
-
-
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--mode", type=str, required=True, choices=["search", "npy-to-images"])
@@ -518,7 +488,28 @@ if __name__ == "__main__":
 
     if args.mode == "search":
         n_steps = 100 * 10 * 100  # 100 iters * 10x samples * 100 popn size
-        run_search_space(domain=args.domain, popn_size=100, n_steps=n_steps)
+        n_steps = 100
+        popn_size = 100
+
+        ts = util.timestamp()
+        for fit in ["all", "single"]:
+            for sigma in [0., 3.]:
+                run_search_iter(
+                    id=ts,
+                    domain=args.domain,
+                    n_steps=n_steps,
+                    popn_size=popn_size,
+                    fit_policy=fit,
+                    accept_policy="energy",
+                    run=0,
+                    spread=1,
+                    save_data=True,
+                    animate_embeddings=True,
+                    sigma=sigma,
+                    plot=True,
+                    analysis_stride=1000,
+                    anim_stride=popn_size,
+                )
     elif args.mode == "npy-to-images":
         lang = lindenmayer.LSys(
             kind="deterministic",
