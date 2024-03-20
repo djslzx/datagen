@@ -488,7 +488,6 @@ if __name__ == "__main__":
 
     if args.mode == "search":
         n_steps = 100 * 10 * 100  # 100 iters * 10x samples * 100 popn size
-        n_steps = 100
         popn_size = 100
 
         ts = util.timestamp()
