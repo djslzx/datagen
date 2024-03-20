@@ -349,6 +349,7 @@ def run_search_iter(
         spread=1.0,
         sigma=0.,
         animate_embeddings=True,
+        anim_stride=1,
         analysis_stride=1,
         plot=False,
 ):
@@ -442,7 +443,7 @@ def run_search_iter(
             analysis_data.append(analyze_run_iteration(d, threshold=1e-10))
 
         # Animation
-        if animate_embeddings and i % popn_size == 0:
+        if animate_embeddings and i % anim_stride == 0:
             x_feat = d["x_feat"]
             if x_feat.ndim < 2:
                 # if x_feat is 1d, add a dimension to make it 2d
@@ -501,7 +502,8 @@ def run_search_space(domain: str, popn_size: int, n_steps: int):
                             animate_embeddings=True,
                             sigma=sigma,
                             plot=True,
-                            analysis_stride=10,
+                            analysis_stride=1000,
+                            anim_stride=1000,
                         )
 
 
