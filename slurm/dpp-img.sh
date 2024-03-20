@@ -12,6 +12,7 @@ mkdir -p $DATA_DIR/batched-imgs
 python \
   -u dpp.py \
   --mode npy-to-images \
+  --domain lsystem
   --npy-dir $DATA_DIR/data \
   --img-dir $DATA_DIR/batched-imgs \
   --batched
