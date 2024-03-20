@@ -13,6 +13,7 @@ from scipy.spatial import distance as dist
 from einops import rearrange
 import Levenshtein
 from skimage import filters
+import warnings
 
 import util
 
@@ -118,7 +119,6 @@ class ResnetFeaturizer(Featurizer):
             self.device = T.device("cpu")
             print("CUDA is not available. Using CPU.")
 
-
     def __repr__(self) -> str:
         return ("<ResnetFeaturizer: "
                 f"disable_last_layer={self.disable_last_layer}, softmax_outputs={self.softmax_outputs}>")
@@ -151,7 +151,10 @@ class ResnetFeaturizer(Featurizer):
         # run resnet
         batch = T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w"))  # remove alpha channel, reshape
         batch = self.preprocess(batch).to(self.device)
-        features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
+
+        # catch UserWarnings from resnet
+        with warnings.catch_warnings(action="ignore"):
+            features = self.model(batch).squeeze()  # doesn't depend on whether last layer is removed
 
         # softmax
         if self.softmax_outputs:
