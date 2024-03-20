@@ -1,5 +1,6 @@
 import os
 import pdb
+import sys
 from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
@@ -203,16 +204,10 @@ def dpp_rbf_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> flo
 def animate_points(
         data_gen: Iterable[np.ndarray],
         title: str,
-        xlim: Optional[Tuple[int, int]],
-        ylim: Optional[Tuple[int, int]],
         delay=200
 ):
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
-    if xlim is not None:
-        ax.set_xlim(*xlim)
-    if ylim is not None:
-        ax.set_ylim(*ylim)
     ax.set_box_aspect(1)
 
     @util.count_calls
@@ -224,10 +219,8 @@ def animate_points(
         ax.title.set_fontsize(8)
         scatter.set_offsets(points)
 
-        if xlim is None:
-            ax.set_xlim(min(p[0] for p in points), max(p[0] for p in points))
-        if ylim is None:
-            ax.set_ylim(min(p[1] for p in points), max(p[1] for p in points))
+        ax.set_xlim(min(p[0] for p in points), max(p[0] for p in points))
+        ax.set_ylim(min(p[1] for p in points), max(p[1] for p in points))
 
         return scatter,
 
@@ -276,25 +269,26 @@ def analyze_run_iteration(d: dict, threshold: float) -> dict:
         pass
 
     # knn of new sample point
-    x_feat = d["x_feat"]
-    s_feat = d["s_feat"]
-    dists = knn_dist_sum(queries=s_feat[None], data=x_feat, n_neighbors=min(5, len(x_feat)))
-    d["knn_dist"] = dists[0]
+    try:
+        x_feat = d["x_feat"]
+        s_feat = d["s_feat"]
+        dists = knn_dist_sum(queries=s_feat[None], data=x_feat, n_neighbors=min(5, len(x_feat)))
+        d["knn_dist"] = dists[0]
+    except KeyError:
+        x_feat = d["x_feat"]
+        x_new_feat = d["x'_feat"]
+        dists = knn_dist_sum(queries=x_new_feat, data=x_feat, n_neighbors=min(5, len(x_feat)))
+        d["knn_dist"] = dists.mean()
 
-    # measure overlap of i-th embedding wrt rest of embeddings
-    i = d["i"]
-    d["overlap"] = np.sum(np.all(np.isclose(x_feat[i],
-                                            np.delete(x_feat, i, axis=0),
-                                            atol=1e-5),
-                                 axis=0))
+    # measure average overlap of embeddings within epsilon ball
+    popn_size = len(x_feat)
+    d["epsilon overlap"] = 1/popn_size * np.sum(np.all(np.isclose(x_feat, x_feat[:, None], atol=1e-5), axis=-1))
 
-    # measure avg radius of all embeddings in d["points"]
-    d["mean radius"] = np.mean(np.linalg.norm(np.array(d["x_feat"])[:, None] -
-                                              np.array(d["x_feat"]),
-                                              axis=-1))
+    # measure avg distance between all embeddings
+    d["mean dist"] = np.mean(np.linalg.norm(x_feat[:, None] - x_feat, axis=-1))
 
-    # program sample length
-    d["sample length"] = len(d["s"])
+    # average program length
+    d["mean length"] = np.mean([len(p) for p in d["x"]])
 
     # accept probability
     d["A(x',x)"] = np.exp(d["log A(x',x)"])
@@ -423,6 +417,7 @@ def run_search_iter(
         popn_size: int,
         fit_policy: str,
         accept_policy: str,
+        update_policy: str,
         run: int,
         save_data=True,
         spread=1.0,
@@ -475,7 +470,14 @@ def run_search_iter(
         raise ValueError(f"Unknown domain: {domain}")
 
     # init generator
-    generator = mcmc_lang_rr(
+    if update_policy == "rr":
+        generator_fn = mcmc_lang_rr
+    elif update_policy == "full_step":
+        generator_fn = mcmc_lang_full_step
+    else:
+        raise ValueError(f"Unknown update policy: {update_policy}")
+
+    generator = generator_fn(
         lang=lang,
         x_init=x_init,
         popn_size=popn_size,
@@ -486,10 +488,12 @@ def run_search_iter(
     title = (f"N={popn_size}"
              f",fit={fit_policy}"
              f",accept={accept_policy}"
+             f",update={update_policy}"
              f",steps={n_steps}"
              f",spread={spread}"
              f",run={run}"
              f",sigma={sigma}")
+    print(f"Running {title}...", file=sys.stderr)
 
     # make run directory
     try:
@@ -502,6 +506,97 @@ def run_search_iter(
     util.mkdir(f"{dirname}/data/")
     util.mkdir(f"{dirname}/images/")
 
+    if update_policy == "rr":
+        process_search_data_rr(lang=lang, generator=generator, popn_size=popn_size, n_steps=n_steps,
+                               save_data=save_data, dirname=dirname, plot=plot, domain=domain,
+                               analysis_stride=analysis_stride, anim_stride=anim_stride,
+                               animate_embeddings=animate_embeddings, title=title)
+    elif update_policy == "full_step":
+        process_search_data_full_step(lang=lang, generator=generator, popn_size=popn_size, n_steps=n_steps,
+                                      save_data=save_data, dirname=dirname, plot=plot, domain=domain,
+                                      analysis_stride=analysis_stride // popn_size,
+                                      anim_stride=anim_stride // popn_size,
+                                      animate_embeddings=animate_embeddings, title=title)
+
+
+def process_search_data_full_step(
+        lang: Language,
+        generator: Iterator[dict],
+        popn_size: int,
+        n_steps: int,
+        save_data: bool,
+        dirname: str,
+        plot: bool,
+        domain: str,
+        analysis_stride: int,
+        anim_stride: int,
+        animate_embeddings: bool,
+        title: str,
+):
+    analysis_data = []
+    anim_coords = []  # save 2d embeddings for animation
+    srp = SparseRandomProjection(n_components=2)
+    srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
+    for i, d in enumerate(tqdm(generator, total=n_steps, desc="Generating data")):
+        # Save data
+        if save_data:
+            np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
+
+        # Plot images
+        if plot and domain == "lsystem":
+            plot_batched_images(lang, d["x"], f"{dirname}/images/{i:06d}.png", title=f"gen-{i}")
+
+        # Analysis
+        if i % analysis_stride == 0:
+            analysis_data.append(analyze_run_iteration(d, threshold=1e-10))
+
+        # Animation
+        if animate_embeddings:
+            x_feat = d["x_feat"]
+            dim = x_feat.shape[1]
+            if dim < 2:
+                # if x_feat is 1d, add a dimension to make it 2d
+                coords = np.stack([x_feat, np.zeros_like(x_feat)], axis=-1)
+            elif dim == 2:
+                coords = x_feat
+            else:
+                coords = srp.transform(d["x_feat"])
+
+            anim_coords.append(coords)
+
+    if animate_embeddings:
+        anim = animate_points(
+            anim_coords,
+            title=title,
+            delay=100,
+        )
+        print("Saving animation...", file=sys.stderr)
+        anim.save(f"{dirname}/embed.mp4")
+
+    # Plot analysis
+    for i, d in enumerate(analysis_data):
+        d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in analysis_data[:i + 1]]) / (i + 1)
+
+    keys = sorted(analysis_data[0].keys() - {"i", "t", "s", "x", "s_feat", "x_feat"})
+    fig = plot_v_subplots(analysis_data, keys)
+    fig.savefig(f"{dirname}/plot.png")
+    plt.cla()
+
+
+def process_search_data_rr(
+        lang: Language,
+        generator: Iterator[dict],
+        popn_size: int,
+        n_steps: int,
+        save_data: bool,
+        dirname: str,
+        plot: bool,
+        domain: str,
+        analysis_stride: int,
+        anim_stride: int,
+        animate_embeddings: bool,
+        title: str,
+):
     anim_coords = []  # save 2d embeddings for animation
     srp = SparseRandomProjection(n_components=2)
     srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
@@ -539,8 +634,6 @@ def run_search_iter(
         anim = animate_points(
             anim_coords,
             title=title,
-            xlim=lim,
-            ylim=lim,
             delay=100,
         )
         print("Saving animation...")
@@ -571,27 +664,31 @@ if __name__ == "__main__":
         popn_size = 100
 
         if args.debug:
+            popn_size = 10
             n_steps = 100
 
         ts = util.timestamp()
-        for fit in ["all", "single"]:
-            for sigma in [0., 3.]:
-                run_search_iter(
-                    id=ts,
-                    domain=args.domain,
-                    n_steps=n_steps,
-                    popn_size=popn_size,
-                    fit_policy=fit,
-                    accept_policy="energy",
-                    run=0,
-                    spread=1,
-                    save_data=True,
-                    animate_embeddings=True,
-                    sigma=sigma,
-                    plot=True,
-                    analysis_stride=1000,
-                    anim_stride=popn_size,
-                )
+        for update in ["rr", "full_step"]:
+            fits = ["all", "single"] if update == "rr" else ["all"]
+            for fit in fits:
+                for sigma in [0., 3.]:
+                    run_search_iter(
+                        id=ts,
+                        domain=args.domain,
+                        n_steps=n_steps,
+                        popn_size=popn_size,
+                        fit_policy=fit,
+                        accept_policy="energy",
+                        update_policy=update,
+                        run=0,
+                        spread=1,
+                        save_data=True,
+                        animate_embeddings=True,
+                        sigma=sigma,
+                        plot=True,
+                        analysis_stride=100,
+                        anim_stride=popn_size,
+                    )
     elif args.mode == "npy-to-images":
         lang = lindenmayer.LSys(
             kind="deterministic",
