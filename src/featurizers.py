@@ -114,10 +114,10 @@ class ResnetFeaturizer(Featurizer):
 
         if T.cuda.is_available():
             self.device = T.device("cuda")
-            print("CUDA is available. Using GPU.")
+            print("CUDA is available. Using GPU.", file=stderr)
         else:
             self.device = T.device("cpu")
-            print("CUDA is not available. Using CPU.")
+            print("CUDA is not available. Using CPU.", file=stderr)
 
     def __repr__(self) -> str:
         return ("<ResnetFeaturizer: "
