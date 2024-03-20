@@ -1,6 +1,6 @@
 import os
 import pdb
-from typing import List, Iterator, Tuple, Iterable, Optional, Set
+from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
@@ -18,18 +18,21 @@ import util
 def mcmc_lang_rr(
         lang: Language,
         x_init: List[Tree],
-        n: int,
+        popn_size: int,
         n_steps: int,
         fit_policy: str,
         accept_policy: str,
         gamma=1,
         length_cap=50,
 ):
+    assert accept_policy in {"dpp", "energy", "all"}
+    assert fit_policy in {"all", "single"}
+
     x = x_init
     x_feat = lang.extract_features(x)
 
     for t in range(n_steps):
-        i = t % n
+        i = t % popn_size
 
         if fit_policy == 'all':
             lang.fit(x, alpha=1.0)
@@ -41,6 +44,8 @@ def mcmc_lang_rr(
         # sample and featurize
         s = lang.samples(n_samples=1, length_cap=length_cap)[0]
         s_feat = lang.extract_features([s])[0]
+        up = x.copy()
+        up[i] = s
         up_feat = x_feat.copy()
         up_feat[i] = s_feat
 
@@ -54,7 +59,14 @@ def mcmc_lang_rr(
         else:
             raise ValueError(f"Unknown accept policy: {accept_policy}")
 
-        log_q = lang_log_pr(lang, x[i], s) - lang_log_pr(lang, s, x[i])
+        # compute log q(x|x')/q(x'|x)
+        if fit_policy == 'all':
+            log_q = lang_log_pr(lang, x[i], up) - lang_log_pr(lang, s, x)
+        elif fit_policy == 'single':
+            log_q = lang_log_pr(lang, x[i], s) - lang_log_pr(lang, s, x[i])
+        else:
+            raise ValueError(f"Unknown fit policy: {fit_policy}")
+
         log_accept = np.min([0, log_f + log_q])
 
         # stochastically accept/reject
@@ -78,16 +90,46 @@ def mcmc_lang_rr(
         }
 
 
+def mcmc_lang_fullstep(
+        lang: Language,
+        x_init: List[Tree],
+        popn_size: int,
+        n_steps: int,
+        fit_policy: str,
+        accept_policy: str,
+        gamma=1,
+        length_cap=50,
+):
+    x = x_init
+    x_feat = lang.extract_features(x)
+
+    for t in range(n_steps):
+        lang.fit(x, alpha=1.0)
+        x_new = lang.samples(n_samples=popn_size, length_cap=length_cap)
+        x_new_feat = lang.extract_features(x_new)
+
+        if accept_policy == "dpp":
+            log_f = dpp_rbf_update(x_feat, x_new_feat, gamma)
+        elif accept_policy == "energy":
+            log_f = slow_energy_update(x_feat, x_new_feat)
+        else:
+            raise ValueError(f"Unknown accept policy: {accept_policy}")
+
+        log_q = lang_sum_log_pr(lang, x_new, x) - lang_sum_log_pr(lang, x, x_new)
+
+
+
 def logdet(m: np.ndarray) -> float:
     return np.prod(np.linalg.slogdet(m))
 
 
-def lang_log_pr(lang: Language, query: Tree, data: Tree) -> float:
-    lang.fit([data], alpha=1.0)
+def lang_log_pr(lang: Language, query: Tree, data: Union[List[Tree], Tree]) -> float:
+    data = [data] if not isinstance(data, list) else data
+    lang.fit(data, alpha=1.0)
     return lang.log_probability(query)
 
 
-def lang_log_pr_multi(lang: Language, query: List[Tree], data: List[Tree]) -> float:
+def lang_sum_log_pr(lang: Language, query: List[Tree], data: List[Tree]) -> float:
     lang.fit(data, alpha=1.0)
     return sum(lang.log_probability(q) for q in query)
 
@@ -399,7 +441,7 @@ def run_search_iter(
     generator = mcmc_lang_rr(
         lang=lang,
         x_init=x_init,
-        n=popn_size,
+        popn_size=popn_size,
         n_steps=n_steps,
         fit_policy=fit_policy,
         accept_policy=accept_policy,
