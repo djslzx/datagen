@@ -484,11 +484,15 @@ if __name__ == "__main__":
     p.add_argument("--npy-dir", type=str)
     p.add_argument("--img-dir", type=str)
     p.add_argument("--batched", action="store_true", default=False)
+    p.add_argument("--debug", action="store_true", default=False)
     args = p.parse_args()
 
     if args.mode == "search":
         n_steps = 100 * 10 * 100  # 100 iters * 10x samples * 100 popn size
         popn_size = 100
+
+        if args.debug:
+            n_steps = 100
 
         ts = util.timestamp()
         for fit in ["all", "single"]:
