@@ -577,7 +577,7 @@ def process_search_data_full_step(
     for i, d in enumerate(analysis_data):
         d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in analysis_data[:i + 1]]) / (i + 1)
 
-    keys = sorted(analysis_data[0].keys() - {"i", "t", "s", "x", "s_feat", "x_feat"})
+    keys = sorted(analysis_data[0].keys() - {"i", "t", "s", "x", "x'", "s_feat", "x_feat", "x'_feat"})
     fig = plot_v_subplots(analysis_data, keys)
     fig.savefig(f"{dirname}/plot.png")
     plt.cla()
@@ -668,7 +668,7 @@ if __name__ == "__main__":
             n_steps = 100
 
         ts = util.timestamp()
-        for update in ["rr", "full_step"]:
+        for update in ["full_step", "rr"]:
             fits = ["all", "single"] if update == "rr" else ["all"]
             for fit in fits:
                 for sigma in [0., 3.]:
@@ -686,7 +686,7 @@ if __name__ == "__main__":
                         animate_embeddings=True,
                         sigma=sigma,
                         plot=True,
-                        analysis_stride=100,
+                        analysis_stride=popn_size,
                         anim_stride=popn_size,
                     )
     elif args.mode == "npy-to-images":
