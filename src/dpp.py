@@ -49,7 +49,7 @@ def mcmc_lang_rr(
         up_feat = x_feat.copy()
         up_feat[i] = s_feat
 
-        # accept policy only affects log_f
+        # compute log f(x')/f(x)
         if accept_policy == "dpp":
             log_f = dpp_rbf_update(x_feat, up_feat, gamma)
         elif accept_policy == "energy":
