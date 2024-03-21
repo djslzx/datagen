@@ -1,14 +1,13 @@
 import os
-import pdb
 import sys
 from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union
 import numpy as np
+import yaml
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from sklearn.random_projection import SparseRandomProjection
 import featurizers as feat
-import argparse
 import wandb
 
 from lang.tree import Language, Tree
@@ -88,7 +87,6 @@ def mcmc_lang_rr(
             x_feat[i] = s_feat
 
         yield {
-            "i": i,
             "t": t,
             "x": [lang.to_str(p) for p in x],
             "s": lang.to_str(s),
@@ -202,7 +200,7 @@ def dpp_rbf_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> flo
     return logdet(L_up) - logdet(L_x)
 
 
-def analyze_run_iteration(d: dict, threshold: float) -> dict:
+def analyzer_iter(d: dict, threshold: float) -> dict:
     # compute sparsity
     sparsity = {}
     try:
@@ -345,81 +343,47 @@ def plot_batched_images(lang: Language, programs: List[str], save_path: str, tit
     plt.close(fig)
 
 
-def run_search_iter(
-        id: int,
-        domain: str,
-        steps: int,
-        popn_size: int,
-        fit_policy: str,
-        accept_policy: str,
-        update_policy: str,
-        run: int,
-        save_data=True,
-        spread=1.0,
-        sigma=0.,
-        animate_embeddings=True,
-        anim_stride=1,
-        analysis_stride=1,
-        plot=False,
-        debug=False,
-):
-    lim = None
+def run_point_search(popn_size: int, spread: float, lim=None):
+    lang = point.RealPoint(lim=lim, std=1)
+    coords = np.random.uniform(size=(popn_size, 2)) * spread
+    x_init = [lang.make_point(a, b) for a, b in coords]
 
-    if domain == "point":
-        lang = point.RealPoint(lim=lim, std=1)
-        coords = np.random.uniform(size=(popn_size, 2)) * spread
-        x_init = [lang.make_point(a, b) for a, b in coords]
-    elif domain == "lsystem":
-        lang = lindenmayer.LSys(
-            kind="deterministic",
-            featurizer=feat.ResnetFeaturizer(sigma=sigma),
-            step_length=3,
-            render_depth=4,
-            n_rows=128,
-            n_cols=128,
-            aa=True,
-            vary_color=False,
-        )
-        # lsystem initial popn: x0 + samples from G(x0)
-        lsystem_strs = [
-            "20;F;F~F",
-            "90;F;F~FF",
-            "45;F[+F][-F]FF;F~FF",
-            "60;F+F-F;F~F+FF",
-            "60;F;F~F[+F][-F]F",
-            "90;F-F-F-F;F~F+FF-FF-F-F+F+FF-F-F+F+FF+FF-F",
-            "90;-F;F~F+F-F-F+F",
-            "90;F-F-F-F;F~FF-F-F-F-F-F+F",
-            "90;F-F-F-F;F~FF-F-F-F-FF",
-            "90;F-F-F-F;F~FF-F+F-F-FF",
-            "90;F-F-F-F;F~FF-F--F-F",
-            "90;F-F-F-F;F~F-FF--F-F",
-            "90;F-F-F-F;F~F-F+F-F-F",
-            "20;F;F~F[+F]F[-F]F",
-            "20;F;F~F[+F]F[-F][F]",
-            "20;F;F~FF-[-F+F+F]+[+F-F-F]",
-        ]
-        lsystems = [lang.parse(lsys) for lsys in lsystem_strs]
 
-        if popn_size < len(lsystems):
-            x_init = lsystems[:popn_size]
-        elif popn_size > len(lsystems):
-            lang.fit(lsystems, alpha=1.0)
-            x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=50)
-        else:
-            x_init = lsystems
+def run_lsys_search(config):
+    expected_keys = {"x_init", "search", "featurizer", "render"}
+    assert all(k in config for k in expected_keys), f"Expected {expected_keys}, got {set(config.keys())}"
+
+    featurizer = feat.ResnetFeaturizer(**config.featurizer)
+    lang = lindenmayer.LSys(
+        kind="deterministic",
+        featurizer=featurizer,
+        **config.render,
+    )
+    lsystems = [lang.parse(lsys) for lsys in config.x_init]
+
+    popn_size = config.search["popn_size"]
+    if popn_size < len(lsystems):
+        x_init = lsystems[:popn_size]
+    elif popn_size > len(lsystems):
+        lang.fit(lsystems, alpha=1.0)
+        x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=50)
     else:
-        raise ValueError(f"Unknown domain: {domain}")
+        x_init = lsystems
 
     # init generator
+    update_policy = config.search["update_policy"]
+    epochs = config.search["epochs"]
     if update_policy == "rr":
         generator_fn = mcmc_lang_rr
+        steps = epochs * popn_size
     elif update_policy == "full_step":
         generator_fn = mcmc_lang_full_step
-        steps //= popn_size
+        steps = epochs
     else:
         raise ValueError(f"Unknown update policy: {update_policy}")
 
+    fit_policy = config.search["fit_policy"]
+    accept_policy = config.search["accept_policy"]
     generator = generator_fn(
         lang=lang,
         x_init=x_init,
@@ -432,10 +396,7 @@ def run_search_iter(
              f",fit={fit_policy}"
              f",accept={accept_policy}"
              f",update={update_policy}"
-             f",steps={steps}"
-             f",spread={spread}"
-             f",run={run}"
-             f",sigma={sigma}")
+             f",steps={steps}")
     print(f"Running {title}...", file=sys.stderr)
 
     # make run directory
@@ -445,111 +406,54 @@ def run_search_iter(
         pass
 
     util.mkdir(f"../out/dpp/{id}/{title}")
-    dirname = f"../out/dpp/{id}/{title}"
-    util.mkdir(f"{dirname}/data/")
-    util.mkdir(f"{dirname}/images/")
-
-    # wandb init
-    if not debug:
-        config = {
-            "id": id,
-            "lang": lang,
-            "fit_policy": fit_policy,
-            "accept_policy": accept_policy,
-            "update_policy": update_policy,
-            "x_init": x_init,
-            "popn_size": popn_size,
-            "steps": steps,
-            "run": run,
-            "sigma": sigma,
-        }
-        wandb.init(project="dpp", config=config, name=title)
+    save_dir = f"../out/dpp/{id}/{title}"
+    util.mkdir(f"{save_dir}/data/")
+    util.mkdir(f"{save_dir}/images/")
 
     if update_policy == "rr":
-        process_search_data_rr(lang=lang, generator=generator, popn_size=popn_size, n_steps=steps,
-                               save_data=save_data, dirname=dirname, plot=plot, domain=domain,
-                               analysis_stride=analysis_stride, anim_stride=anim_stride,
-                               animate_embeddings=animate_embeddings, title=title, debug=debug)
+        pass
     elif update_policy == "full_step":
-        process_search_data_full_step(lang=lang, generator=generator, popn_size=popn_size, n_steps=steps,
-                                      save_data=save_data, dirname=dirname, plot=plot, domain=domain,
-                                      analysis_stride=analysis_stride // popn_size,
-                                      anim_stride=anim_stride // popn_size,
-                                      animate_embeddings=animate_embeddings, title=title, debug=debug)
+        wandb_process_data_fs(lang=lang, generator=generator, popn_size=popn_size, n_steps=steps, save=True,
+                              save_dir=save_dir)
 
 
-def process_search_data_full_step(
+def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
+    dim = x.shape[1]
+    if dim < 2:
+        # if x_feat is 1d, add a dimension to make it 2d
+        coords = np.stack([x, np.zeros_like(x)], axis=-1)
+    elif dim == 2:
+        coords = x
+    else:
+        coords = srp.transform(x)
+    return coords
+
+
+def wandb_process_data_fs(
         lang: Language,
         generator: Iterator[dict],
         popn_size: int,
         n_steps: int,
-        save_data: bool,
-        dirname: str,
-        plot: bool,
-        domain: str,
-        analysis_stride: int,
-        anim_stride: int,
-        animate_embeddings: bool,
-        title: str,
-        debug: bool,
+        save: bool,
+        save_dir: str,
 ):
-    analysis_data = []
-    anim_coords = []  # save 2d embeddings for animation
     srp = SparseRandomProjection(n_components=2)
     srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
     for i, d in enumerate(tqdm(generator, total=n_steps, desc="Generating data")):
-        # Save data
-        if save_data:
-            np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
+        if save:
+            np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
 
-        # Log to wandb
-        if not debug:
-            log = {
-                **({k: v for k, v in d.items() if not k.endswith("_feat")}),
-                "step": i,
-                "snapshot": render_program_batch_as_wandb_image(lang, d["x"], caption=f"gen-{i}"),
-            }
-            wandb.log(log)
-
-        # Plot images
-        if debug and domain == "lsystem":
-            plot_batched_images(lang, d["x"], f"{dirname}/images/{i:06d}.png", title=f"gen-{i}")
-
-        # Analysis
-        if i % analysis_stride == 0:
-            analysis_data.append(analyze_run_iteration(d, threshold=1e-10))
-
-        # Animation
-        if animate_embeddings:
-            x_feat = d["x_feat"]
-            dim = x_feat.shape[1]
-            if dim < 2:
-                # if x_feat is 1d, add a dimension to make it 2d
-                coords = np.stack([x_feat, np.zeros_like(x_feat)], axis=-1)
-            elif dim == 2:
-                coords = x_feat
-            else:
-                coords = srp.transform(d["x_feat"])
-
-            anim_coords.append(coords)
-
-    if animate_embeddings:
-        anim = util.animate_points(
-            anim_coords,
-            title=title,
-            delay=100,
-        )
-        print("Saving animation...", file=sys.stderr)
-        anim.save(f"{dirname}/embed.mp4")
-
-    # Plot analysis
-    for i, d in enumerate(analysis_data):
-        d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in analysis_data[:i + 1]]) / (i + 1)
-
-    keys = sorted(analysis_data[0].keys() - {"i", "t", "s", "x", "x'", "s_feat", "x_feat", "x'_feat"})
-    fig = util.plot_v_subplots(analysis_data, keys)
-    fig.savefig(f"{dirname}/plot.png")
-    plt.cla()
+        analysis = analyzer_iter(d, threshold=1e-10)
+        coords = reduce_dim(d["x_feat"], srp)
+        coord_image = util.scatterplot_image(coords)
+        log = {
+            **({k: v for k, v in d.items() if not k.endswith("_feat")}),
+            **analysis,
+            "step": i,
+            "renders": render_program_batch_as_wandb_image(lang, d["x"], caption=f"gen-{i}"),
+            "scatter": wandb.Image(coord_image, caption=f"gen-{i}"),
+        }
+        wandb.log(log)
 
 
 def process_search_data_rr(
@@ -593,7 +497,7 @@ def process_search_data_rr(
 
         # Analysis
         if i % analysis_stride == 0:
-            analysis_data.append(analyze_run_iteration(d, threshold=1e-10))
+            analysis_data.append(analyzer_iter(d, threshold=1e-10))
 
         # Animation
         if animate_embeddings and i % anim_stride == 0:
@@ -629,61 +533,18 @@ def process_search_data_rr(
 
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p.add_argument("--mode", type=str, required=True, choices=["search", "npy-to-images"])
-    p.add_argument("--domain", type=str, required=True, choices=["point", "lsystem"])
-    p.add_argument("--npy-dir", type=str)
-    p.add_argument("--img-dir", type=str)
-    p.add_argument("--wandb-sweep-config", type=str)
-    p.add_argument("--batched", action="store_true", default=False)
-    p.add_argument("--debug", action="store_true", default=False)
-    args = p.parse_args()
+    # p = argparse.ArgumentParser()
+    # p.add_argument("--mode", type=str, required=True, choices=["search", "npy-to-images"])
+    # p.add_argument("--domain", type=str, required=True, choices=["point", "lsystem"])
+    # p.add_argument("--npy-dir", type=str)
+    # p.add_argument("--img-dir", type=str)
+    # p.add_argument("--wandb-sweep-config", type=str)
+    # p.add_argument("--batched", action="store_true", default=False)
+    # args = p.parse_args()
 
-    if args.mode == "search":
-        n_epochs = 100
-        sample_ratio = 10
-        popn_size = 100
-        n_steps = n_epochs * sample_ratio * popn_size
-
-        if args.debug:
-            popn_size = 10
-            n_steps = 100
-
-        ts = util.timestamp()
-        for update in ["full_step", "rr"]:
-            fits = ["all", "single"] if update == "rr" else ["all"]
-            for fit in fits:
-                for sigma in [0., 3.]:
-                    run_search_iter(
-                        id=ts,
-                        domain=args.domain,
-                        steps=n_steps,
-                        popn_size=popn_size,
-                        fit_policy=fit,
-                        accept_policy="energy",
-                        update_policy=update,
-                        run=0,
-                        spread=1,
-                        save_data=True,
-                        animate_embeddings=True,
-                        sigma=sigma,
-                        plot=True,
-                        analysis_stride=popn_size,
-                        anim_stride=popn_size,
-                        debug=args.debug,
-                    )
-    elif args.mode == "npy-to-images":
-        lang = lindenmayer.LSys(
-            kind="deterministic",
-            featurizer=feat.ResnetFeaturizer(),
-            step_length=3,
-            render_depth=4,
-            n_rows=128,
-            n_cols=128,
-            aa=True,
-            vary_color=False,
-        )
-        if args.batched:
-            npy_to_batched_images(lang, args.npy_dir, args.img_dir)
-        else:
-            npy_to_images(lang, args.npy_dir, args.img_dir)
+    sweep_config = "./configs/mcmc-lsystem.yaml"
+    with open(sweep_config, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    wandb.init(project="dpp", config=config)
+    config = wandb.config
+    run_lsys_search(config)
