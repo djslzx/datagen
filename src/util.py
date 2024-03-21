@@ -3,6 +3,7 @@ import json
 from math import floor, sqrt, ceil
 from pprint import pp
 import re
+from PIL import Image
 import numpy as np
 import pandas as pd
 import torch as T
@@ -18,6 +19,30 @@ from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from datetime import datetime
 from dataclasses import dataclass
 from adjustText import adjust_text
+from io import BytesIO
+
+
+def scatterplot_image(coords: np.ndarray) -> np.ndarray:
+    assert coords.ndim == 2, f"Expected 2d tensor, got {coords.ndim}d"
+    assert coords.shape[1] == 2, f"Expected 2d coordinates, got {coords.shape[1]}d"
+
+    # Create scatterplot
+    fig = plt.Figure(figsize=(6, 6))
+    ax = fig.subplots()
+    ax.scatter(coords[:, 0], coords[:, 1], s=2)
+    plt.tight_layout()
+
+    # Render the plot to a buffer
+    buf = BytesIO()
+    fig.savefig(buf)
+    buf.seek(0)
+
+    # Convert buffer to a PIL image, then to a numpy array
+    img = Image.open(buf)
+    arr = np.asarray(img)
+    plt.close()
+
+    return arr
 
 
 def combine_images(images: np.ndarray) -> np.ndarray:

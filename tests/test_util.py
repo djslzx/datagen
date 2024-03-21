@@ -3,6 +3,13 @@ import pytest
 from util import *
 
 
+def test_scatterplot_image():
+    coords = np.random.rand(10, 2)
+    img = scatterplot_image(coords)
+    plt.imshow(img)
+    plt.show()
+
+
 def test_pad_list():
     cases = [
         ([1, 2, 3], 0, 0, []),
