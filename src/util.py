@@ -9,12 +9,90 @@ import torch as T
 import itertools as it
 from typing import *
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from einops import rearrange
 import time
 import sys
 from os import mkdir, listdir, path
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from datetime import datetime
 from dataclasses import dataclass
+from adjustText import adjust_text
+
+
+def combine_images(images: np.ndarray) -> np.ndarray:
+    """
+    Combine multiple images into a single image.  Given an array of images of shape [b, h, w, c],
+    produce a single image with dimensions [h', w', c], where h' and w' are close to sqrt(b).
+    """
+    b, h, w, c = images.shape
+    s = int(np.ceil(np.sqrt(b)))
+
+    # Pad with zeros in case we don't have enough images to cover the square grid
+    image = np.zeros((s ** 2, h, w, c), dtype=images.dtype)
+    image[:b, :, :, :] = images
+
+    return rearrange(image, '(sh sw) h w c -> (sh h) (sw w) c', sh=s, sw=s)
+
+
+def animate_points(
+        points: Iterable[np.ndarray],
+        title: str,
+        delay=200
+):
+    fig, ax = plt.subplots()
+    scatter = ax.scatter([], [])
+    ax.set_box_aspect(1)
+
+    @count_calls
+    def update(points):
+        # check that points are in 2d
+        assert points.shape[1] == 2, f"points.shape: {points.shape}"
+
+        ax.set_title(f"{title}, frame: {update.calls}")
+        ax.title.set_fontsize(8)
+        scatter.set_offsets(points)
+
+        ax.set_xlim(min(p[0] for p in points), max(p[0] for p in points))
+        ax.set_ylim(min(p[1] for p in points), max(p[1] for p in points))
+
+        return scatter,
+
+    return FuncAnimation(fig, update, frames=points, blit=False, interval=delay)
+
+
+def plot_v_subplots(data: List[dict], keys: List[str]):
+    n_keys = len(keys)
+    fig, axes = plt.subplots(n_keys, 1, figsize=(12, 2 * n_keys))
+
+    for ax, key in zip(axes, keys):
+        ax.set_title(key)
+        ax.plot([x[key] for x in data], label=key)
+        if key.startswith("log"):
+            ax.set_yscale("symlog")
+        # if key.startswith("sparsity"):
+        #     ax.set_ylim(0, 1)
+        #     ax.set_ylabel("sparsity")
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_square_subplots(images: np.ndarray, title: str):
+    assert images.ndim == 3, f"Expected 3d array, got {images.ndim}d"
+
+    n_images = len(images)
+    n_cols = int(np.ceil(np.sqrt(n_images)))
+    n_rows = int(np.ceil(n_images / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2, n_rows * 2))
+
+    for ax, img in zip(axes.flatten(), images):
+        ax.imshow(img)
+        ax.axis("off")
+
+    plt.suptitle(title)
+    plt.tight_layout()
+    return fig
 
 
 def count_calls(func):

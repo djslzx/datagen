@@ -5,13 +5,11 @@ from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 from tqdm import tqdm
 from sklearn.random_projection import SparseRandomProjection
 import featurizers as feat
 import argparse
 import wandb
-from einops import rearrange
 
 from lang.tree import Language, Tree
 from lang import lindenmayer, point, arc
@@ -204,64 +202,6 @@ def dpp_rbf_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> flo
     return logdet(L_up) - logdet(L_x)
 
 
-def animate_points(
-        data_gen: Iterable[np.ndarray],
-        title: str,
-        delay=200
-):
-    fig, ax = plt.subplots()
-    scatter = ax.scatter([], [])
-    ax.set_box_aspect(1)
-
-    @util.count_calls
-    def update(points):
-        # check that points are in 2d
-        assert points.shape[1] == 2, f"points.shape: {points.shape}"
-
-        ax.set_title(f"{title}, frame: {update.calls}")
-        ax.title.set_fontsize(8)
-        scatter.set_offsets(points)
-
-        ax.set_xlim(min(p[0] for p in points), max(p[0] for p in points))
-        ax.set_ylim(min(p[1] for p in points), max(p[1] for p in points))
-
-        return scatter,
-
-    return FuncAnimation(fig, update, frames=data_gen, blit=False, interval=delay)
-
-
-def plot_v_subplots(data: List[dict], keys: List[str]):
-    n_keys = len(keys)
-    fig, axes = plt.subplots(n_keys, 1, figsize=(12, 2 * n_keys))
-
-    for ax, key in zip(axes, keys):
-        ax.set_title(key)
-        ax.plot([x[key] for x in data], label=key)
-        if key.startswith("log"):
-            ax.set_yscale("symlog")
-        if key.startswith("sparsity"):
-            ax.set_ylim(0, 1)
-            ax.set_ylabel("sparsity")
-
-    plt.tight_layout()
-    return fig
-
-
-def plot_square_subplots(images: np.ndarray, title: str):
-    n_images = len(images)
-    n_cols = int(np.ceil(np.sqrt(n_images)))
-    n_rows = int(np.ceil(n_images / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 2, n_rows * 2))
-
-    for ax, img in zip(axes.flatten(), images):
-        ax.imshow(img)
-        ax.axis("off")
-
-    plt.suptitle(title)
-    plt.tight_layout()
-    return fig
-
-
 def analyze_run_iteration(d: dict, threshold: float) -> dict:
     # compute sparsity
     sparsity = {}
@@ -300,33 +240,6 @@ def analyze_run_iteration(d: dict, threshold: float) -> dict:
         **d,
         **sparsity,
     }
-
-
-def transform_data(data: List[dict], verbose=False) -> Iterator[dict]:
-    threshold = 1e-10
-    rm_keys = {
-        "i",
-        "t",
-        "x", "s",
-        "x_feat", "s_feat",
-        # "log q(x|x')/q(x'|x)",
-        "log det L_x",
-        "log A(x',x)"
-    }
-
-    if verbose:
-        return (analyze_run_iteration(d, threshold, rm_keys) for i, d in
-                enumerate(tqdm(data, desc="Transforming data")))
-    else:
-        return (analyze_run_iteration(d, threshold, rm_keys) for i, d in enumerate(data))
-
-
-def test_large_mat_dets():
-    with util.Timing("large_mat_dets"):
-        B = np.random.rand(10_000, 10_000)
-        M = np.matmul(B.T, B)
-        det = np.linalg.det(M)
-    print(det)
 
 
 def npy_to_images(lang: Language, npy_dir: str, img_dir: str):
@@ -393,10 +306,10 @@ def npy_to_batched_images(lang: Language, npy_dir: str, img_dir: str):
         if n % N == 0:
             frame = np.load(os.path.join(npy_dir, filename), allow_pickle=True).tolist()
             save_path = os.path.join(img_dir, f"{n}.png")
-            plot_batched_images(lang,
-                                programs=frame["x"],
-                                save_path=save_path,
-                                title=f"gen-{n}")
+            images = render_program_batch(lang, frame["x"])
+            fig = util.plot_square_subplots(images, title=f"gen-{n}")
+            fig.savefig(save_path)
+            plt.close(fig)
 
 
 def render_program_batch(lang: Language, programs: List[str]) -> np.ndarray:
@@ -416,33 +329,8 @@ def render_program_batch_as_wandb_image(lang: Language, programs: List[str], cap
     Render all programs in `programs` and return as a single wandb.Image.
     """
     images = render_program_batch(lang, programs)
-    image = combine_images(images)
+    image = util.combine_images(images)
     return wandb.Image(image, caption=caption)
-
-
-def combine_images(images: np.ndarray):
-    """
-    Combine multiple images into a single image.  Given an array of images of shape [b, h, w, c],
-    produce a single image with dimensions [h', w', c], where h' and w' are close to sqrt(b).
-    """
-    b, h, w, c = images.shape
-    s = int(np.ceil(np.sqrt(b)))
-
-    # Pad with zeros in case we don't have enough images to cover the square grid
-    image = np.zeros((s ** 2, h, w, c), dtype=images.dtype)
-    image[:b, :, :, :] = images
-
-    return rearrange(image, '(sh sw) h w c -> (sh h) (sw w) c', sh=s, sw=s)
-
-
-def plot_batched_images(lang: Language, programs: List[str], save_path: str, title: str):
-    """
-    Plot all programs in `programs` in a single plot and save to `save_path` with title `title`.
-    """
-    images = render_program_batch(lang, programs)
-    fig = plot_square_subplots(images, title=title)
-    fig.savefig(save_path)
-    plt.close(fig)
 
 
 def run_search_iter(
