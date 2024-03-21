@@ -324,7 +324,7 @@ def render_program_batch(lang: Language, programs: List[str]) -> np.ndarray:
     return np.stack(images)
 
 
-def render_program_batch_as_wandb_image(lang: Language, programs: List[str], caption: str) -> wandb.Image:
+def render_program_batch_as_wandb_image(lang: Language, programs: List[str], caption: str = "") -> wandb.Image:
     """
     Render all programs in `programs` and return as a single wandb.Image.
     """
@@ -401,12 +401,12 @@ def run_lsys_search(config):
 
     # make run directory
     try:
-        util.mkdir(f"../out/dpp/{id}/")
+        util.mkdir(f"../out/dpp/{wandb.run.id}/")
     except FileExistsError:
         pass
 
-    util.mkdir(f"../out/dpp/{id}/{title}")
-    save_dir = f"../out/dpp/{id}/{title}"
+    util.mkdir(f"../out/dpp/{wandb.run.id}/{title}")
+    save_dir = f"../out/dpp/{wandb.run.id}/{title}"
     util.mkdir(f"{save_dir}/data/")
     util.mkdir(f"{save_dir}/images/")
 
@@ -443,16 +443,20 @@ def wandb_process_data_fs(
         if save:
             np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
 
-        analysis = analyzer_iter(d, threshold=1e-10)
+        analysis_data = analyzer_iter(d, threshold=1e-10)
         coords = reduce_dim(d["x_feat"], srp)
         coord_image = util.scatterplot_image(coords)
         log = {
-            **({k: v for k, v in d.items() if not k.endswith("_feat")}),
-            **analysis,
+            **d,
+            **analysis_data,
             "step": i,
-            "renders": render_program_batch_as_wandb_image(lang, d["x"], caption=f"gen-{i}"),
-            "scatter": wandb.Image(coord_image, caption=f"gen-{i}"),
+            "renders": render_program_batch_as_wandb_image(lang, d["x"]),
+            "scatter": wandb.Image(coord_image),
         }
+        # clear out big data
+        log = {k: v for k, v in log.items()
+               if not (k.endswith("_feat") or isinstance(log[k], np.ndarray))}
+
         wandb.log(log)
 
 
@@ -484,10 +488,13 @@ def process_search_data_rr(
 
         # Log to wandb
         if not debug and domain == "lsystem" and i % popn_size == 0:
+            d_saved = {k: v for k, v in d.items()
+                       if not (k.endswith("_feat") or isinstance(v, np.ndarray))}
+            print(d_saved.keys())
             log = {
-                **({k: v for k, v in d.items() if not k.endswith("_feat")}),
+                **d_saved,
                 "step": i,
-                "snapshot": render_program_batch_as_wandb_image(lang, d["x"], caption=f"gen-{i}"),
+                "snapshot": render_program_batch_as_wandb_image(lang, d["x"]),
             }
             wandb.log(log)
 
