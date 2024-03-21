@@ -5,7 +5,7 @@ from util import *
 
 def test_scatterplot_image():
     coords = np.random.rand(10, 2)
-    img = scatterplot_image(coords)
+    img = scatterplot_image(coords, 1)
     plt.imshow(img)
     plt.show()
 

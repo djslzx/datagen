@@ -176,7 +176,7 @@ def lang_sum_log_pr(lang: Language, query: List[Tree], data: List[Tree]) -> floa
     # FIXME: this results in really low (practically 0) probabilities
     lang.fit(data, alpha=1.0)
     log_probs = np.array([lang.log_probability(q) for q in query])
-    wandb.log({"lang log_probs (log q)": log_probs}, commit=False)
+    wandb.log({"lang_sum_log_pr": wandb.Histogram(log_probs)}, commit=False)
     return np.sum(log_probs)
 
 
@@ -218,17 +218,11 @@ def analyzer_iter(d: dict, threshold: float) -> dict:
     except KeyError:
         pass
 
-    # knn of new sample point
-    try:
-        x_feat = d["x_feat"]
-        s_feat = d["s_feat"]
-        dists = knn_dist_sum(queries=s_feat[None], data=x_feat, n_neighbors=min(5, len(x_feat)))
-        d["knn_dist"] = dists[0]
-    except KeyError:
-        x_feat = d["x_feat"]
-        x_new_feat = d["x'_feat"]
-        dists = knn_dist_sum(queries=x_new_feat, data=x_feat, n_neighbors=min(5, len(x_feat)))
-        d["knn_dist"] = dists.mean()
+    # avg knn of new sample points
+    x_feat = d["x_feat"]
+    x_new_feat = d["x'_feat"]
+    dists = knn_dist_sum(queries=x_new_feat, data=x_feat, n_neighbors=min(5, len(x_feat)))
+    d["mean knn dist"] = dists.mean()
 
     # measure average overlap of embeddings within epsilon ball
     popn_size = len(x_feat)
@@ -417,8 +411,8 @@ def run_lsys_search(config):
     util.mkdir(f"{save_dir}/data/")
     util.mkdir(f"{save_dir}/images/")
 
-    wandb_process_data_fs(lang=lang, generator=generator, popn_size=popn_size, n_epochs=epochs,
-                          save=True, save_dir=save_dir)
+    wandb_process_data_epochs(lang=lang, generator=generator, popn_size=popn_size, n_epochs=epochs,
+                              save=True, save_dir=save_dir)
 
 
 def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
@@ -433,7 +427,7 @@ def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
     return coords
 
 
-def wandb_process_data_fs(
+def wandb_process_data_epochs(
         lang: Language,
         generator: Iterator[dict],
         popn_size: int,
@@ -446,10 +440,9 @@ def wandb_process_data_fs(
     for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
         if save:
             np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
-
         analysis_data = analyzer_iter(d, threshold=1e-10)
         coords = reduce_dim(d["x_feat"], srp)
-        coord_image = util.scatterplot_image(coords)
+        coord_image = util.scatterplot_image(coords, figsize=3)
         log = {
             **d,
             **analysis_data,
@@ -457,14 +450,13 @@ def wandb_process_data_fs(
             "renders": render_program_batch_as_wandb_image(lang, d["x"]),
             "scatter": wandb.Image(coord_image),
         }
-        # clear out big data
+        rm_keys = {"x", "x'"}
         log = {k: v for k, v in log.items()
-               if not (k.endswith("_feat") or isinstance(log[k], np.ndarray))}
-
+               if k not in rm_keys and not k.endswith("_feat")}
         wandb.log(log)
 
 
-def process_search_data_rr(
+def local_process_data(
         lang: Language,
         generator: Iterator[dict],
         popn_size: int,
@@ -489,18 +481,6 @@ def process_search_data_rr(
         # Save data
         if save_data:
             np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
-
-        # Log to wandb
-        if not debug and domain == "lsystem" and i % popn_size == 0:
-            d_saved = {k: v for k, v in d.items()
-                       if not (k.endswith("_feat") or isinstance(v, np.ndarray))}
-            print(d_saved.keys())
-            log = {
-                **d_saved,
-                "step": i,
-                "snapshot": render_program_batch_as_wandb_image(lang, d["x"]),
-            }
-            wandb.log(log)
 
         # Plot images
         if debug and domain == "lsystem" and i % analysis_stride == 0:
