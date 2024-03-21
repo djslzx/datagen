@@ -306,6 +306,8 @@ def npy_to_batched_images(lang: Language, npy_dir: str, img_dir: str):
         if n % N == 0:
             frame = np.load(os.path.join(npy_dir, filename), allow_pickle=True).tolist()
             save_path = os.path.join(img_dir, f"{n}.png")
+            plot_batched_images(lang, frame["x"], save_path, title=f"gen-{n}")
+
             images = render_program_batch(lang, frame["x"])
             fig = util.plot_square_subplots(images, title=f"gen-{n}")
             fig.savefig(save_path)
@@ -331,6 +333,16 @@ def render_program_batch_as_wandb_image(lang: Language, programs: List[str], cap
     images = render_program_batch(lang, programs)
     image = util.combine_images(images)
     return wandb.Image(image, caption=caption)
+
+
+def plot_batched_images(lang: Language, programs: List[str], save_path: str, title: str):
+    """
+    Plot all programs in `programs` in a single plot and save to `save_path` with title `title`.
+    """
+    images = render_program_batch(lang, programs)
+    fig = util.plot_square_subplots(images, title=title)
+    fig.savefig(save_path)
+    plt.close(fig)
 
 
 def run_search_iter(
@@ -522,7 +534,7 @@ def process_search_data_full_step(
             anim_coords.append(coords)
 
     if animate_embeddings:
-        anim = animate_points(
+        anim = util.animate_points(
             anim_coords,
             title=title,
             delay=100,
@@ -535,7 +547,7 @@ def process_search_data_full_step(
         d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in analysis_data[:i + 1]]) / (i + 1)
 
     keys = sorted(analysis_data[0].keys() - {"i", "t", "s", "x", "x'", "s_feat", "x_feat", "x'_feat"})
-    fig = plot_v_subplots(analysis_data, keys)
+    fig = util.plot_v_subplots(analysis_data, keys)
     fig.savefig(f"{dirname}/plot.png")
     plt.cla()
 
@@ -573,7 +585,7 @@ def process_search_data_rr(
                 "step": i,
                 "snapshot": render_program_batch_as_wandb_image(lang, d["x"], caption=f"gen-{i}"),
             }
-        wandb.log(log)
+            wandb.log(log)
 
         # Plot images
         if debug and domain == "lsystem" and i % analysis_stride == 0:
@@ -598,7 +610,7 @@ def process_search_data_rr(
             anim_coords.append(coords)
 
     if animate_embeddings:
-        anim = animate_points(
+        anim = util.animate_points(
             anim_coords,
             title=title,
             delay=100,
@@ -611,7 +623,7 @@ def process_search_data_rr(
         d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in analysis_data[:i + 1]]) / (i + 1)
 
     keys = sorted(analysis_data[0].keys() - {"i", "t", "s", "x", "s_feat", "x_feat"})
-    fig = plot_v_subplots(analysis_data, keys)
+    fig = util.plot_v_subplots(analysis_data, keys)
     fig.savefig(f"{dirname}/plot.png")
     plt.cla()
 
