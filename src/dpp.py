@@ -168,6 +168,7 @@ def lang_log_pr(lang: Language, query: Tree, data: Union[List[Tree], Tree]) -> f
 
 
 def lang_sum_log_pr(lang: Language, query: List[Tree], data: List[Tree]) -> float:
+    # FIXME: this results in really low (practically 0) probabilities
     lang.fit(data, alpha=1.0)
     return sum(lang.log_probability(q) for q in query)
 
@@ -464,8 +465,14 @@ def run_search_iter(
             "20;F;F~FF-[-F+F+F]+[+F-F-F]",
         ]
         lsystems = [lang.parse(lsys) for lsys in lsystem_strs]
-        lang.fit(lsystems, alpha=1.0)
-        x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=50)
+
+        if popn_size < len(lsystems):
+            x_init = lsystems[:popn_size]
+        elif popn_size > len(lsystems):
+            lang.fit(lsystems, alpha=1.0)
+            x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=50)
+        else:
+            x_init = lsystems
     else:
         raise ValueError(f"Unknown domain: {domain}")
 
@@ -481,7 +488,7 @@ def run_search_iter(
         lang=lang,
         x_init=x_init,
         popn_size=popn_size,
-        n_steps=n_steps,
+        n_steps=n_steps if update_policy == "rr" else n_steps // popn_size,
         fit_policy=fit_policy,
         accept_policy=accept_policy,
     )
