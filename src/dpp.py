@@ -19,11 +19,12 @@ def mcmc_lang_rr(
         lang: Language,
         x_init: List[Tree],
         popn_size: int,
-        n_steps: int,
+        n_epochs: int,
         fit_policy: str,
         accept_policy: str,
         gamma=1,
         length_cap=50,
+        **kwargs,
 ):
     """
     MCMC with target distribution f(x) and proposal distribution q(x'|x),
@@ -40,58 +41,64 @@ def mcmc_lang_rr(
     x = x_init
     x_feat = lang.extract_features(x)
 
-    for t in range(n_steps):
-        i = t % popn_size
+    for t in range(n_epochs):
+        samples = []
+        samples_feat = []
 
-        if fit_policy == 'all':
-            lang.fit(x, alpha=1.0)
-        elif fit_policy == 'single':
-            lang.fit([x[i]], alpha=1.0)
-        else:
-            raise ValueError(f"Unknown fit policy: {fit_policy}")
+        for i in range(popn_size):
+            if fit_policy == 'all':
+                lang.fit(x, alpha=1.0)
+            elif fit_policy == 'single':
+                lang.fit([x[i]], alpha=1.0)
+            else:
+                raise ValueError(f"Unknown fit policy: {fit_policy}")
 
-        # sample and featurize
-        s = lang.samples(n_samples=1, length_cap=length_cap)[0]
-        s_feat = lang.extract_features([s])[0]
-        up = x.copy()
-        up[i] = s
-        up_feat = x_feat.copy()
-        up_feat[i] = s_feat
+            # sample and featurize
+            s = lang.samples(n_samples=1, length_cap=length_cap)[0]
+            s_feat = lang.extract_features([s])[0]
+            up_feat = x_feat.copy()
+            up_feat[i] = s_feat
 
-        # compute log f(x')/f(x)
-        if accept_policy == "dpp":
-            log_f = dpp_rbf_update(x_feat, up_feat, gamma)
-        elif accept_policy == "energy":
-            log_f = fast_energy_update(x_feat, up_feat, i)
-        elif accept_policy == "all":
-            log_f = 0
-        else:
-            raise ValueError(f"Unknown accept policy: {accept_policy}")
+            # save samples
+            samples.append(s)
+            samples_feat.append(s_feat)
 
-        # compute log q(x|x')/q(x'|x)
-        if fit_policy == 'all':
-            log_q = lang_log_pr(lang, x[i], up) - lang_log_pr(lang, s, x)
-        elif fit_policy == 'single':
-            log_q = lang_log_pr(lang, x[i], s) - lang_log_pr(lang, s, x[i])
-        else:
-            raise ValueError(f"Unknown fit policy: {fit_policy}")
+            # compute log f(x')/f(x)
+            if accept_policy == "dpp":
+                log_f = dpp_rbf_update(x_feat, up_feat, gamma)
+            elif accept_policy == "energy":
+                log_f = fast_energy_update(x_feat, up_feat, i)
+            elif accept_policy == "all":
+                log_f = 0
+            else:
+                raise ValueError(f"Unknown accept policy: {accept_policy}")
 
-        log_accept = np.min([0, log_f + log_q])
+            # compute log q(x|x')/q(x'|x)
+            if fit_policy == 'all':
+                up = x.copy()
+                up[i] = s
+                log_q = lang_log_pr(lang, x[i], up) - lang_log_pr(lang, s, x)
+            elif fit_policy == 'single':
+                log_q = lang_log_pr(lang, x[i], s) - lang_log_pr(lang, s, x[i])
+            else:
+                raise ValueError(f"Unknown fit policy: {fit_policy}")
 
-        # stochastically accept/reject
-        u = np.random.uniform()
-        while u == 0:
+            log_accept = np.min([0, log_f + log_q])
+
+            # stochastically accept/reject
             u = np.random.uniform()
-        if np.log(u) < log_accept:
-            x[i] = s
-            x_feat[i] = s_feat
+            while u == 0:
+                u = np.random.uniform()
+            if np.log(u) < log_accept:
+                x[i] = s
+                x_feat[i] = s_feat
 
         yield {
             "t": t,
             "x": [lang.to_str(p) for p in x],
-            "s": lang.to_str(s),
+            "x'": [lang.to_str(p) for p in samples],
             "x_feat": x_feat.copy(),
-            "s_feat": s_feat.copy(),
+            "x'_feat": samples_feat.copy(),
             "log f(x')/f(x)": log_f,
             "log q(x|x')/q(x'|x)": log_q,
             "log A(x',x)": log_accept,
@@ -102,7 +109,7 @@ def mcmc_lang_full_step(
         lang: Language,
         x_init: List[Tree],
         popn_size: int,
-        n_steps: int,
+        n_epochs: int,
         accept_policy: str,
         gamma=1,
         length_cap=50,
@@ -119,7 +126,7 @@ def mcmc_lang_full_step(
     x = x_init
     x_feat = lang.extract_features(x)
 
-    for t in range(n_steps):
+    for t in range(n_epochs):
         lang.fit(x, alpha=1.0)
         x_new = lang.samples(n_samples=popn_size, length_cap=length_cap)
         x_new_feat = lang.extract_features(x_new)
@@ -168,7 +175,9 @@ def lang_log_pr(lang: Language, query: Tree, data: Union[List[Tree], Tree]) -> f
 def lang_sum_log_pr(lang: Language, query: List[Tree], data: List[Tree]) -> float:
     # FIXME: this results in really low (practically 0) probabilities
     lang.fit(data, alpha=1.0)
-    return sum(lang.log_probability(q) for q in query)
+    log_probs = np.array([lang.log_probability(q) for q in query])
+    wandb.log({"lang log_probs (log q)": log_probs}, commit=False)
+    return np.sum(log_probs)
 
 
 def knn_dist_sum(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.ndarray:
@@ -375,10 +384,8 @@ def run_lsys_search(config):
     epochs = config.search["epochs"]
     if update_policy == "rr":
         generator_fn = mcmc_lang_rr
-        steps = epochs * popn_size
     elif update_policy == "full_step":
         generator_fn = mcmc_lang_full_step
-        steps = epochs
     else:
         raise ValueError(f"Unknown update policy: {update_policy}")
 
@@ -388,7 +395,7 @@ def run_lsys_search(config):
         lang=lang,
         x_init=x_init,
         popn_size=popn_size,
-        n_steps=steps,
+        n_epochs=epochs,
         fit_policy=fit_policy,
         accept_policy=accept_policy,
     )
@@ -396,7 +403,7 @@ def run_lsys_search(config):
              f",fit={fit_policy}"
              f",accept={accept_policy}"
              f",update={update_policy}"
-             f",steps={steps}")
+             f",epochs={epochs}")
     print(f"Running {title}...", file=sys.stderr)
 
     # make run directory
@@ -410,11 +417,8 @@ def run_lsys_search(config):
     util.mkdir(f"{save_dir}/data/")
     util.mkdir(f"{save_dir}/images/")
 
-    if update_policy == "rr":
-        pass
-    elif update_policy == "full_step":
-        wandb_process_data_fs(lang=lang, generator=generator, popn_size=popn_size, n_steps=steps, save=True,
-                              save_dir=save_dir)
+    wandb_process_data_fs(lang=lang, generator=generator, popn_size=popn_size, n_epochs=epochs,
+                          save=True, save_dir=save_dir)
 
 
 def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
@@ -433,13 +437,13 @@ def wandb_process_data_fs(
         lang: Language,
         generator: Iterator[dict],
         popn_size: int,
-        n_steps: int,
+        n_epochs: int,
         save: bool,
         save_dir: str,
 ):
     srp = SparseRandomProjection(n_components=2)
     srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
-    for i, d in enumerate(tqdm(generator, total=n_steps, desc="Generating data")):
+    for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
         if save:
             np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
 
