@@ -24,7 +24,6 @@ def mcmc_lang_rr(
         accept_policy: str,
         gamma=1,
         length_cap=50,
-        **kwargs,
 ):
     """
     MCMC with target distribution f(x) and proposal distribution q(x'|x),
@@ -35,8 +34,8 @@ def mcmc_lang_rr(
     if it is "single", we fit the model to x[i].
     """
 
-    assert accept_policy in {"dpp", "energy", "all"}
     assert fit_policy in {"all", "single"}
+    assert accept_policy in {"dpp", "energy", "all"}
 
     x = x_init
     x_feat = lang.extract_features(x)
@@ -110,17 +109,18 @@ def mcmc_lang_full_step(
         x_init: List[Tree],
         popn_size: int,
         n_epochs: int,
+        fit_policy: str,
         accept_policy: str,
         gamma=1,
         length_cap=50,
-        **kwargs
-):
+  ):
     """
     MCMC with target distribution f(x) and proposal distribution q(x'|x),
     chosen via f=accept_policy and q=fit_policy.
 
     At each iteration, x' consists of |x| independent samples from G(x).
     """
+    assert fit_policy in {"all"}
     assert accept_policy in {"dpp", "energy"}
 
     x = x_init
@@ -140,7 +140,13 @@ def mcmc_lang_full_step(
             raise ValueError(f"Unknown accept policy: {accept_policy}")
 
         # compute log q(x|x')/q(x'|x)
-        log_q = lang_sum_log_pr(lang, x, x_new) - lang_sum_log_pr(lang, x_new, x)
+        log_q_x_given_new = lang_log_prs(lang, x, x_new)
+        log_q_new_given_x = lang_log_prs(lang, x_new, x)
+        log_q = log_q_x_given_new.sum() - log_q_new_given_x.sum()
+        wandb.log({
+            "log q(x|x')": wandb.Histogram(log_q_x_given_new),
+            "log q(x'|x)": wandb.Histogram(log_q_new_given_x),
+        }, commit=False)
 
         log_accept = np.min([0, log_f + log_q])
         u = np.random.uniform()
@@ -172,12 +178,10 @@ def lang_log_pr(lang: Language, query: Tree, data: Union[List[Tree], Tree]) -> f
     return lang.log_probability(query)
 
 
-def lang_sum_log_pr(lang: Language, query: List[Tree], data: List[Tree]) -> float:
-    # FIXME: this results in really low (practically 0) probabilities
+def lang_log_prs(lang: Language, query: List[Tree], data: List[Tree]) -> np.ndarray:
     lang.fit(data, alpha=1.0)
     log_probs = np.array([lang.log_probability(q) for q in query])
-    wandb.log({"lang_sum_log_pr": wandb.Histogram(log_probs)}, commit=False)
-    return np.sum(log_probs)
+    return log_probs
 
 
 def knn_dist_sum(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.ndarray:
