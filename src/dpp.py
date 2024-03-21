@@ -10,6 +10,8 @@ from tqdm import tqdm
 from sklearn.random_projection import SparseRandomProjection
 import featurizers as feat
 import argparse
+import wandb
+from einops import rearrange
 
 from lang.tree import Language, Tree
 from lang import lindenmayer, point, arc
@@ -283,7 +285,7 @@ def analyze_run_iteration(d: dict, threshold: float) -> dict:
 
     # measure average overlap of embeddings within epsilon ball
     popn_size = len(x_feat)
-    d["epsilon overlap"] = 1/popn_size * np.sum(np.all(np.isclose(x_feat, x_feat[:, None], atol=1e-5), axis=-1))
+    d["epsilon overlap"] = 1 / popn_size * np.sum(np.all(np.isclose(x_feat, x_feat[:, None], atol=1e-5), axis=-1))
 
     # measure avg distance between all embeddings
     d["mean dist"] = np.mean(np.linalg.norm(x_feat[:, None] - x_feat, axis=-1))
@@ -397,16 +399,48 @@ def npy_to_batched_images(lang: Language, npy_dir: str, img_dir: str):
                                 title=f"gen-{n}")
 
 
+def render_program_batch(lang: Language, programs: List[str]) -> np.ndarray:
+    """
+    Render all programs in `programs` and return a batch of images.
+    """
+    images = []
+    for p in programs:
+        tree = lang.parse(p)
+        img = lang.eval(tree)
+        images.append(img)
+    return np.stack(images)
+
+
+def render_program_batch_as_wandb_image(lang: Language, programs: List[str], caption: str) -> wandb.Image:
+    """
+    Render all programs in `programs` and return as a single wandb.Image.
+    """
+    images = render_program_batch(lang, programs)
+    image = combine_images(images)
+    return wandb.Image(image, caption=caption)
+
+
+def combine_images(images: np.ndarray):
+    """
+    Combine multiple images into a single image.  Given an array of images of shape [b, h, w, c],
+    produce a single image with dimensions [h', w', c], where h' and w' are close to sqrt(b).
+    """
+    b, h, w, c = images.shape
+    s = int(np.ceil(np.sqrt(b)))
+
+    # Pad with zeros in case we don't have enough images to cover the square grid
+    image = np.zeros((s ** 2, h, w, c), dtype=images.dtype)
+    image[:b, :, :, :] = images
+
+    return rearrange(image, '(sh sw) h w c -> (sh h) (sw w) c', sh=s, sw=s)
+
+
 def plot_batched_images(lang: Language, programs: List[str], save_path: str, title: str):
     """
     Plot all programs in `programs` in a single plot and save to `save_path` with title `title`.
     """
-    images = []
-    for i, p in enumerate(programs):
-        tree = lang.parse(p)
-        img = lang.eval(tree)
-        images.append(img)
-    fig = plot_square_subplots(np.stack(images), title=title)
+    images = render_program_batch(lang, programs)
+    fig = plot_square_subplots(images, title=title)
     fig.savefig(save_path)
     plt.close(fig)
 
@@ -414,7 +448,7 @@ def plot_batched_images(lang: Language, programs: List[str], save_path: str, tit
 def run_search_iter(
         id: int,
         domain: str,
-        n_steps: int,
+        steps: int,
         popn_size: int,
         fit_policy: str,
         accept_policy: str,
@@ -427,6 +461,7 @@ def run_search_iter(
         anim_stride=1,
         analysis_stride=1,
         plot=False,
+        debug=False,
 ):
     lim = None
 
@@ -481,6 +516,7 @@ def run_search_iter(
         generator_fn = mcmc_lang_rr
     elif update_policy == "full_step":
         generator_fn = mcmc_lang_full_step
+        steps //= popn_size
     else:
         raise ValueError(f"Unknown update policy: {update_policy}")
 
@@ -488,7 +524,7 @@ def run_search_iter(
         lang=lang,
         x_init=x_init,
         popn_size=popn_size,
-        n_steps=n_steps if update_policy == "rr" else n_steps // popn_size,
+        n_steps=steps,
         fit_policy=fit_policy,
         accept_policy=accept_policy,
     )
@@ -496,7 +532,7 @@ def run_search_iter(
              f",fit={fit_policy}"
              f",accept={accept_policy}"
              f",update={update_policy}"
-             f",steps={n_steps}"
+             f",steps={steps}"
              f",spread={spread}"
              f",run={run}"
              f",sigma={sigma}")
@@ -513,17 +549,33 @@ def run_search_iter(
     util.mkdir(f"{dirname}/data/")
     util.mkdir(f"{dirname}/images/")
 
+    # wandb init
+    if not debug:
+        config = {
+            "id": id,
+            "lang": lang,
+            "fit_policy": fit_policy,
+            "accept_policy": accept_policy,
+            "update_policy": update_policy,
+            "x_init": x_init,
+            "popn_size": popn_size,
+            "steps": steps,
+            "run": run,
+            "sigma": sigma,
+        }
+        wandb.init(project="dpp", config=config, name=title)
+
     if update_policy == "rr":
-        process_search_data_rr(lang=lang, generator=generator, popn_size=popn_size, n_steps=n_steps,
+        process_search_data_rr(lang=lang, generator=generator, popn_size=popn_size, n_steps=steps,
                                save_data=save_data, dirname=dirname, plot=plot, domain=domain,
                                analysis_stride=analysis_stride, anim_stride=anim_stride,
-                               animate_embeddings=animate_embeddings, title=title)
+                               animate_embeddings=animate_embeddings, title=title, debug=debug)
     elif update_policy == "full_step":
-        process_search_data_full_step(lang=lang, generator=generator, popn_size=popn_size, n_steps=n_steps,
+        process_search_data_full_step(lang=lang, generator=generator, popn_size=popn_size, n_steps=steps,
                                       save_data=save_data, dirname=dirname, plot=plot, domain=domain,
                                       analysis_stride=analysis_stride // popn_size,
                                       anim_stride=anim_stride // popn_size,
-                                      animate_embeddings=animate_embeddings, title=title)
+                                      animate_embeddings=animate_embeddings, title=title, debug=debug)
 
 
 def process_search_data_full_step(
@@ -539,6 +591,7 @@ def process_search_data_full_step(
         anim_stride: int,
         animate_embeddings: bool,
         title: str,
+        debug: bool,
 ):
     analysis_data = []
     anim_coords = []  # save 2d embeddings for animation
@@ -549,8 +602,17 @@ def process_search_data_full_step(
         if save_data:
             np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
 
+        # Log to wandb
+        if not debug:
+            log = {
+                **({k: v for k, v in d.items() if not k.endswith("_feat")}),
+                "step": i,
+                "snapshot": render_program_batch_as_wandb_image(lang, d["x"], caption=f"gen-{i}"),
+            }
+            wandb.log(log)
+
         # Plot images
-        if plot and domain == "lsystem":
+        if debug and domain == "lsystem":
             plot_batched_images(lang, d["x"], f"{dirname}/images/{i:06d}.png", title=f"gen-{i}")
 
         # Analysis
@@ -603,6 +665,7 @@ def process_search_data_rr(
         anim_stride: int,
         animate_embeddings: bool,
         title: str,
+        debug: bool,
 ):
     anim_coords = []  # save 2d embeddings for animation
     srp = SparseRandomProjection(n_components=2)
@@ -615,8 +678,17 @@ def process_search_data_rr(
         if save_data:
             np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
 
+        # Log to wandb
+        if not debug and domain == "lsystem" and i % popn_size == 0:
+            log = {
+                **({k: v for k, v in d.items() if not k.endswith("_feat")}),
+                "step": i,
+                "snapshot": render_program_batch_as_wandb_image(lang, d["x"], caption=f"gen-{i}"),
+            }
+        wandb.log(log)
+
         # Plot images
-        if plot and domain == "lsystem" and i % analysis_stride == 0:
+        if debug and domain == "lsystem" and i % analysis_stride == 0:
             plot_batched_images(lang, d["x"], f"{dirname}/images/{i:06d}.png", title=f"gen-{i}")
 
         # Analysis
@@ -667,8 +739,10 @@ if __name__ == "__main__":
     args = p.parse_args()
 
     if args.mode == "search":
-        n_steps = 100 * 10 * 100  # 100 iters * 10x samples * 100 popn size
+        n_epochs = 100
+        sample_ratio = 10
         popn_size = 100
+        n_steps = n_epochs * sample_ratio * popn_size
 
         if args.debug:
             popn_size = 10
@@ -682,7 +756,7 @@ if __name__ == "__main__":
                     run_search_iter(
                         id=ts,
                         domain=args.domain,
-                        n_steps=n_steps,
+                        steps=n_steps,
                         popn_size=popn_size,
                         fit_policy=fit,
                         accept_policy="energy",
@@ -695,6 +769,7 @@ if __name__ == "__main__":
                         plot=True,
                         analysis_stride=popn_size,
                         anim_stride=popn_size,
+                        debug=args.debug,
                     )
     elif args.mode == "npy-to-images":
         lang = lindenmayer.LSys(
