@@ -634,6 +634,7 @@ if __name__ == "__main__":
     p.add_argument("--domain", type=str, required=True, choices=["point", "lsystem"])
     p.add_argument("--npy-dir", type=str)
     p.add_argument("--img-dir", type=str)
+    p.add_argument("--wandb-sweep-config", type=str)
     p.add_argument("--batched", action="store_true", default=False)
     p.add_argument("--debug", action="store_true", default=False)
     args = p.parse_args()
