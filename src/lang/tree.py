@@ -185,13 +185,13 @@ class Language:
         return out
 
     def fit(self, corpus: List[Tree], alpha):
-        weights = np.ones(len(corpus))
+        ones = np.ones(len(corpus))
         if self.model.gram == 1:
-            counts = sum_scans(corpus, weights, scanner=unigram_scan)
+            counts = sum_scans(corpus, weights=ones, scanner=unigram_scan)
             self.model.from_unigram_counts_(counts, alpha=alpha)
         elif self.model.gram == 2:
-            counts = sum_scans(corpus, weights=np.ones(len(corpus)), scanner=bigram_scan)
-            counts.update(sum_scans(corpus, weights=np.ones(len(corpus)), scanner=unigram_scan))
+            counts = sum_scans(corpus, weights=ones, scanner=bigram_scan)
+            counts.update(sum_scans(corpus, weights=ones, scanner=unigram_scan))
             self.model.from_bigram_counts_(counts, alpha=alpha)
         else:
             raise AttributeError(f"Cannot fit on grammar with gram={self.model.gram}")
