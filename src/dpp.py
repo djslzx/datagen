@@ -404,13 +404,12 @@ def run_lsys_search(config):
     )
 
     # make run directory
+    save_dir = f"../out/dpp/{wandb.run.id}/"
     try:
-        util.mkdir(f"../out/dpp/{wandb.run.id}/")
+        util.mkdir(save_dir)
     except FileExistsError:
         pass
 
-    save_dir = f"../out/dpp/{wandb.run.id}/"
-    util.mkdir(save_dir)
     util.mkdir(f"{save_dir}/data/")
     util.mkdir(f"{save_dir}/images/")
 
