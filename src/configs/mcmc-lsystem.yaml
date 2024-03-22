@@ -1,5 +1,6 @@
 program: dpp.py
 method: grid
+note: "n=1000"
 parameters:
   mode:
     value: search
@@ -42,18 +43,18 @@ parameters:
       n_cols:
         value: 128
       vary_color:
-        value: false
+        values: [ false, true ]
   search:
     parameters:
       popn_size:
-        value: 100
+        value: 1000
       sample_rate:
         value: 10
       epochs:
         value: 100
       update_policy:
-        values: [rr, full_step]
+        values: [ rr, full_step ]
       fit_policy:
-        values: [single, all]
+        values: [ single, all ]
       accept_policy:
         value: energy
