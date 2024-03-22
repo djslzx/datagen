@@ -48,8 +48,6 @@ parameters:
     parameters:
       popn_size:
         value: 1000
-      sample_rate:
-        value: 10
       epochs:
         value: 100
       update_policy:
@@ -58,3 +56,5 @@ parameters:
         values: [ single, all ]
       accept_policy:
         value: energy
+      length_cap:
+        value: 200

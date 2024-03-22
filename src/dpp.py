@@ -232,8 +232,11 @@ def analyzer_iter(d: dict, threshold: float) -> dict:
     popn_size = len(x_feat)
     d["epsilon overlap"] = 1 / popn_size * np.sum(np.all(np.isclose(x_feat, x_feat[:, None], atol=1e-5), axis=-1))
 
-    # measure avg distance between all embeddings
-    d["mean dist"] = np.mean(np.linalg.norm(x_feat[:, None] - x_feat, axis=-1))
+    # embedding distances
+    dists = np.linalg.norm(x_feat[:, None] - x_feat, axis=-1)
+    d["mean dist"] = np.mean(dists)
+    d["std dist"] = np.std(dists)
+    d["max dist"] = np.max(dists)
 
     # average program length
     d["mean length"] = np.mean([len(p) for p in d["x"]])
@@ -368,12 +371,13 @@ def run_lsys_search(config):
     )
     lsystems = [lang.parse(lsys) for lsys in config.x_init]
 
+    length_cap = config.search["length_cap"]
     popn_size = config.search["popn_size"]
     if popn_size < len(lsystems):
         x_init = lsystems[:popn_size]
     elif popn_size > len(lsystems):
         lang.fit(lsystems, alpha=1.0)
-        x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=50)
+        x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=length_cap)
     else:
         x_init = lsystems
 
@@ -396,13 +400,8 @@ def run_lsys_search(config):
         n_epochs=epochs,
         fit_policy=fit_policy,
         accept_policy=accept_policy,
+        length_cap=length_cap,
     )
-    title = (f"N={popn_size}"
-             f",fit={fit_policy}"
-             f",accept={accept_policy}"
-             f",update={update_policy}"
-             f",epochs={epochs}")
-    print(f"Running {title}...", file=sys.stderr)
 
     # make run directory
     try:
@@ -410,8 +409,8 @@ def run_lsys_search(config):
     except FileExistsError:
         pass
 
-    util.mkdir(f"../out/dpp/{wandb.run.id}/{title}")
-    save_dir = f"../out/dpp/{wandb.run.id}/{title}"
+    save_dir = f"../out/dpp/{wandb.run.id}/"
+    util.mkdir(save_dir)
     util.mkdir(f"{save_dir}/data/")
     util.mkdir(f"{save_dir}/images/")
 
