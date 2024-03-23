@@ -48,7 +48,7 @@ parameters:
       popn_size:
         value: 1000
       epochs:
-        value: 200
+        value: 100
       update_policy:
         values: [ rr ]
       fit_policy:
@@ -57,3 +57,5 @@ parameters:
         values: [ energy, moment ]
       length_cap:
         value: 100
+      keep_original:
+        values: [ false, true ]

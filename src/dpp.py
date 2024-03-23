@@ -410,13 +410,18 @@ def run_lsys_search(config):
 
     length_cap = config.search["length_cap"]
     popn_size = config.search["popn_size"]
-    if popn_size < len(lsystems):
-        x_init = lsystems[:popn_size]
-    elif popn_size > len(lsystems):
-        lang.fit(lsystems, alpha=1.0)
-        x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=length_cap)
+    keep_original = config.search["keep_original"]
+    if keep_original:
+        if popn_size < len(lsystems):
+            x_init = lsystems[:popn_size]
+        elif popn_size > len(lsystems):
+            lang.fit(lsystems, alpha=1.0)
+            x_init = lsystems + lang.samples(popn_size - len(lsystems), length_cap=length_cap)
+        else:
+            x_init = lsystems
     else:
-        x_init = lsystems
+        lang.fit(lsystems, alpha=1.0)
+        x_init = lang.samples(popn_size, length_cap=length_cap)
 
     # init generator
     update_policy = config.search["update_policy"]
