@@ -123,7 +123,7 @@ def mcmc_lang_full_step(
     At each iteration, x' consists of |x| independent samples from G(x).
     """
     assert fit_policy in {"all"}
-    assert accept_policy in {"dpp", "energy"}
+    assert accept_policy in {"dpp", "energy", "moment"}
 
     x = x_init
     x_feat = lang.extract_features(x)
