@@ -35,7 +35,7 @@ def mcmc_lang_rr(
     """
 
     assert fit_policy in {"all", "single"}
-    assert accept_policy in {"dpp", "energy", "all"}
+    assert accept_policy in {"dpp", "energy", "moment", "all"}
 
     x = x_init
     x_feat = lang.extract_features(x)
@@ -67,6 +67,8 @@ def mcmc_lang_rr(
                 log_f = dpp_rbf_update(x_feat, up_feat, gamma)
             elif accept_policy == "energy":
                 log_f = fast_energy_update(x_feat, up_feat, i)
+            elif accept_policy == "moment":
+                log_f = slow_fom_update(x_feat, up_feat)
             elif accept_policy == "all":
                 log_f = 0
             else:
@@ -113,7 +115,7 @@ def mcmc_lang_full_step(
         accept_policy: str,
         gamma=1,
         length_cap=50,
-  ):
+):
     """
     MCMC with target distribution f(x) and proposal distribution q(x'|x),
     chosen via f=accept_policy and q=fit_policy.
@@ -136,6 +138,8 @@ def mcmc_lang_full_step(
             log_f = dpp_rbf_update(x_feat, x_new_feat, gamma)
         elif accept_policy == "energy":
             log_f = slow_energy_update(x_feat, x_new_feat)
+        elif accept_policy == "moment":
+            log_f = slow_fom_update(x_feat, x_new_feat)
         else:
             raise ValueError(f"Unknown accept policy: {accept_policy}")
 
@@ -211,6 +215,13 @@ def dpp_rbf_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> flo
     L_x = np.exp(-gamma * np.linalg.norm(x_feat[:, None] - x_feat[None], axis=-1) ** 2)
     L_up = np.exp(-gamma * np.linalg.norm(up_feat[:, None] - up_feat[None], axis=-1) ** 2)
     return logdet(L_up) - logdet(L_x)
+
+
+def slow_fom_update(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
+    # update using first order moment:
+    # log f(x) = sum_i d(x_i, mean(x))
+    return np.sum(np.linalg.norm(up_feat - np.mean(up_feat, axis=0), axis=-1)) \
+        - np.sum(np.linalg.norm(x_feat - np.mean(x_feat, axis=0), axis=-1))
 
 
 def analyzer_iter(d: dict, threshold: float) -> dict:

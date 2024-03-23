@@ -1,6 +1,5 @@
 program: dpp.py
 method: grid
-note: "n=1000"
 parameters:
   mode:
     value: search
@@ -31,7 +30,7 @@ parameters:
       softmax_outputs:
         value: false
       sigma:
-        values: [ 0., 2. ]
+        values: [ 0, 3, 5, 10 ]
   render:
     parameters:
       step_length:
@@ -49,12 +48,12 @@ parameters:
       popn_size:
         value: 1000
       epochs:
-        value: 100
+        value: 200
       update_policy:
-        values: [ rr, full_step ]
+        values: [ rr ]
       fit_policy:
         values: [ single, all ]
       accept_policy:
-        value: energy
+        value: [ energy, moment ]
       length_cap:
-        value: 200
+        value: 100
