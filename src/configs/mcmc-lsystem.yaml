@@ -54,6 +54,6 @@ parameters:
       fit_policy:
         values: [ single, all ]
       accept_policy:
-        value: [ energy, moment ]
+        values: [ energy, moment ]
       length_cap:
         value: 100
