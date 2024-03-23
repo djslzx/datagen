@@ -183,10 +183,10 @@ class Language:
         while len(out) < n_samples:
             try:
                 t = self.sample()
-                if len(t) <= length_cap:
-                    out.append(t)
             except RecursionError:
                 continue  # retry
+            if len(t) <= length_cap:
+                out.append(t)
         return out
 
     def fit(self, corpus: List[Tree], alpha):
