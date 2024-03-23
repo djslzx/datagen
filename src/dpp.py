@@ -333,7 +333,7 @@ def npy_to_batched_images(lang: Language, npy_dir: str, img_dir: str):
             plt.close(fig)
 
 
-def render_program_batch(lang: Language, programs: List[str]) -> np.ndarray:
+def render_program_batch(lang: Language, programs: Iterable[str]) -> np.ndarray:
     """
     Render all programs in `programs` and return a batch of images.
     """
@@ -350,8 +350,34 @@ def render_program_batch_as_wandb_image(lang: Language, programs: List[str], cap
     Render all programs in `programs` and return as a single wandb.Image.
     """
     images = render_program_batch(lang, programs)
-    image = util.combine_images(images)
+    image = util.combine_images_square(images)
     return wandb.Image(image, caption=caption)
+
+
+def log_best_and_worst(
+        k: int,
+        lang: Language,
+        current_programs: List[str],
+        current_features: np.ndarray,
+        prev_features: np.ndarray,
+) -> dict:
+    def summarize(samples: np.ndarray, scores: np.ndarray) -> wandb.Image:
+        images = render_program_batch(lang, samples)
+        image = util.combine_images_row(images)
+        caption = "LTR: " + ", ".join(f"{score:.2e}" for score in scores)
+        return wandb.Image(image, caption=caption)
+
+    current_programs = np.array(current_programs)
+    current_features = np.array(current_features)
+    prev_features = np.array(prev_features)
+
+    scores = knn_dist_sum(queries=current_features, data=prev_features, n_neighbors=5)
+
+    i_best = np.argpartition(scores, -k)[-k:][::-1]
+    i_worst = np.argpartition(scores, k)[:k]
+
+    return {"best": summarize(current_programs[i_best], scores[i_best]),
+            "worst": summarize(current_programs[i_worst], scores[i_worst])}
 
 
 def plot_batched_images(lang: Language, programs: List[str], save_path: str, title: str):
@@ -450,15 +476,21 @@ def wandb_process_data_epochs(
 ):
     srp = SparseRandomProjection(n_components=2)
     srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
+
+    prev_feat = None
     for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
         if save:
             np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
         analysis_data = analyzer_iter(d, threshold=1e-10)
         coords = reduce_dim(d["x_feat"], srp)
         coord_image = util.scatterplot_image(coords, figsize=3)
+        if prev_feat is None:
+            prev_feat = d["x_feat"]
+        bw = log_best_and_worst(5, lang, d["x"], d["x_feat"], prev_feat)
         log = {
             **d,
             **analysis_data,
+            **bw,
             "step": i,
             "renders": render_program_batch_as_wandb_image(lang, d["x"]),
             "scatter": wandb.Image(coord_image),
@@ -467,6 +499,8 @@ def wandb_process_data_epochs(
         log = {k: v for k, v in log.items()
                if k not in rm_keys and not k.endswith("_feat")}
         wandb.log(log)
+
+        prev_feat = d["x_feat"]
 
 
 def local_process_data(

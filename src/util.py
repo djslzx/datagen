@@ -45,7 +45,15 @@ def scatterplot_image(coords: np.ndarray, figsize: int) -> np.ndarray:
     return arr
 
 
-def combine_images(images: np.ndarray) -> np.ndarray:
+def combine_images_row(images: np.ndarray) -> np.ndarray:
+    """
+    Combine multiple images into a single image.  Given an array of images of shape [b, h, w, c],
+    produce a single image with dimensions [h, b * w, c].
+    """
+    return rearrange(images, 'b h w c -> h (b w) c')
+
+
+def combine_images_square(images: np.ndarray) -> np.ndarray:
     """
     Combine multiple images into a single image.  Given an array of images of shape [b, h, w, c],
     produce a single image with dimensions [h', w', c], where h' and w' are close to sqrt(b).
