@@ -43,6 +43,9 @@ def mcmc_lang_rr(
     for t in range(n_epochs):
         samples = []
         samples_feat = []
+        sum_log_f = 0
+        sum_log_q = 0
+        sum_log_accept = 0
 
         for i in range(popn_size):
             if fit_policy == 'all':
@@ -94,15 +97,20 @@ def mcmc_lang_rr(
                 x[i] = s
                 x_feat[i] = s_feat
 
+            # track log probabilities
+            sum_log_f += log_f
+            sum_log_q += log_q
+            sum_log_accept += log_accept
+
         yield {
             "t": t,
             "x": [lang.to_str(p) for p in x],
             "x'": [lang.to_str(p) for p in samples],
             "x_feat": x_feat.copy(),
             "x'_feat": samples_feat.copy(),
-            "log f(x')/f(x)": log_f,
-            "log q(x|x')/q(x'|x)": log_q,
-            "log A(x',x)": log_accept,
+            "log f(x')/f(x)": sum_log_f / popn_size,
+            "log q(x|x')/q(x'|x)": log_q / popn_size,
+            "log A(x',x)": log_accept / popn_size,
         }
 
 
