@@ -408,6 +408,9 @@ def run_lsys_search(config):
     expected_keys = {"x_init", "search", "featurizer", "render"}
     assert all(k in config for k in expected_keys), f"Expected {expected_keys}, got {set(config.keys())}"
 
+    seed = config.search["random_seed"]
+    np.random.seed(seed)
+
     featurizer = feat.ResnetFeaturizer(**config.featurizer)
     lang = lindenmayer.LSys(
         kind="deterministic",

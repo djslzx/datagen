@@ -30,7 +30,7 @@ parameters:
       softmax_outputs:
         value: false
       sigma:
-        values: [ 0, 3, 5, 10 ]
+        values: [ 0, 5, 10 ]
   render:
     parameters:
       step_length:
@@ -42,9 +42,11 @@ parameters:
       n_cols:
         value: 128
       vary_color:
-        values: [ false, true ]
+        value: true
   search:
     parameters:
+      random_seed:
+        value: 0
       popn_size:
         value: 1000
       epochs:
@@ -58,4 +60,4 @@ parameters:
       length_cap:
         value: 100
       keep_original:
-        values: [ false, true ]
+        value: true
