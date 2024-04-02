@@ -22,6 +22,7 @@ def mcmc_lang_rr(
         n_epochs: int,
         fit_policy: str,
         accept_policy: str,
+        distance_fn: str,
         gamma=1,
         length_cap=50,
 ):
@@ -36,6 +37,7 @@ def mcmc_lang_rr(
 
     assert fit_policy in {"all", "single"}
     assert accept_policy in {"dpp", "energy", "moment", "all"}
+    assert distance_fn in {"cosine", "dot", "euclidean"}
 
     x = x_init
     x_feat = lang.extract_features(x)
@@ -586,19 +588,43 @@ def local_process_data(
     plt.cla()
 
 
-if __name__ == "__main__":
-    # p = argparse.ArgumentParser()
-    # p.add_argument("--mode", type=str, required=True, choices=["search", "npy-to-images"])
-    # p.add_argument("--domain", type=str, required=True, choices=["point", "lsystem"])
-    # p.add_argument("--npy-dir", type=str)
-    # p.add_argument("--img-dir", type=str)
-    # p.add_argument("--wandb-sweep-config", type=str)
-    # p.add_argument("--batched", action="store_true", default=False)
-    # args = p.parse_args()
+def check_fuzzballs(filename: str):
+    from skimage import filters
 
+    classifier = feat.ResnetFeaturizer(disable_last_layer=False, softmax_outputs=False, sigma=5.)
+    lang = lindenmayer.LSys(kind="deterministic", featurizer=classifier, step_length=4, render_depth=3)
+    sigma = 5.
+    n_progs = 4
+    with open(filename, "r") as f:
+        for i in range(n_progs):
+            program = f.readline().strip()
+            tree = lang.parse(program)
+            images = [
+                lang.eval(tree, env={"vary_color": True}),
+                lang.eval(tree, env={"vary_color": False}),
+            ]
+
+            for image in images:
+                image = filters.gaussian(image, sigma=sigma, channel_axis=-1)
+
+                # featurize and classify
+                feat_vec = classifier.apply([image])
+                class_id = classifier.top_k_classes(feat_vec, k=1)[0]
+
+                plt.imshow(image)
+                plt.title(f"{program}\n{class_id}")
+                plt.show()
+
+
+def sweep():
     sweep_config = "./configs/mcmc-lsystem.yaml"
     with open(sweep_config, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     wandb.init(project="dpp", config=config)
     config = wandb.config
     run_lsys_search(config)
+
+
+if __name__ == "__main__":
+    sweep()
+    # check_fuzzballs("out/dpp/5swaynio/lsystems.txt")

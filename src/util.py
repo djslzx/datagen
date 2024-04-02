@@ -111,7 +111,7 @@ def plot_v_subplots(data: List[dict], keys: List[str]):
     return fig
 
 
-def plot_square_subplots(images: np.ndarray, title: str):
+def plot_square_subplots(images: np.ndarray, title=""):
     assert images.ndim == 3, f"Expected 3d array, got {images.ndim}d"
 
     n_images = len(images)
@@ -123,7 +123,8 @@ def plot_square_subplots(images: np.ndarray, title: str):
         ax.imshow(img)
         ax.axis("off")
 
-    plt.suptitle(title)
+    if title:
+        plt.suptitle(title)
     plt.tight_layout()
     return fig
 
