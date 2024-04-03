@@ -88,7 +88,7 @@ class RealPoint(Language):
 
     def log_probability(self, t: Tree) -> float:
         x, y = self.eval(t)
-        return self.x_distribution.logpdf(x) + self.y_distribution.logpdf(y)
+        return self.x_distribution.logpdf(x).item() + self.y_distribution.logpdf(y).item()
 
     @property
     def str_semantics(self) -> Dict:

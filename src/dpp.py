@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union
+from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union, Generator
 import numpy as np
 import yaml
 from sklearn.neighbors import NearestNeighbors
@@ -25,7 +25,7 @@ def mcmc_lang_rr(
         distance_fn: str,
         gamma=1,
         length_cap=50,
-):
+) -> Iterator[dict]:
     """
     MCMC with target distribution f(x) and proposal distribution q(x'|x),
     chosen via f=accept_policy and q=fit_policy.
@@ -400,10 +400,43 @@ def plot_batched_images(lang: Language, programs: List[str], save_path: str, tit
     plt.close(fig)
 
 
-def run_point_search(popn_size: int, spread: float, lim=None):
+def run_point_search(
+        popn_size: int,
+        save_dir: str,
+        n_epochs: int,
+        spread=1,
+        lim=None):
     lang = point.RealPoint(lim=lim, std=1)
     coords = np.random.uniform(size=(popn_size, 2)) * spread
     x_init = [lang.make_point(a, b) for a, b in coords]
+    for fit_policy in ["single", "all"]:
+        for accept_policy in ["energy", "moment"]:
+            title = f"fit={fit_policy},accept={accept_policy}"
+            local_dir = f"{save_dir}/{title}"
+            util.mkdir(local_dir)
+
+            generator = mcmc_lang_rr(
+                lang=lang,
+                x_init=x_init,
+                popn_size=popn_size,
+                n_epochs=n_epochs,
+                fit_policy=fit_policy,
+                accept_policy=accept_policy,
+                distance_fn="euclidean",
+            )
+            data = list(tqdm(generator, total=n_epochs))
+
+            # plots
+            data = [analyzer_iter(d, threshold=1e-10) for d in data]
+            plot_keys = list(sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat"}))
+            fig = util.plot_v_subplots(data, keys=plot_keys)
+            fig.savefig(f"{local_dir}/plot.png")
+            plt.cla()
+
+            # animation
+            coords = [d["x_feat"] for d in data]
+            anim = util.animate_points(coords, title=title)
+            anim.save(f"{local_dir}/embed.mp4")
 
 
 def run_lsys_search(config):
@@ -521,73 +554,6 @@ def wandb_process_data_epochs(
         prev_feat = d["x_feat"]
 
 
-def local_process_data(
-        lang: Language,
-        generator: Iterator[dict],
-        popn_size: int,
-        n_steps: int,
-        save_data: bool,
-        dirname: str,
-        plot: bool,
-        domain: str,
-        analysis_stride: int,
-        anim_stride: int,
-        animate_embeddings: bool,
-        title: str,
-        debug: bool,
-):
-    anim_coords = []  # save 2d embeddings for animation
-    srp = SparseRandomProjection(n_components=2)
-    srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
-
-    analysis_data = []
-
-    for i, d in enumerate(tqdm(generator, total=n_steps, desc="Generating data")):
-        # Save data
-        if save_data:
-            np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
-
-        # Plot images
-        if debug and domain == "lsystem" and i % analysis_stride == 0:
-            plot_batched_images(lang, d["x"], f"{dirname}/images/{i:06d}.png", title=f"gen-{i}")
-
-        # Analysis
-        if i % analysis_stride == 0:
-            analysis_data.append(analyzer_iter(d, threshold=1e-10))
-
-        # Animation
-        if animate_embeddings and i % anim_stride == 0:
-            x_feat = d["x_feat"]
-            dim = x_feat.shape[1]
-            if dim < 2:
-                # if x_feat is 1d, add a dimension to make it 2d
-                coords = np.stack([x_feat, np.zeros_like(x_feat)], axis=-1)
-            elif dim == 2:
-                coords = x_feat
-            else:
-                coords = srp.transform(d["x_feat"])
-
-            anim_coords.append(coords)
-
-    if animate_embeddings:
-        anim = util.animate_points(
-            anim_coords,
-            title=title,
-            delay=100,
-        )
-        print("Saving animation...")
-        anim.save(f"{dirname}/embed.mp4")
-
-    # Plot analysis
-    for i, d in enumerate(analysis_data):
-        d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in analysis_data[:i + 1]]) / (i + 1)
-
-    keys = sorted(analysis_data[0].keys() - {"i", "t", "s", "x", "s_feat", "x_feat"})
-    fig = util.plot_v_subplots(analysis_data, keys)
-    fig.savefig(f"{dirname}/plot.png")
-    plt.cla()
-
-
 def check_fuzzballs(filename: str):
     from skimage import filters
 
@@ -626,5 +592,13 @@ def sweep():
 
 
 if __name__ == "__main__":
-    sweep()
+    # sweep()
+    ts = util.timestamp()
+    save_dir = f"out/dpp-points/{ts}"
+    util.mkdir(save_dir)
+    run_point_search(
+        popn_size=100,
+        save_dir=save_dir,
+        n_epochs=10,
+    )
     # check_fuzzballs("out/dpp/5swaynio/lsystems.txt")
