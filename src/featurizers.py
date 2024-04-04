@@ -165,11 +165,11 @@ class ResnetFeaturizer(Featurizer):
 
     def top_k_classes(self, features: np.ndarray, k: int) -> List[str]:
         top_class_ids = [int(x) for x in (-features).argsort()[:k]]
-        labels = [f"{self.classify(class_id)}: {features[class_id].item(): .4f}"
+        labels = [f"{self._classify(class_id)}: {features[class_id].item(): .4f}"
                   for class_id in top_class_ids]
         return labels
 
-    def classify(self, class_id: int) -> str:
+    def _classify(self, class_id: int) -> str:
         if self.disable_last_layer:
             raise AttributeError("ResnetFeaturizer with last layer disabled cannot classify")
         elif not isinstance(class_id, int):

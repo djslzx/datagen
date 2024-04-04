@@ -69,25 +69,37 @@ def combine_images_square(images: np.ndarray) -> np.ndarray:
 
 
 def animate_points(
-        points: Iterable[np.ndarray],
+        points: Iterable[Tuple[int, np.ndarray]],
         title: str,
+        background: Optional[np.ndarray] = None,
+        xlim: Optional[Tuple[float, float]] = None,
+        ylim: Optional[Tuple[float, float]] = None,
         delay=200
 ):
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
-    ax.set_box_aspect(1)
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    ax.set_aspect('equal')
 
-    @count_calls
-    def update(points):
+    if background is not None:
+        ax.imshow(background, extent=xlim + ylim, alpha=0.5)
+
+    def update(frame):
         # check that points are in 2d
-        assert points.shape[1] == 2, f"points.shape: {points.shape}"
+        i, coords = frame
+        assert coords.shape[1] == 2, f"points.shape: {coords.shape}"
 
-        ax.set_title(f"{title}, frame: {update.calls}")
+        ax.set_title(f"{title}, frame: {i}")
         ax.title.set_fontsize(8)
-        scatter.set_offsets(points)
+        scatter.set_offsets(coords)
 
-        ax.set_xlim(min(p[0] for p in points), max(p[0] for p in points))
-        ax.set_ylim(min(p[1] for p in points), max(p[1] for p in points))
+        if xlim is None:
+            ax.set_xlim(min(p[0] for p in coords), max(p[0] for p in coords))
+        if ylim is None:
+            ax.set_ylim(min(p[1] for p in coords), max(p[1] for p in coords))
 
         return scatter,
 
@@ -111,7 +123,7 @@ def plot_v_subplots(data: List[dict], keys: List[str]):
     return fig
 
 
-def plot_square_subplots(images: np.ndarray, title: str):
+def plot_square_subplots(images: np.ndarray, title=""):
     assert images.ndim == 3, f"Expected 3d array, got {images.ndim}d"
 
     n_images = len(images)
@@ -123,7 +135,8 @@ def plot_square_subplots(images: np.ndarray, title: str):
         ax.imshow(img)
         ax.axis("off")
 
-    plt.suptitle(title)
+    if title:
+        plt.suptitle(title)
     plt.tight_layout()
     return fig
 

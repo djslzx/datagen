@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union
+from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union, Generator
 import numpy as np
 import yaml
 from sklearn.neighbors import NearestNeighbors
@@ -22,9 +22,10 @@ def mcmc_lang_rr(
         n_epochs: int,
         fit_policy: str,
         accept_policy: str,
+        distance_fn: str,
         gamma=1,
         length_cap=50,
-):
+) -> Iterator[dict]:
     """
     MCMC with target distribution f(x) and proposal distribution q(x'|x),
     chosen via f=accept_policy and q=fit_policy.
@@ -34,23 +35,28 @@ def mcmc_lang_rr(
     if it is "single", we fit the model to x[i].
     """
 
-    assert fit_policy in {"all", "single"}
+    assert fit_policy in {"all", "single", "uniform", "initial"}
     assert accept_policy in {"dpp", "energy", "moment", "all"}
+    assert distance_fn in {"cosine", "dot", "euclidean"}
 
-    x = x_init
+    x = x_init.copy()
     x_feat = lang.extract_features(x)
+
+    if fit_policy == "initial":
+        lang.fit(x_init, alpha=1.0)
 
     for t in range(n_epochs):
         samples = []
         samples_feat = []
+        sum_log_f = 0
+        sum_log_q = 0
+        sum_log_accept = 0
 
         for i in range(popn_size):
             if fit_policy == 'all':
                 lang.fit(x, alpha=1.0)
             elif fit_policy == 'single':
                 lang.fit([x[i]], alpha=1.0)
-            else:
-                raise ValueError(f"Unknown fit policy: {fit_policy}")
 
             # sample and featurize
             s = lang.samples(n_samples=1, length_cap=length_cap)[0]
@@ -94,15 +100,20 @@ def mcmc_lang_rr(
                 x[i] = s
                 x_feat[i] = s_feat
 
+            # track log probabilities
+            sum_log_f += log_f
+            sum_log_q += log_q
+            sum_log_accept += log_accept
+
         yield {
             "t": t,
             "x": [lang.to_str(p) for p in x],
             "x'": [lang.to_str(p) for p in samples],
             "x_feat": x_feat.copy(),
             "x'_feat": samples_feat.copy(),
-            "log f(x')/f(x)": log_f,
-            "log q(x|x')/q(x'|x)": log_q,
-            "log A(x',x)": log_accept,
+            "log f(x')/f(x)": sum_log_f / popn_size,
+            "log q(x|x')/q(x'|x)": log_q / popn_size,
+            "log A(x',x)": log_accept / popn_size,
         }
 
 
@@ -390,15 +401,101 @@ def plot_batched_images(lang: Language, programs: List[str], save_path: str, tit
     plt.close(fig)
 
 
-def run_point_search(popn_size: int, spread: float, lim=None):
-    lang = point.RealPoint(lim=lim, std=1)
-    coords = np.random.uniform(size=(popn_size, 2)) * spread
-    x_init = [lang.make_point(a, b) for a, b in coords]
+def run_maze_search(
+        popn_size: int,
+        save_dir: str,
+        n_epochs: int,
+        spread=1,
+):
+    # lang = point.RealPoint(lim=lim, std=1)
+    str_mask = [
+        "#####################################",
+        "#_#_______#_______#_____#_________#_#",
+        "#_#_#####_#_###_#####_###_###_###_#_#",
+        "#_______#___#_#_____#_____#_#_#___#_#",
+        "#####_#_#####_#####_###_#_#_#_#####_#",
+        "#___#_#_______#_____#_#_#_#_#_____#_#",
+        "#_#_#######_#_#_#####_###_#_#####_#_#",
+        "#_#_______#_#_#___#_____#_____#___#_#",
+        "#_#######_###_###_#_###_#####_#_###_#",
+        "#_____#___#_#___#_#___#_____#_#_____#",
+        "#_###_###_#_###_#_#####_#_#_#_#######",
+        "#___#___#_#_#___#___#___#_#_#___#___#",
+        "#######_#_#_#_#####_#_###_#_###_###_#",
+        "#_____#_#_____#___#_#___#_#___#_____#",
+        "#_###_#_#####_###_#_###_###_#######_#",
+        "#_#___#_____#_____#___#_#_#_______#_#",
+        "#_#_#####_#_###_#####_#_#_#######_#_#",
+        "#_#_____#_#_#_#_#_____#_______#_#___#",
+        "#_#####_#_#_#_###_#####_#####_#_#####",
+        "#_#___#_#_#_____#_____#_#___#_______#",
+        "#_#_###_###_###_#####_###_#_#####_#_#",
+        "#_#_________#_____#_______#_______#_#",
+        "#####################################",
+    ]
+    str_mask = [
+        "##########",
+        "#________#",
+        "#_######_#",
+        "#_#______#",
+        "#_#____#_#",
+        "#_#_####_#",
+        "#_#____#_#",
+        "#_###__#_#",
+        "#___#__#_#",
+        "#__#######",
+        "##########",
+    ]
+    mask = point.str_to_float_mask(str_mask)
+    maze = point.RealMaze(mask=mask, step=0.5)
+    coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
+    x_init = [maze.make_point(a, b) for a, b in coords]
+    for fit_policy in ["single"]:
+        for accept_policy in ["energy"]:
+            # for fit_policy in ["single", "all"]:
+            #     for accept_policy in ["energy", "moment"]:
+            title = f"fit={fit_policy},accept={accept_policy}"
+            local_dir = f"{save_dir}/{title}"
+            util.mkdir(local_dir)
+
+            generator = mcmc_lang_rr(
+                lang=maze,
+                x_init=x_init,
+                popn_size=popn_size,
+                n_epochs=n_epochs,
+                fit_policy=fit_policy,
+                accept_policy=accept_policy,
+                distance_fn="euclidean",
+            )
+            data = list(tqdm(generator, total=n_epochs))
+
+            # plots
+            data = [analyzer_iter(d, threshold=1e-10) for d in data]
+            plot_keys = list(sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat"}))
+            fig = util.plot_v_subplots(data, keys=plot_keys)
+            fig.savefig(f"{local_dir}/plot.png")
+            plt.cla()
+
+            # animation
+            init_feat = maze.extract_features(x_init)
+            embeddings = [(0, init_feat)]
+            embeddings += [(d["t"] + 1, d["x_feat"]) for d in data]
+            anim = util.animate_points(
+                embeddings,
+                title=title,
+                xlim=maze.xlim,
+                ylim=maze.ylim,
+                background=maze.background,
+            )
+            anim.save(f"{local_dir}/embed.mp4")
 
 
 def run_lsys_search(config):
     expected_keys = {"x_init", "search", "featurizer", "render"}
     assert all(k in config for k in expected_keys), f"Expected {expected_keys}, got {set(config.keys())}"
+
+    seed = config.search["random_seed"]
+    np.random.seed(seed)
 
     featurizer = feat.ResnetFeaturizer(**config.featurizer)
     lang = lindenmayer.LSys(
@@ -508,86 +605,51 @@ def wandb_process_data_epochs(
         prev_feat = d["x_feat"]
 
 
-def local_process_data(
-        lang: Language,
-        generator: Iterator[dict],
-        popn_size: int,
-        n_steps: int,
-        save_data: bool,
-        dirname: str,
-        plot: bool,
-        domain: str,
-        analysis_stride: int,
-        anim_stride: int,
-        animate_embeddings: bool,
-        title: str,
-        debug: bool,
-):
-    anim_coords = []  # save 2d embeddings for animation
-    srp = SparseRandomProjection(n_components=2)
-    srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
+def check_fuzzballs(filename: str):
+    from skimage import filters
 
-    analysis_data = []
+    classifier = feat.ResnetFeaturizer(disable_last_layer=False, softmax_outputs=False, sigma=5.)
+    lang = lindenmayer.LSys(kind="deterministic", featurizer=classifier, step_length=4, render_depth=3)
+    sigma = 5.
+    n_progs = 4
+    with open(filename, "r") as f:
+        for i in range(n_progs):
+            program = f.readline().strip()
+            tree = lang.parse(program)
+            images = [
+                lang.eval(tree, env={"vary_color": True}),
+                lang.eval(tree, env={"vary_color": False}),
+            ]
 
-    for i, d in enumerate(tqdm(generator, total=n_steps, desc="Generating data")):
-        # Save data
-        if save_data:
-            np.save(f"{dirname}/data/part-{i:06d}.npy", d, allow_pickle=True)
+            for image in images:
+                image = filters.gaussian(image, sigma=sigma, channel_axis=-1)
 
-        # Plot images
-        if debug and domain == "lsystem" and i % analysis_stride == 0:
-            plot_batched_images(lang, d["x"], f"{dirname}/images/{i:06d}.png", title=f"gen-{i}")
+                # featurize and classify
+                feat_vec = classifier.apply([image])
+                class_id = classifier.top_k_classes(feat_vec, k=1)[0]
 
-        # Analysis
-        if i % analysis_stride == 0:
-            analysis_data.append(analyzer_iter(d, threshold=1e-10))
-
-        # Animation
-        if animate_embeddings and i % anim_stride == 0:
-            x_feat = d["x_feat"]
-            dim = x_feat.shape[1]
-            if dim < 2:
-                # if x_feat is 1d, add a dimension to make it 2d
-                coords = np.stack([x_feat, np.zeros_like(x_feat)], axis=-1)
-            elif dim == 2:
-                coords = x_feat
-            else:
-                coords = srp.transform(d["x_feat"])
-
-            anim_coords.append(coords)
-
-    if animate_embeddings:
-        anim = util.animate_points(
-            anim_coords,
-            title=title,
-            delay=100,
-        )
-        print("Saving animation...")
-        anim.save(f"{dirname}/embed.mp4")
-
-    # Plot analysis
-    for i, d in enumerate(analysis_data):
-        d["mean A(x',x)"] = np.sum([x["A(x',x)"] for x in analysis_data[:i + 1]]) / (i + 1)
-
-    keys = sorted(analysis_data[0].keys() - {"i", "t", "s", "x", "s_feat", "x_feat"})
-    fig = util.plot_v_subplots(analysis_data, keys)
-    fig.savefig(f"{dirname}/plot.png")
-    plt.cla()
+                plt.imshow(image)
+                plt.title(f"{program}\n{class_id}")
+                plt.show()
 
 
-if __name__ == "__main__":
-    # p = argparse.ArgumentParser()
-    # p.add_argument("--mode", type=str, required=True, choices=["search", "npy-to-images"])
-    # p.add_argument("--domain", type=str, required=True, choices=["point", "lsystem"])
-    # p.add_argument("--npy-dir", type=str)
-    # p.add_argument("--img-dir", type=str)
-    # p.add_argument("--wandb-sweep-config", type=str)
-    # p.add_argument("--batched", action="store_true", default=False)
-    # args = p.parse_args()
-
+def sweep():
     sweep_config = "./configs/mcmc-lsystem.yaml"
     with open(sweep_config, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     wandb.init(project="dpp", config=config)
     config = wandb.config
     run_lsys_search(config)
+
+
+if __name__ == "__main__":
+    # sweep()
+    ts = util.timestamp()
+    save_dir = f"out/dpp-points/{ts}"
+    util.mkdir(save_dir)
+    run_maze_search(
+        popn_size=100,
+        save_dir=save_dir,
+        n_epochs=100,
+    )
+    # check_fuzzballs("out/dpp/5swaynio/lsystems.txt")

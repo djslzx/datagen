@@ -2,7 +2,7 @@
 Languages for testing novelty search with "point programs".
 Programs are 2D points, and novelty is the Euclidean distance between them.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import scipy.stats as stats
 
@@ -27,7 +27,12 @@ class RealPoint(Language):
         "real": ["Real"],
     }
 
-    def __init__(self, lim: Optional[float] = None, std: float = 1):
+    def __init__(
+            self,
+            xlim: Optional[Tuple[float, float]] = None,
+            ylim: Optional[Tuple[float, float]] = None,
+            std: float = 1
+    ):
         super().__init__(
             parser_grammar=RealPoint.grammar,
             parser_start="point",
@@ -35,8 +40,8 @@ class RealPoint(Language):
             model=None,
             featurizer=PointFeaturizer(ndims=2)
         )
-        assert lim is None or lim > 0
-        self.lim = lim
+        self.xlim = xlim
+        self.ylim = ylim
         self.std = std
         self.x_distribution = GaussianSampler(0, self.std)
         self.y_distribution = GaussianSampler(0, self.std)
@@ -74,17 +79,31 @@ class RealPoint(Language):
             self.x_distribution = stats.gaussian_kde(xs, bw_method=self.std)
             self.y_distribution = stats.gaussian_kde(ys, bw_method=self.std)
 
-    def sample(self) -> Tree:
+    @staticmethod
+    def _clamp(val: float, lo: float, hi: float) -> float:
+        if val < lo:
+            return lo
+        elif val > hi:
+            return hi
+        else:
+            return val
+
+    def _sample_coords(self) -> Tuple[int, int]:
         x = self.x_distribution.resample(1).item()
         y = self.y_distribution.resample(1).item()
-        if self.lim is not None:
-            x = min(self.lim, max(-self.lim, x))
-            y = min(self.lim, max(-self.lim, y))
+        if self.xlim is not None:
+            x = RealPoint._clamp(x, *self.xlim)
+        if self.ylim is not None:
+            y = RealPoint._clamp(y, *self.ylim)
+        return x, y
+
+    def sample(self) -> Tree:
+        x, y = self._sample_coords()
         return self.parse(f"({x}, {y})")
 
     def log_probability(self, t: Tree) -> float:
         x, y = self.eval(t)
-        return self.x_distribution.logpdf(x) + self.y_distribution.logpdf(y)
+        return self.x_distribution.logpdf(x).item() + self.y_distribution.logpdf(y).item()
 
     @property
     def str_semantics(self) -> Dict:
@@ -93,9 +112,6 @@ class RealPoint(Language):
             "pos": lambda n: f"{n}",
             "neg": lambda n: f"-{n}",
         }
-
-    def log(self, popn: List[Tree]):
-        pass
 
 
 class NatPoint(Language):
@@ -147,6 +163,72 @@ class NatPoint(Language):
         return np.array([0, 0])
 
 
+class RealMaze(RealPoint):
+    def __init__(self, mask: np.ndarray, step=1):
+        """
+        mask: defines maze shape, where 1s are walls
+        cell_size: size of each cell in the mask, 1 by default
+        """
+        assert mask.ndim == 2
+        self.mask = self._rc_to_xy(mask)
+        nx, ny = self.mask.shape
+        xlim = (0, nx)
+        ylim = (0, ny)
+        super().__init__(xlim=xlim, ylim=ylim, std=step)
+        self.step = step
+
+    @property
+    def background(self) -> np.ndarray:
+        """
+        Return the mask as a bitmap
+        """
+        return self._xy_to_rc(self.mask)
+
+    def _is_valid_point(self, x: float, y: float) -> bool:
+        """
+        Check if the point (x, y) is in a valid position in the maze
+        """
+        if x < 0 or y < 0:
+            return False
+
+        xlo, xhi = self.xlim
+        ylo, yhi = self.ylim
+        return ((xlo <= x < xhi and ylo <= y < yhi)
+                and not self.mask[int(x), int(y)])
+
+    def sample(self) -> Tree:
+        # keep resampling until we get something that's within the bounds of the maze
+        x, y = super()._sample_coords()
+        while not self._is_valid_point(x, y):
+            x, y = super()._sample_coords()
+        return self.parse(f"({x}, {y})")
+
+    @staticmethod
+    def _rc_to_xy(mat: np.ndarray) -> np.ndarray:
+        # convert from r,c to x,y by rotating counter-clockwise 90deg
+        assert mat.ndim == 2
+        return np.rot90(mat, axes=(1, 0))
+
+    @staticmethod
+    def _xy_to_rc(mat: np.ndarray) -> np.ndarray:
+        assert mat.ndim == 2
+        return np.rot90(mat)
+
+
+def str_to_float_mask(str_mask: List[str]) -> np.ndarray:
+    """
+    Convert a list of strings into a binary float array,
+    where any '#' chars are interpreted as 1, any other char
+    is interpreted as 0.
+    """
+    return np.array([
+        [
+            float(c == "#")
+            for c in line
+        ] for line in str_mask
+    ])
+
+
 class PointFeaturizer(Featurizer):
 
     def __init__(self, ndims: int):
@@ -185,19 +267,3 @@ def test_RealPoint_parse():
         t = RP.parse(x)
         out = RP.eval(t)
         assert np.array_equal(out, y), f"Expected {y} but got {out}"
-
-
-if __name__ == "__main__":
-    G = NatPoint()
-    xs = [
-        "(1, 2)",
-        "(1.2, 2)",
-    ]
-    for x in xs:
-        t = G.parse(x)
-        y = G.eval(t)
-        print(f"{x} => {t} => {y}")
-
-    for _ in range(10):
-        t = G.sample()
-        print(f"{t}")

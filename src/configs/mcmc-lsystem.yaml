@@ -1,5 +1,8 @@
 program: dpp.py
-method: grid
+method: random
+metric:
+  goal: maximize
+  name: "mean knn dist"
 parameters:
   mode:
     value: search
@@ -30,7 +33,9 @@ parameters:
       softmax_outputs:
         value: false
       sigma:
-        values: [ 0, 3, 5, 10 ]
+        distribution: int_uniform
+        min: 0
+        max: 10
   render:
     parameters:
       step_length:
@@ -42,9 +47,13 @@ parameters:
       n_cols:
         value: 128
       vary_color:
-        values: [ false, true ]
+        value: true
   search:
     parameters:
+      distance_metric:
+        values: [ cosine, dot, euclidean ]
+      random_seed:
+        value: 0
       popn_size:
         value: 1000
       epochs:
@@ -55,7 +64,9 @@ parameters:
         values: [ single, all ]
       accept_policy:
         values: [ energy, moment ]
+      archive_correction:
+        values: [ true, false ]
       length_cap:
-        value: 100
+        values: [ 100, 200 ]
       keep_original:
-        values: [ false, true ]
+        value: true

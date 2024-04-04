@@ -25,6 +25,13 @@ class Tree:
         self.value = value
         self.children: List[Tree] = list(children)
 
+        # compute length at construction time
+        # length: number of nodes in the tree
+        if not children:
+            self.length = 1
+        else:
+            self.length = 1 + sum(len(c) for c in children)
+
     @staticmethod
     def from_tuple(t: Tuple):
         if not isinstance(t, tuple):
@@ -131,10 +138,8 @@ class Tree:
             return f"`{self.value}`"
 
     def __len__(self):
-        # number of nodes in tree
-        if self.is_leaf():
-            return 1
-        return 1 + sum(len(c) for c in self.children)
+        """number of nodes in tree"""
+        return self.length
 
 
 class Language:
