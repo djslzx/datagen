@@ -35,14 +35,14 @@ def mcmc_lang_rr(
     if it is "single", we fit the model to x[i].
     """
 
-    assert fit_policy in {"all", "single", "uniform", "initial"}
+    assert fit_policy in {"all", "single", "none", "first"}
     assert accept_policy in {"dpp", "energy", "moment", "all"}
     assert distance_fn in {"cosine", "dot", "euclidean"}
 
     x = x_init.copy()
     x_feat = lang.extract_features(x)
 
-    if fit_policy == "initial":
+    if fit_policy == "first":
         lang.fit(x_init, alpha=1.0)
 
     for t in range(n_epochs):
@@ -53,10 +53,14 @@ def mcmc_lang_rr(
         sum_log_accept = 0
 
         for i in range(popn_size):
-            if fit_policy == 'all':
+            if fit_policy == "all":
                 lang.fit(x, alpha=1.0)
-            elif fit_policy == 'single':
+            elif fit_policy == "single":
                 lang.fit([x[i]], alpha=1.0)
+            else:
+                # maze: allow points to spread based on current positions
+                if isinstance(lang, point.RealMaze):
+                    lang._update_allowed(x_feat)
 
             # sample and featurize
             s = lang.samples(n_samples=1, length_cap=length_cap)[0]
@@ -81,14 +85,14 @@ def mcmc_lang_rr(
                 raise ValueError(f"Unknown accept policy: {accept_policy}")
 
             # compute log q(x|x')/q(x'|x)
-            if fit_policy == 'all':
+            if fit_policy == "all":
                 up = x.copy()
                 up[i] = s
                 log_q = lang_log_pr(lang, x[i], up) - lang_log_pr(lang, s, x)
-            elif fit_policy == 'single':
+            elif fit_policy == "single":
                 log_q = lang_log_pr(lang, x[i], s) - lang_log_pr(lang, s, x[i])
             else:
-                raise ValueError(f"Unknown fit policy: {fit_policy}")
+                log_q = 0
 
             log_accept = np.min([0, log_f + log_q])
 
@@ -454,49 +458,47 @@ def run_maze_search(
         spread=1,
 ):
     # lang = point.RealPoint(lim=lim, std=1)
-    # str_mask = [
-    #     "#####################################",
-    #     "#_#_______#_______#_____#_________#_#",
-    #     "#_#_#####_#_###_#####_###_###_###_#_#",
-    #     "#_______#___#_#_____#_____#_#_#___#_#",
-    #     "#####_#_#####_#####_###_#_#_#_#####_#",
-    #     "#___#_#_______#_____#_#_#_#_#_____#_#",
-    #     "#_#_#######_#_#_#####_###_#_#####_#_#",
-    #     "#_#_______#_#_#___#_____#_____#___#_#",
-    #     "#_#######_###_###_#_###_#####_#_###_#",
-    #     "#_____#___#_#___#_#___#_____#_#_____#",
-    #     "#_###_###_#_###_#_#####_#_#_#_#######",
-    #     "#___#___#_#_#___#___#___#_#_#___#___#",
-    #     "#######_#_#_#_#####_#_###_#_###_###_#",
-    #     "#_____#_#_____#___#_#___#_#___#_____#",
-    #     "#_###_#_#####_###_#_###_###_#######_#",
-    #     "#_#___#_____#_____#___#_#_#_______#_#",
-    #     "#_#_#####_#_###_#####_#_#_#######_#_#",
-    #     "#_#_____#_#_#_#_#_____#_______#_#___#",
-    #     "#_#####_#_#_#_###_#####_#####_#_#####",
-    #     "#_#___#_#_#_____#_____#_#___#_______#",
-    #     "#_#_###_###_###_#####_###_#_#####_#_#",
-    #     "#_#_________#_____#_______#_______#_#",
-    #     "#####################################",
-    # ]
     str_mask = [
-        "##########",
-        "#________#",
-        "#_######_#",
-        "#_#______#",
-        "#_#____#_#",
-        "#_#_####_#",
-        "#_#____#_#",
-        "#_###__#_#",
-        "#___#__#_#",
-        "#__##__#_#",
-        "##########",
+        "#####################################",
+        "#_#_______#_______#_____#_________#_#",
+        "#_#_#####_#_###_#####_###_###_###_#_#",
+        "#_______#___#_#_____#_____#_#_#___#_#",
+        "#####_#_#####_#####_###_#_#_#_#####_#",
+        "#___#_#_______#_____#_#_#_#_#_____#_#",
+        "#_#_#######_#_#_#####_###_#_#####_#_#",
+        "#_#_______#_#_#___#_____#_____#___#_#",
+        "#_#######_###_###_#_###_#####_#_###_#",
+        "#_____#___#_#___#_#___#_____#_#_____#",
+        "#_###_###_#_###_#_#####_#_#_#_#######",
+        "#___#___#_#_#___#___#___#_#_#___#___#",
+        "#######_#_#_#_#####_#_###_#_###_###_#",
+        "#_____#_#_____#___#_#___#_#___#_____#",
+        "#_###_#_#####_###_#_###_###_#######_#",
+        "#_#___#_____#_____#___#_#_#_______#_#",
+        "#_#_#####_#_###_#####_#_#_#######_#_#",
+        "#_#_____#_#_#_#_#_____#_______#_#___#",
+        "#_#####_#_#_#_###_#####_#####_#_#####",
+        "#_#___#_#_#_____#_____#_#___#_______#",
+        "#_#_###_###_###_#####_###_#_#####_#_#",
+        "#_#_________#_____#_______#_______#_#",
+        "#####################################",
+        # "##########",
+        # "#________#",
+        # "#_######_#",
+        # "#_#______#",
+        # "#_#____#_#",
+        # "#_#_####_#",
+        # "#_#____#_#",
+        # "#_###__#_#",
+        # "#___#__#_#",
+        # "#__##__#_#",
+        # "##########",
     ]
-    maze = point.RealMaze(str_mask, step=0.5)
+    maze = point.RealMaze(str_mask, std=1)
     coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
     x_init = [maze.make_point(a, b) for a, b in coords]
-    for fit_policy in ["single", "all"]:
-        for accept_policy in ["energy", "moment"]:
+    for fit_policy in ["none", "single", "all", "first"]:
+        for accept_policy in ["energy", "moment", "all"]:
             title = f"fit={fit_policy},accept={accept_policy}"
             local_dir = f"{save_dir}/{title}"
             util.mkdir(local_dir)
@@ -693,6 +695,6 @@ if __name__ == "__main__":
     run_maze_search(
         popn_size=100,
         save_dir=save_dir,
-        n_epochs=100,
+        n_epochs=1000,
     )
     # check_fuzzballs("out/dpp/5swaynio/lsystems.txt")

@@ -66,12 +66,17 @@ class RealPoint(Language):
         x, y = [self._parse_child(c) for c in t.children]
         return np.array([x, y])
 
-    def fit(self, corpus: List[Tree], alpha=0.):
-        xs, ys = [], []
-        for tree in corpus:
+    def _trees_to_coords(self, trees: List[Tree]) -> np.ndarray:
+        coords = []
+        for tree in trees:
             x, y = self.eval(tree)
-            xs.append(x)
-            ys.append(y)
+            coords.append((x, y))
+        return np.array(coords)
+
+    def fit(self, corpus: List[Tree], alpha=0.):
+        coords = self._trees_to_coords(corpus)
+        xs = coords[:, 0]
+        ys = coords[:, 1]
 
         # update distributions
         self.x_distribution = GaussianSampler(xs, self.std)
@@ -162,7 +167,7 @@ class NatPoint(Language):
 
 
 class RealMaze(RealPoint):
-    def __init__(self, str_mask: List[str], step=1):
+    def __init__(self, str_mask: List[str], std=1):
         """
         mask: defines maze shape, where 1s are walls
         cell_size: size of each cell in the mask, 1 by default
@@ -170,11 +175,10 @@ class RealMaze(RealPoint):
         mask = str_to_float_mask(str_mask)
         assert mask.ndim == 2
         self.mask = self._rc_to_xy(mask)
+        self.allowed_cells = np.ones_like(self.mask)
         nx, ny = self.mask.shape
-        xlim = (0, nx)
-        ylim = (0, ny)
-        super().__init__(xlim=xlim, ylim=ylim, std=step)
-        self.step = step
+        super().__init__(xlim=(0, nx), ylim=(0, ny), std=std)
+        self._update_allowed(coords=np.zeros((1, 2)))
 
     @property
     def background(self) -> np.ndarray:
@@ -193,7 +197,30 @@ class RealMaze(RealPoint):
         xlo, xhi = self.xlim
         ylo, yhi = self.ylim
         return ((xlo <= x < xhi and ylo <= y < yhi)
-                and not self.mask[int(x), int(y)])
+                and not bool(self.mask[int(x), int(y)])
+                and bool(self.allowed_cells[int(x), int(y)]))
+
+    def _update_allowed(self, coords: np.ndarray):
+        assert coords.shape[1] == 2, f"Expected 2d coords [n, 2], but got {coords.shape}"
+
+        self.allowed_cells = np.zeros_like(self.mask)
+        xlo, xhi = self.xlim
+        ylo, yhi = self.ylim
+
+        occupied_coords = {
+            (int(x), int(y))
+            for x, y in coords
+        }
+        for x, y in occupied_coords:
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if xlo <= x + dx < xhi and ylo <= y + dy < yhi:
+                        self.allowed_cells[x + dx, y + dy] = 1
+
+    def fit(self, corpus: List[Tree], alpha=0.):
+        super().fit(corpus, alpha)
+        coords = self._trees_to_coords(corpus)
+        self._update_allowed(coords)
 
     def sample(self) -> Tree:
         # keep resampling until we get something that's within the bounds of the maze
