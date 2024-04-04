@@ -43,8 +43,8 @@ class RealPoint(Language):
         self.xlim = xlim
         self.ylim = ylim
         self.std = std
-        self.x_distribution = GaussianSampler(0, self.std)
-        self.y_distribution = GaussianSampler(0, self.std)
+        self.x_distribution = GaussianSampler([0], self.std)
+        self.y_distribution = GaussianSampler([0], self.std)
 
     def make_point(self, x: float, y: float) -> Tree:
         return self.parse(f"({x}, {y})")
@@ -72,12 +72,10 @@ class RealPoint(Language):
             x, y = self.eval(tree)
             xs.append(x)
             ys.append(y)
-        if len(xs) == 1:
-            self.x_distribution = GaussianSampler(xs[0], self.std)
-            self.y_distribution = GaussianSampler(ys[0], self.std)
-        else:
-            self.x_distribution = stats.gaussian_kde(xs, bw_method=self.std)
-            self.y_distribution = stats.gaussian_kde(ys, bw_method=self.std)
+
+        # update distributions
+        self.x_distribution = GaussianSampler(xs, self.std)
+        self.y_distribution = GaussianSampler(ys, self.std)
 
     @staticmethod
     def _clamp(val: float, lo: float, hi: float) -> float:
@@ -88,9 +86,9 @@ class RealPoint(Language):
         else:
             return val
 
-    def _sample_coords(self) -> Tuple[int, int]:
-        x = self.x_distribution.resample(1).item()
-        y = self.y_distribution.resample(1).item()
+    def _sample_coords(self) -> Tuple[float, float]:
+        x = self.x_distribution.sample()
+        y = self.y_distribution.sample()
         if self.xlim is not None:
             x = RealPoint._clamp(x, *self.xlim)
         if self.ylim is not None:
@@ -103,7 +101,7 @@ class RealPoint(Language):
 
     def log_probability(self, t: Tree) -> float:
         x, y = self.eval(t)
-        return self.x_distribution.logpdf(x).item() + self.y_distribution.logpdf(y).item()
+        return self.x_distribution.logpdf(x) + self.y_distribution.logpdf(y)
 
     @property
     def str_semantics(self) -> Dict:
@@ -164,11 +162,12 @@ class NatPoint(Language):
 
 
 class RealMaze(RealPoint):
-    def __init__(self, mask: np.ndarray, step=1):
+    def __init__(self, str_mask: List[str], step=1):
         """
         mask: defines maze shape, where 1s are walls
         cell_size: size of each cell in the mask, 1 by default
         """
+        mask = str_to_float_mask(str_mask)
         assert mask.ndim == 2
         self.mask = self._rc_to_xy(mask)
         nx, ny = self.mask.shape
@@ -243,16 +242,23 @@ class PointFeaturizer(Featurizer):
 
 
 class GaussianSampler:
-    def __init__(self, mean, std):
-        self.dist = stats.norm(loc=mean, scale=std)
+    def __init__(self, data: List[float], std):
+        if len(data) == 1:
+            self.dist_type = "single"
+            self.dist = stats.norm(loc=data[0], scale=std)
+        else:
+            self.dist_type = "multi"
+            self.dist = stats.gaussian_kde(data, bw_method=std)
 
-    def resample(self, *args):
+    def sample(self, *args) -> float:
         # Generate a sample from the Gaussian distribution
-        sample = self.dist.rvs()
-        return sample
+        if self.dist_type == "single":
+            return self.dist.rvs()
+        else:
+            return self.dist.resample(1).item()
 
-    def logpdf(self, x):
-        return self.dist.logpdf(x)
+    def logpdf(self, x) -> float:
+        return self.dist.logpdf(x).item()
 
 
 def test_RealPoint_parse():

@@ -401,6 +401,52 @@ def plot_batched_images(lang: Language, programs: List[str], save_path: str, tit
     plt.close(fig)
 
 
+def run_point_search(
+        popn_size: int,
+        save_dir: str,
+        n_epochs: int,
+        spread=1,
+):
+    lang = point.RealPoint(std=1)
+    coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
+    x_init = [lang.make_point(a, b) for a, b in coords]
+    for fit_policy in ["single", "all"]:
+        for accept_policy in ["energy", "moment"]:
+            title = f"fit={fit_policy},accept={accept_policy}"
+            local_dir = f"{save_dir}/{title}"
+            util.mkdir(local_dir)
+
+            generator = mcmc_lang_rr(
+                lang=lang,
+                x_init=x_init,
+                popn_size=popn_size,
+                n_epochs=n_epochs,
+                fit_policy=fit_policy,
+                accept_policy=accept_policy,
+                distance_fn="euclidean",
+            )
+            data = list(tqdm(generator, total=n_epochs))
+
+            # plots
+            data = [analyzer_iter(d, threshold=1e-10) for d in data]
+            plot_keys = list(sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat"}))
+            fig = util.plot_v_subplots(data, keys=plot_keys)
+            fig.savefig(f"{local_dir}/plot.png")
+            plt.cla()
+
+            # animation
+            init_feat = lang.extract_features(x_init)
+            embeddings = [(0, init_feat)]
+            embeddings += [(d["t"] + 1, d["x_feat"]) for d in data]
+            anim = util.animate_points(
+                embeddings,
+                title=title,
+                xlim=lang.xlim,
+                ylim=lang.ylim,
+            )
+            anim.save(f"{local_dir}/embed.mp4")
+
+
 def run_maze_search(
         popn_size: int,
         save_dir: str,
@@ -408,31 +454,31 @@ def run_maze_search(
         spread=1,
 ):
     # lang = point.RealPoint(lim=lim, std=1)
-    str_mask = [
-        "#####################################",
-        "#_#_______#_______#_____#_________#_#",
-        "#_#_#####_#_###_#####_###_###_###_#_#",
-        "#_______#___#_#_____#_____#_#_#___#_#",
-        "#####_#_#####_#####_###_#_#_#_#####_#",
-        "#___#_#_______#_____#_#_#_#_#_____#_#",
-        "#_#_#######_#_#_#####_###_#_#####_#_#",
-        "#_#_______#_#_#___#_____#_____#___#_#",
-        "#_#######_###_###_#_###_#####_#_###_#",
-        "#_____#___#_#___#_#___#_____#_#_____#",
-        "#_###_###_#_###_#_#####_#_#_#_#######",
-        "#___#___#_#_#___#___#___#_#_#___#___#",
-        "#######_#_#_#_#####_#_###_#_###_###_#",
-        "#_____#_#_____#___#_#___#_#___#_____#",
-        "#_###_#_#####_###_#_###_###_#######_#",
-        "#_#___#_____#_____#___#_#_#_______#_#",
-        "#_#_#####_#_###_#####_#_#_#######_#_#",
-        "#_#_____#_#_#_#_#_____#_______#_#___#",
-        "#_#####_#_#_#_###_#####_#####_#_#####",
-        "#_#___#_#_#_____#_____#_#___#_______#",
-        "#_#_###_###_###_#####_###_#_#####_#_#",
-        "#_#_________#_____#_______#_______#_#",
-        "#####################################",
-    ]
+    # str_mask = [
+    #     "#####################################",
+    #     "#_#_______#_______#_____#_________#_#",
+    #     "#_#_#####_#_###_#####_###_###_###_#_#",
+    #     "#_______#___#_#_____#_____#_#_#___#_#",
+    #     "#####_#_#####_#####_###_#_#_#_#####_#",
+    #     "#___#_#_______#_____#_#_#_#_#_____#_#",
+    #     "#_#_#######_#_#_#####_###_#_#####_#_#",
+    #     "#_#_______#_#_#___#_____#_____#___#_#",
+    #     "#_#######_###_###_#_###_#####_#_###_#",
+    #     "#_____#___#_#___#_#___#_____#_#_____#",
+    #     "#_###_###_#_###_#_#####_#_#_#_#######",
+    #     "#___#___#_#_#___#___#___#_#_#___#___#",
+    #     "#######_#_#_#_#####_#_###_#_###_###_#",
+    #     "#_____#_#_____#___#_#___#_#___#_____#",
+    #     "#_###_#_#####_###_#_###_###_#######_#",
+    #     "#_#___#_____#_____#___#_#_#_______#_#",
+    #     "#_#_#####_#_###_#####_#_#_#######_#_#",
+    #     "#_#_____#_#_#_#_#_____#_______#_#___#",
+    #     "#_#####_#_#_#_###_#####_#####_#_#####",
+    #     "#_#___#_#_#_____#_____#_#___#_______#",
+    #     "#_#_###_###_###_#####_###_#_#####_#_#",
+    #     "#_#_________#_____#_______#_______#_#",
+    #     "#####################################",
+    # ]
     str_mask = [
         "##########",
         "#________#",
@@ -443,17 +489,14 @@ def run_maze_search(
         "#_#____#_#",
         "#_###__#_#",
         "#___#__#_#",
-        "#__#######",
+        "#__##__#_#",
         "##########",
     ]
-    mask = point.str_to_float_mask(str_mask)
-    maze = point.RealMaze(mask=mask, step=0.5)
+    maze = point.RealMaze(str_mask, step=0.5)
     coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
     x_init = [maze.make_point(a, b) for a, b in coords]
-    for fit_policy in ["single"]:
-        for accept_policy in ["energy"]:
-            # for fit_policy in ["single", "all"]:
-            #     for accept_policy in ["energy", "moment"]:
+    for fit_policy in ["single", "all"]:
+        for accept_policy in ["energy", "moment"]:
             title = f"fit={fit_policy},accept={accept_policy}"
             local_dir = f"{save_dir}/{title}"
             util.mkdir(local_dir)
