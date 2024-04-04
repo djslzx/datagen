@@ -35,12 +35,15 @@ def mcmc_lang_rr(
     if it is "single", we fit the model to x[i].
     """
 
-    assert fit_policy in {"all", "single"}
+    assert fit_policy in {"all", "single", "uniform", "initial"}
     assert accept_policy in {"dpp", "energy", "moment", "all"}
     assert distance_fn in {"cosine", "dot", "euclidean"}
 
-    x = x_init
+    x = x_init.copy()
     x_feat = lang.extract_features(x)
+
+    if fit_policy == "initial":
+        lang.fit(x_init, alpha=1.0)
 
     for t in range(n_epochs):
         samples = []
@@ -54,8 +57,6 @@ def mcmc_lang_rr(
                 lang.fit(x, alpha=1.0)
             elif fit_policy == 'single':
                 lang.fit([x[i]], alpha=1.0)
-            else:
-                raise ValueError(f"Unknown fit policy: {fit_policy}")
 
             # sample and featurize
             s = lang.samples(n_samples=1, length_cap=length_cap)[0]
@@ -400,23 +401,65 @@ def plot_batched_images(lang: Language, programs: List[str], save_path: str, tit
     plt.close(fig)
 
 
-def run_point_search(
+def run_maze_search(
         popn_size: int,
         save_dir: str,
         n_epochs: int,
         spread=1,
-        lim=None):
-    lang = point.RealPoint(lim=lim, std=1)
-    coords = np.random.uniform(size=(popn_size, 2)) * spread
-    x_init = [lang.make_point(a, b) for a, b in coords]
-    for fit_policy in ["single", "all"]:
-        for accept_policy in ["energy", "moment"]:
+):
+    # lang = point.RealPoint(lim=lim, std=1)
+    str_mask = [
+        "#####################################",
+        "#_#_______#_______#_____#_________#_#",
+        "#_#_#####_#_###_#####_###_###_###_#_#",
+        "#_______#___#_#_____#_____#_#_#___#_#",
+        "#####_#_#####_#####_###_#_#_#_#####_#",
+        "#___#_#_______#_____#_#_#_#_#_____#_#",
+        "#_#_#######_#_#_#####_###_#_#####_#_#",
+        "#_#_______#_#_#___#_____#_____#___#_#",
+        "#_#######_###_###_#_###_#####_#_###_#",
+        "#_____#___#_#___#_#___#_____#_#_____#",
+        "#_###_###_#_###_#_#####_#_#_#_#######",
+        "#___#___#_#_#___#___#___#_#_#___#___#",
+        "#######_#_#_#_#####_#_###_#_###_###_#",
+        "#_____#_#_____#___#_#___#_#___#_____#",
+        "#_###_#_#####_###_#_###_###_#######_#",
+        "#_#___#_____#_____#___#_#_#_______#_#",
+        "#_#_#####_#_###_#####_#_#_#######_#_#",
+        "#_#_____#_#_#_#_#_____#_______#_#___#",
+        "#_#####_#_#_#_###_#####_#####_#_#####",
+        "#_#___#_#_#_____#_____#_#___#_______#",
+        "#_#_###_###_###_#####_###_#_#####_#_#",
+        "#_#_________#_____#_______#_______#_#",
+        "#####################################",
+    ]
+    str_mask = [
+        "##########",
+        "#________#",
+        "#_######_#",
+        "#_#______#",
+        "#_#____#_#",
+        "#_#_####_#",
+        "#_#____#_#",
+        "#_###__#_#",
+        "#___#__#_#",
+        "#__#######",
+        "##########",
+    ]
+    mask = point.str_to_float_mask(str_mask)
+    maze = point.RealMaze(mask=mask, step=0.5)
+    coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
+    x_init = [maze.make_point(a, b) for a, b in coords]
+    for fit_policy in ["single"]:
+        for accept_policy in ["energy"]:
+            # for fit_policy in ["single", "all"]:
+            #     for accept_policy in ["energy", "moment"]:
             title = f"fit={fit_policy},accept={accept_policy}"
             local_dir = f"{save_dir}/{title}"
             util.mkdir(local_dir)
 
             generator = mcmc_lang_rr(
-                lang=lang,
+                lang=maze,
                 x_init=x_init,
                 popn_size=popn_size,
                 n_epochs=n_epochs,
@@ -434,8 +477,16 @@ def run_point_search(
             plt.cla()
 
             # animation
-            coords = [d["x_feat"] for d in data]
-            anim = util.animate_points(coords, title=title)
+            init_feat = maze.extract_features(x_init)
+            embeddings = [(0, init_feat)]
+            embeddings += [(d["t"] + 1, d["x_feat"]) for d in data]
+            anim = util.animate_points(
+                embeddings,
+                title=title,
+                xlim=maze.xlim,
+                ylim=maze.ylim,
+                background=maze.background,
+            )
             anim.save(f"{local_dir}/embed.mp4")
 
 
@@ -596,9 +647,9 @@ if __name__ == "__main__":
     ts = util.timestamp()
     save_dir = f"out/dpp-points/{ts}"
     util.mkdir(save_dir)
-    run_point_search(
+    run_maze_search(
         popn_size=100,
         save_dir=save_dir,
-        n_epochs=10,
+        n_epochs=100,
     )
     # check_fuzzballs("out/dpp/5swaynio/lsystems.txt")

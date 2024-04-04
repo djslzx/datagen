@@ -27,7 +27,12 @@ class RealPoint(Language):
         "real": ["Real"],
     }
 
-    def __init__(self, lim: Optional[float] = None, std: float = 1):
+    def __init__(
+            self,
+            xlim: Optional[Tuple[float, float]] = None,
+            ylim: Optional[Tuple[float, float]] = None,
+            std: float = 1
+    ):
         super().__init__(
             parser_grammar=RealPoint.grammar,
             parser_start="point",
@@ -35,8 +40,8 @@ class RealPoint(Language):
             model=None,
             featurizer=PointFeaturizer(ndims=2)
         )
-        assert lim is None or lim > 0
-        self.lim = lim
+        self.xlim = xlim
+        self.ylim = ylim
         self.std = std
         self.x_distribution = GaussianSampler(0, self.std)
         self.y_distribution = GaussianSampler(0, self.std)
@@ -74,12 +79,22 @@ class RealPoint(Language):
             self.x_distribution = stats.gaussian_kde(xs, bw_method=self.std)
             self.y_distribution = stats.gaussian_kde(ys, bw_method=self.std)
 
+    @staticmethod
+    def _clamp(val: float, lo: float, hi: float) -> float:
+        if val < lo:
+            return lo
+        elif val > hi:
+            return hi
+        else:
+            return val
+
     def _sample_coords(self) -> Tuple[int, int]:
         x = self.x_distribution.resample(1).item()
         y = self.y_distribution.resample(1).item()
-        if self.lim is not None:
-            x = min(self.lim, max(-self.lim, x))
-            y = min(self.lim, max(-self.lim, y))
+        if self.xlim is not None:
+            x = RealPoint._clamp(x, *self.xlim)
+        if self.ylim is not None:
+            y = RealPoint._clamp(y, *self.ylim)
         return x, y
 
     def sample(self) -> Tree:
@@ -149,19 +164,25 @@ class NatPoint(Language):
 
 
 class RealMaze(RealPoint):
-    def __init__(self, mask: np.ndarray, cell_size=1):
+    def __init__(self, mask: np.ndarray, step=1):
         """
         mask: defines maze shape, where 1s are walls
         cell_size: size of each cell in the mask, 1 by default
         """
         assert mask.ndim == 2
-        n_rows, n_cols = mask.shape
-        assert n_rows == n_cols
+        self.mask = self._rc_to_xy(mask)
+        nx, ny = self.mask.shape
+        xlim = (0, nx)
+        ylim = (0, ny)
+        super().__init__(xlim=xlim, ylim=ylim, std=step)
+        self.step = step
 
-        super().__init__(lim=mask.shape[0] * cell_size)
-
-        self.mask = mask
-        self.n = n_rows
+    @property
+    def background(self) -> np.ndarray:
+        """
+        Return the mask as a bitmap
+        """
+        return self._xy_to_rc(self.mask)
 
     def _is_valid_point(self, x: float, y: float) -> bool:
         """
@@ -170,11 +191,10 @@ class RealMaze(RealPoint):
         if x < 0 or y < 0:
             return False
 
-        x, y = int(x), int(y)
-        in_bounds = 0 <= x < self.n and 0 <= y < self.n
-        in_wall = bool(self.mask[y, x])
-
-        return in_bounds and not in_wall
+        xlo, xhi = self.xlim
+        ylo, yhi = self.ylim
+        return ((xlo <= x < xhi and ylo <= y < yhi)
+                and not self.mask[int(x), int(y)])
 
     def sample(self) -> Tree:
         # keep resampling until we get something that's within the bounds of the maze
@@ -183,79 +203,30 @@ class RealMaze(RealPoint):
             x, y = super()._sample_coords()
         return self.parse(f"({x}, {y})")
 
+    @staticmethod
+    def _rc_to_xy(mat: np.ndarray) -> np.ndarray:
+        # convert from r,c to x,y by rotating counter-clockwise 90deg
+        assert mat.ndim == 2
+        return np.rot90(mat, axes=(1, 0))
+
+    @staticmethod
+    def _xy_to_rc(mat: np.ndarray) -> np.ndarray:
+        assert mat.ndim == 2
+        return np.rot90(mat)
+
 
 def str_to_float_mask(str_mask: List[str]) -> np.ndarray:
     """
     Convert a list of strings into a binary float array,
     where any '#' chars are interpreted as 1, any other char
     is interpreted as 0.
-
-    Change from row-major form (row, col) to (x, y), where
-      x = c
-      y = n - r
-    i.e., a single 90deg clockwise rotation.
     """
-    m = np.array([
+    return np.array([
         [
             float(c == "#")
             for c in line
         ] for line in str_mask
     ])
-    # rotate once clockwise
-    return np.rot90(m, axes=(1, 0))
-
-
-def test_str_to_float_mask():
-    s = ["#_",
-         "__"]
-    m = str_to_float_mask(s)
-    assert m[0, 0] == 0.
-    assert m[0, 1] == 1.
-    assert m[1, 0] == 0.
-    assert m[1, 1] == 0.
-
-    s = ["_#",
-         "__"]
-    m = str_to_float_mask(s)
-    assert m[0, 0] == 0.
-    assert m[0, 1] == 0.
-    assert m[1, 0] == 0.
-    assert m[1, 1] == 1.
-
-    s = ["__",
-         "#_"]
-    m = str_to_float_mask(s)
-    assert m[0, 0] == 1.
-    assert m[0, 1] == 0.
-    assert m[1, 0] == 0.
-    assert m[1, 1] == 0.
-
-    s = ["__",
-         "_#"]
-    m = str_to_float_mask(s)
-    assert m[0, 0] == 0.
-    assert m[0, 1] == 0.
-    assert m[1, 0] == 1.
-    assert m[1, 1] == 0.
-
-
-def test_maze():
-    str_mask = [
-        "________",
-        "_######_",
-        "_#______",
-        "_#____#_",
-        "_#_####_",
-        "_#____#_",
-        "_###__#_",
-        "___#__#_",
-    ]
-    mask = str_to_float_mask(str_mask)
-    maze = RealMaze(mask)
-    print(maze.mask)
-    for i in range(10):
-        tree = maze.sample()
-        print(tree)
 
 
 class PointFeaturizer(Featurizer):
@@ -296,19 +267,3 @@ def test_RealPoint_parse():
         t = RP.parse(x)
         out = RP.eval(t)
         assert np.array_equal(out, y), f"Expected {y} but got {out}"
-
-
-if __name__ == "__main__":
-    G = NatPoint()
-    xs = [
-        "(1, 2)",
-        "(1.2, 2)",
-    ]
-    for x in xs:
-        t = G.parse(x)
-        y = G.eval(t)
-        print(f"{x} => {t} => {y}")
-
-    for _ in range(10):
-        t = G.sample()
-        print(f"{t}")
