@@ -2,9 +2,11 @@ import os
 import sys
 from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union, Generator
 import numpy as np
+import pandas as pd
 import yaml
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
+import seaborn as sns
 from tqdm import tqdm
 from sklearn.random_projection import SparseRandomProjection
 import featurizers as feat
@@ -409,13 +411,15 @@ def run_point_search(
         popn_size: int,
         save_dir: str,
         n_epochs: int,
+        fit_policies: List[str],
+        accept_policies: List[str],
         spread=1,
 ):
     lang = point.RealPoint(std=1)
     coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
     x_init = [lang.make_point(a, b) for a, b in coords]
-    for fit_policy in ["single", "all"]:
-        for accept_policy in ["energy", "moment"]:
+    for fit_policy in fit_policies:
+        for accept_policy in accept_policies:
             title = f"fit={fit_policy},accept={accept_policy}"
             local_dir = f"{save_dir}/{title}"
             util.mkdir(local_dir)
@@ -438,6 +442,13 @@ def run_point_search(
             fig.savefig(f"{local_dir}/plot.png")
             plt.cla()
 
+            # save plot data
+            df = pd.DataFrame(data)
+            df.drop(columns=["x", "x'", "x_feat", "x'_feat"], inplace=True)
+            df["fit policy"] = fit_policy
+            df["accept policy"] = accept_policy
+            df.to_json(f"{local_dir}/data.json")
+
             # animation
             init_feat = lang.extract_features(x_init)
             embeddings = [(0, init_feat)]
@@ -449,6 +460,29 @@ def run_point_search(
                 ylim=lang.ylim,
             )
             anim.save(f"{local_dir}/embed.mp4")
+
+    summarize_point_data(save_dir)
+
+
+def summarize_point_data(save_dir: str):
+    # plot together
+    dfs = []
+    for dir in util.ls_subdirs(save_dir):
+        df = pd.read_json(f"{save_dir}/{dir}/data.json")
+        dfs.append(df)
+
+    df = pd.concat(dfs, ignore_index=True)
+    print(df)
+    df["config"] = "fit=" + df["fit policy"] + ", accept=" + df["accept policy"]
+
+    # plot summary
+    cols = set(df.columns) - {"t", "config", "fit policy", "accept policy"}
+    for col in cols:
+        sns.relplot(x='t', y=col, hue='config', kind='line', data=df)
+        plt.show()
+        plt.close()
+
+    return df
 
 
 def run_maze_search(
@@ -691,10 +725,18 @@ if __name__ == "__main__":
     # sweep()
     ts = util.timestamp()
     save_dir = f"out/dpp-points/{ts}"
-    util.mkdir(save_dir)
-    run_maze_search(
+    util.try_mkdir(save_dir)
+    # run_maze_search(
+    #     popn_size=100,
+    #     save_dir=save_dir,
+    #     n_epochs=1000,
+    # )
+    run_point_search(
         popn_size=100,
         save_dir=save_dir,
-        n_epochs=1000,
+        n_epochs=100,
+        fit_policies=["single", "all", "none", "first"],
+        accept_policies=["energy", "moment", "all"],
     )
+    # summarize_point_data("out/dpp-points/2024-04-04_22-14-22/")
     # check_fuzzballs("out/dpp/5swaynio/lsystems.txt")

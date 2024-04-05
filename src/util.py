@@ -654,7 +654,6 @@ def try_mkdir(dir: str):
         f = open(dir, "r")
         f.close()
     except FileNotFoundError:
-        print(f"{dir} directory not found, making dir...", file=sys.stderr)
         mkdir(dir)
     except IsADirectoryError:
         pass
