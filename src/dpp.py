@@ -415,15 +415,16 @@ def run_point_search(
         accept_policies: List[str],
         spread=1,
 ):
-    lang = point.RealPoint(std=1)
+    parse_lang = point.RealPoint()
     coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
-    x_init = [lang.make_point(a, b) for a, b in coords]
+    x_init = [parse_lang.make_point(a, b) for a, b in coords]
     for fit_policy in fit_policies:
         for accept_policy in accept_policies:
             title = f"fit={fit_policy},accept={accept_policy}"
             local_dir = f"{save_dir}/{title}"
             util.mkdir(local_dir)
 
+            lang = point.RealPoint(std=1)
             generator = mcmc_lang_rr(
                 lang=lang,
                 x_init=x_init,
@@ -461,8 +462,6 @@ def run_point_search(
             )
             anim.save(f"{local_dir}/embed.mp4")
 
-    summarize_point_data(save_dir)
-
 
 def summarize_point_data(save_dir: str):
     # plot together
@@ -489,6 +488,8 @@ def run_maze_search(
         popn_size: int,
         save_dir: str,
         n_epochs: int,
+        fit_policies: List[str],
+        accept_policies: List[str],
         spread=1,
 ):
     # lang = point.RealPoint(lim=lim, std=1)
@@ -528,15 +529,16 @@ def run_maze_search(
         # "#__##__#_#",
         # "##########",
     ]
-    maze = point.RealMaze(str_mask, std=1)
+    point_lang = point.RealPoint()
     coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
-    x_init = [maze.make_point(a, b) for a, b in coords]
-    for fit_policy in ["none", "single", "all", "first"]:
-        for accept_policy in ["energy", "moment", "all"]:
+    x_init = [point_lang.make_point(a, b) for a, b in coords]
+    for fit_policy in fit_policies:
+        for accept_policy in accept_policies:
             title = f"fit={fit_policy},accept={accept_policy}"
             local_dir = f"{save_dir}/{title}"
             util.mkdir(local_dir)
 
+            maze = point.RealMaze(str_mask, std=1)
             generator = mcmc_lang_rr(
                 lang=maze,
                 x_init=x_init,
@@ -726,17 +728,19 @@ if __name__ == "__main__":
     ts = util.timestamp()
     save_dir = f"out/dpp-points/{ts}"
     util.try_mkdir(save_dir)
-    # run_maze_search(
-    #     popn_size=100,
-    #     save_dir=save_dir,
-    #     n_epochs=1000,
-    # )
-    run_point_search(
+    run_maze_search(
         popn_size=100,
         save_dir=save_dir,
-        n_epochs=100,
+        n_epochs=1000,
         fit_policies=["single", "all", "none", "first"],
         accept_policies=["energy", "moment", "all"],
     )
+    # run_point_search(
+    #     popn_size=100,
+    #     save_dir=save_dir,
+    #     n_epochs=100,
+    #     fit_policies=["single", "all", "none", "first"],
+    #     accept_policies=["energy", "moment", "all"],
+    # )
     # summarize_point_data("out/dpp-points/2024-04-04_22-14-22/")
     # check_fuzzballs("out/dpp/5swaynio/lsystems.txt")
