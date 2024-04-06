@@ -82,7 +82,7 @@ def mcmc_lang_rr(
             elif accept_policy == "moment":
                 log_f = slow_fom_update(x_feat, up_feat)
             elif accept_policy == "all":
-                log_f = 0
+                log_f = np.inf
             else:
                 raise ValueError(f"Unknown accept policy: {accept_policy}")
 
@@ -99,9 +99,7 @@ def mcmc_lang_rr(
             log_accept = np.min([0, log_f + log_q])
 
             # stochastically accept/reject
-            u = np.random.uniform()
-            while u == 0:
-                u = np.random.uniform()
+            u = uniform_nonzero()
             if np.log(u) < log_accept:
                 x[i] = s
                 x_feat[i] = s_feat
@@ -121,6 +119,13 @@ def mcmc_lang_rr(
             "log q(x|x')/q(x'|x)": log_q / popn_size,
             "log A(x',x)": log_accept / popn_size,
         }
+
+
+def uniform_nonzero() -> float:
+    u = np.random.uniform()
+    while u == 0:
+        u = np.random.uniform()
+    return u
 
 
 def mcmc_lang_full_step(
