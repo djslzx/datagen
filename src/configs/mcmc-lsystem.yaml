@@ -36,9 +36,7 @@ parameters:
       softmax_outputs:
         value: false
       sigma:
-        distribution: int_uniform
-        min: 0
-        max: 10
+        value: 3
   render:
     parameters:
       step_length:
@@ -50,11 +48,11 @@ parameters:
       n_cols:
         value: 128
       vary_color:
-        value: true
+        value: false
   search:
     parameters:
       distance_metric:
-        values: [ cosine, dot, euclidean ]
+        value: euclidean
       random_seed:
         value: 0
       popn_size:
@@ -62,14 +60,14 @@ parameters:
       epochs:
         value: 100
       update_policy:
-        values: [ rr ]
+        value: rr
       fit_policy:
-        values: [ single, all ]
+        values: [ single, all, none, first ]
       accept_policy:
-        values: [ energy, moment ]
-      archive_correction:
-        values: [ true, false ]
+        values: [ energy, moment, all ]
+      # archive_correction:
+      #   values: [ true, false ]
       length_cap:
-        values: [ 100, 200 ]
+        value: 200
       keep_original:
         value: true
