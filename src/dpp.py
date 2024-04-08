@@ -586,7 +586,7 @@ def run_lsys_search(config):
     # choose featurizer from config
     feat_kind = config.featurizer["kind"]
     if feat_kind == "ViT":
-        featurizer = feat.ViTBaseFeaturizer()
+        featurizer = feat.ViTBase()
     elif feat_kind == "resnet":
         featurizer = feat.ResnetFeaturizer(**config.featurizer)
     else:

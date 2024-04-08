@@ -211,8 +211,9 @@ if __name__ == "__main__":
     plt.style.use('dark_background')
     out_dir = f"../out/distance-check/images"
     featurizers = {
-        "ViT": feat.ViTBaseFeaturizer(),
-        "resnet": feat.ResnetFeaturizer(),
+        # "ViT": feat.ViTBase(),
+        "dinov2": feat.DinoV2(),
+        # "resnet": feat.ResnetFeaturizer(),
     }
     for name, featurizer in featurizers.items():
         # natural images (animals)

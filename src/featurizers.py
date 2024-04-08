@@ -10,7 +10,8 @@ from transformers import (
     AutoTokenizer, AutoModelForCausalLM,
     CodeGenModel,
     TrOCRProcessor, VisionEncoderDecoderModel,
-    ViTImageProcessor, ViTModel
+    ViTImageProcessor, ViTModel,
+    AutoImageProcessor, AutoModel,
 )
 from sentence_transformers import SentenceTransformer
 from sys import stderr
@@ -230,12 +231,13 @@ class ResnetFeaturizer(Featurizer):
 #         return generated_text
 
 
-class ViTBaseFeaturizer(Featurizer):
+class ViTBase(Featurizer):
     def __init__(self):
         model_id = 'google/vit-base-patch16-224-in21k'
         self.processor = ViTImageProcessor.from_pretrained(model_id)
         self.model = ViTModel.from_pretrained(model_id)
 
+    @property
     def n_features(self) -> int:
         return 197 * 768
 
@@ -246,6 +248,23 @@ class ViTBaseFeaturizer(Featurizer):
         features = rearrange(last_hidden, "b n m -> b (n m)")
         return features
 
+
+class DinoV2(Featurizer):
+    def __init__(self):
+        model_id = "facebook/dinov2-small"
+        self.processor = AutoImageProcessor.from_pretrained(model_id)
+        self.model = AutoModel.from_pretrained(model_id)
+
+    @property
+    def n_features(self) -> int:
+        raise NotImplementedError
+
+    def apply(self, batch: Any) -> np.ndarray:
+        inputs = self.processor(images=batch, return_tensors="pt")
+        outputs = self.model(**inputs)
+        last_hidden = outputs.last_hidden_state.detach().numpy()
+        features = rearrange(last_hidden, "b n m -> b (n m)")
+        return features
 
 class RawFeaturizer(Featurizer):
     """
