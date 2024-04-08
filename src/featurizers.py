@@ -6,7 +6,12 @@ import torch as T
 import numpy as np
 from sklearn import manifold
 from torchvision.models import resnet50, ResNet50_Weights
-from transformers import AutoTokenizer, AutoModelForCausalLM, CodeGenModel  # language models
+from transformers import (
+    AutoTokenizer, AutoModelForCausalLM,
+    CodeGenModel,
+    TrOCRProcessor, VisionEncoderDecoderModel,
+    ViTImageProcessor, ViTModel
+)
 from sentence_transformers import SentenceTransformer
 from sys import stderr
 from scipy.spatial import distance as dist
@@ -94,6 +99,33 @@ class PolyCoder(Featurizer):
         raise NotImplementedError
 
 
+class GaussianBlur(Featurizer):
+    """
+    Add a blur to the preprocessing step of an existing featurizer
+    """
+
+    def __init__(self, sigma: float, feat: Featurizer):
+        self.sigma = sigma
+        self.feat = feat
+
+    def __repr__(self):
+        return (f"<Blur sigma={self.sigma} feat={self.feat}>")
+
+    @property
+    def n_features(self) -> int:
+        return self.feat.n_features
+
+    def apply(self, batch: List[np.ndarray]) -> np.ndarray:
+        if self.sigma > 0.:
+            batch = [filters.gaussian(img, sigma=self.sigma, channel_axis=-1) for img in batch]
+            batch = np.stack(batch) * 255  # compensate for gaussian blur output in [0, 1]
+            batch = batch.astype(np.uint8)
+        elif isinstance(batch, List):
+            batch = np.stack(batch)
+
+        return self.feat.apply(batch)
+
+
 class ResnetFeaturizer(Featurizer):
 
     def __init__(self, disable_last_layer=True, softmax_outputs=False, center=False, sigma=0.):
@@ -176,6 +208,43 @@ class ResnetFeaturizer(Featurizer):
             raise ValueError("class_id must be an integer")
         else:
             return self.categories[class_id]
+
+
+# class OCRFeaturizer(Featurizer):
+#     """
+#     Use embeddings from a vision transformer trained on optical character recognition (OCR)
+#     """
+#
+#     def __init__(self):
+#         model_id = "microsoft/trocr-small-handwritten"
+#         self.processor = TrOCRProcessor.from_pretrained(model_id)
+#         self.model = VisionEncoderDecoderModel.from_pretrained(model_id)
+#
+#     def n_features(self) -> int:
+#         raise NotImplementedError
+#
+#     def apply(self, batch: np.ndarray) -> np.ndarray:
+#         pixel_values = self.processor(images=batch, return_tensors="pt").pixel_values
+#         generated_ids = self.model.generate(pixel_values)
+#         generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+#         return generated_text
+
+
+class ViTBaseFeaturizer(Featurizer):
+    def __init__(self):
+        model_id = 'google/vit-base-patch16-224-in21k'
+        self.processor = ViTImageProcessor.from_pretrained(model_id)
+        self.model = ViTModel.from_pretrained(model_id)
+
+    def n_features(self) -> int:
+        return 197 * 768
+
+    def apply(self, batch: Any) -> np.ndarray:
+        inputs = self.processor(images=batch, return_tensors="pt")
+        outputs = self.model(**inputs)
+        last_hidden = outputs.last_hidden_state.detach().numpy()
+        features = rearrange(last_hidden, "b n m -> b (n m)")
+        return features
 
 
 class RawFeaturizer(Featurizer):
