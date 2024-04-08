@@ -28,6 +28,9 @@ parameters:
         - "20;F;F~FF-[-F+F+F]+[+F-F-F]"
   featurizer:
     parameters:
+      kind:
+        value: ViT
+#        values: [ ViT, resnet ]
       disable_last_layer:
         value: true
       softmax_outputs:

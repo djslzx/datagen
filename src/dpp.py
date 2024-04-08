@@ -583,7 +583,15 @@ def run_lsys_search(config):
     seed = config.search["random_seed"]
     np.random.seed(seed)
 
-    featurizer = feat.ResnetFeaturizer(**config.featurizer)
+    # choose featurizer from config
+    feat_kind = config.featurizer["kind"]
+    if feat_kind == "ViT":
+        featurizer = feat.ViTBaseFeaturizer()
+    elif feat_kind == "resnet":
+        featurizer = feat.ResnetFeaturizer(**config.featurizer)
+    else:
+        raise ValueError(f"Unexpected featurizer kind: {feat_kind}")
+
     lang = lindenmayer.LSys(
         kind="deterministic",
         featurizer=featurizer,
@@ -692,6 +700,8 @@ def wandb_process_data_epochs(
 
 
 def check_fuzzballs(filename: str):
+    """See what fuzzballs classify as"""
+
     from skimage import filters
 
     classifier = feat.ResnetFeaturizer(disable_last_layer=False, softmax_outputs=False, sigma=5.)
@@ -728,24 +738,26 @@ def sweep():
     run_lsys_search(config)
 
 
-if __name__ == "__main__":
-    # sweep()
+def local_searches():
     ts = util.timestamp()
     save_dir = f"out/dpp-points/{ts}"
     util.try_mkdir(save_dir)
     run_maze_search(
         popn_size=100,
         save_dir=save_dir,
-        n_epochs=1000,
+        n_epochs=100,
         fit_policies=["single", "all", "none", "first"],
         accept_policies=["energy", "moment", "all"],
     )
-    # run_point_search(
-    #     popn_size=100,
-    #     save_dir=save_dir,
-    #     n_epochs=100,
-    #     fit_policies=["single", "all", "none", "first"],
-    #     accept_policies=["energy", "moment", "all"],
-    # )
-    # summarize_point_data("out/dpp-points/2024-04-04_22-14-22/")
-    # check_fuzzballs("out/dpp/5swaynio/lsystems.txt")
+    run_point_search(
+        popn_size=100,
+        save_dir=save_dir,
+        n_epochs=100,
+        fit_policies=["single", "all", "none", "first"],
+        accept_policies=["energy", "moment", "all"],
+    )
+
+
+if __name__ == "__main__":
+    sweep()
+    # local_searches()
