@@ -212,7 +212,7 @@ if __name__ == "__main__":
     out_dir = f"../out/distance-check/images"
     featurizers = {
         # "ViT": feat.ViTBase(),
-        "dinov2": feat.DinoV2(),
+        "dinov2": feat.ViTDINOv2(),
         # "resnet": feat.ResnetFeaturizer(),
     }
     for name, featurizer in featurizers.items():

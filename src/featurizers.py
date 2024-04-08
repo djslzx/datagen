@@ -249,7 +249,7 @@ class ViTBase(Featurizer):
         return features
 
 
-class DinoV2(Featurizer):
+class ViTDINOv2(Featurizer):
     def __init__(self):
         model_id = "facebook/dinov2-small"
         self.processor = AutoImageProcessor.from_pretrained(model_id)
