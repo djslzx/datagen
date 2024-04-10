@@ -452,14 +452,14 @@ def run_point_search(
 
             # plots
             data = [analyzer_iter(d, threshold=1e-10) for d in data]
-            plot_keys = list(sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat"}))
+            plot_keys = list(sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat", "archive"}))
             fig = util.plot_v_subplots(data, keys=plot_keys)
             fig.savefig(f"{local_dir}/plot.png")
             plt.cla()
 
             # save plot data
             df = pd.DataFrame(data)
-            df.drop(columns=["x", "x'", "x_feat", "x'_feat"], inplace=True)
+            df.drop(columns=["x", "x'", "x_feat", "x'_feat", "archive"], inplace=True)
             df["fit policy"] = fit_policy
             df["accept policy"] = accept_policy
             df.to_json(f"{local_dir}/data.json")
@@ -587,7 +587,7 @@ def run_maze_search(
 
             # plots
             data = [analyzer_iter(d, threshold=1e-10) for d in data]
-            plot_keys = list(sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat"}))
+            plot_keys = list(sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat", "archive"}))
             fig = util.plot_v_subplots(data, keys=plot_keys)
             fig.savefig(f"{local_dir}/plot.png")
             plt.cla()
