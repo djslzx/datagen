@@ -114,9 +114,6 @@ def mcmc_lang_rr(
             up_feat = x_feat.copy()
             up_feat[i] = s_feat
 
-            # update archive
-            archive.add(s_feat[None, :])
-
             # save samples
             samples.append(s)
             samples_feat.append(s_feat)
@@ -135,6 +132,7 @@ def mcmc_lang_rr(
 
             # add archive correction term to target distribution
             if archive_beta > 0:
+                archive.add(s_feat[None, :])
                 log_f += archive_beta * archive_correction_update(x_feat, up_feat, archive.read(), i)
 
             # compute log q(x|x')/q(x'|x)
