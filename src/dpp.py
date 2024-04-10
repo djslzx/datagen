@@ -791,5 +791,5 @@ def local_searches():
 
 
 if __name__ == "__main__":
-    # sweep()
-    local_searches()
+    sweep()
+    # local_searches()
