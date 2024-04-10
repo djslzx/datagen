@@ -11,10 +11,55 @@ from tqdm import tqdm
 from sklearn.random_projection import SparseRandomProjection
 import featurizers as feat
 import wandb
+import einops as ein
 
 from lang.tree import Language, Tree
 from lang import lindenmayer, point, arc
 import util
+
+
+class VectorArchive:
+    def __init__(self, n: int, d: int, rng: np.random.Generator):
+        assert n >= 0
+        assert d > 0
+
+        self.capacity = n
+        self.dim = d
+        self.rng = rng
+        self.data = np.zeros((n, d))
+        self.n_entries = 0
+        self.step = 0
+
+    @staticmethod
+    def from_vecs(vecs: np.ndarray, n: int, rng: np.random.Generator) -> "VectorArchive":
+        assert vecs.ndim == 2
+        _, d = vecs.shape
+        archive = VectorArchive(n, d, rng)
+        for vec in vecs:
+            archive.add(vec)
+        return archive
+
+    def add(self, vec: np.ndarray):
+        """Extend archive by a single entry"""
+        assert vec.ndim == 2
+        assert vec.shape[0] == 1
+        assert vec.shape[1] == self.dim
+
+        if self.capacity == 0:
+            pass
+        elif self.n_entries < self.capacity:
+            # append
+            self.data[self.n_entries] = vec
+            self.n_entries += 1
+        else:
+            # probabilistically replace
+            m = self.rng.integers(0, self.step)
+            if m < self.capacity:
+                self.data[m] = vec
+        self.step += 1
+
+    def read(self) -> np.ndarray:
+        return self.data[:self.n_entries]
 
 
 def mcmc_lang_rr(
