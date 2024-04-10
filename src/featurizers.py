@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import torch as T
 import numpy as np
 from sklearn import manifold
+from sklearn.preprocessing import StandardScaler
 from torchvision.models import resnet50, ResNet50_Weights
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM,
@@ -236,10 +237,11 @@ class ViTBase(Featurizer):
         model_id = 'google/vit-base-patch16-224-in21k'
         self.processor = ViTImageProcessor.from_pretrained(model_id)
         self.model = ViTModel.from_pretrained(model_id)
+        self.scaler = StandardScaler()
 
     @property
     def n_features(self) -> int:
-        return 197 * 768
+        return 768
 
     def apply(self, batch: Any) -> np.ndarray:
         if isinstance(batch, List):
@@ -257,9 +259,11 @@ class ViTBase(Featurizer):
         batch = T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w"))
 
         inputs = self.processor(images=batch, return_tensors="pt")
-        outputs = self.model(**inputs)
-        last_hidden = outputs.last_hidden_state.detach().cpu().numpy()
-        features = rearrange(last_hidden, "b n m -> b (n m)")
+        features = self.model(**inputs).last_hidden_state[:, 0].detach().cpu().numpy()
+
+        # Post-processing: scaling
+        features = self.scaler.fit_transform(features)
+
         return features
 
 

@@ -5,7 +5,6 @@ import itertools
 import os
 from typing import List, Tuple
 import numpy as np
-import cv2 as cv
 import pandas as pd
 from sklearn import manifold, decomposition
 from sklearn.neighbors import NearestNeighbors
@@ -204,15 +203,15 @@ def measure_dataset_dist(
     plt.show()
     mds_pics(lsys.featurizer, path=target_path, title=title)
     plt.show()
-    tsne_pics(lsys.featurizer, perplexity_range=[2, 4, 6, 8], path=target_path, n_runs=1, title=title)
+    tsne_pics(lsys.featurizer, perplexity_range=[2, 8], path=target_path, n_runs=1, title=title)
 
 
 if __name__ == "__main__":
     plt.style.use('dark_background')
     out_dir = f"../out/distance-check/images"
     featurizers = {
-        # "ViT": feat.ViTBase(),
-        "dinov2": feat.ViTDINOv2(),
+        "ViT": feat.ViTBase(),
+        # "dinov2": feat.ViTDINOv2(),
         # "resnet": feat.ResnetFeaturizer(),
     }
     for name, featurizer in featurizers.items():
@@ -224,10 +223,10 @@ if __name__ == "__main__":
             title=name,
         )
 
-        # lsystem images
-        measure_dataset_dist(
-            target_path=f"{out_dir}/lsystems/rgba-256/*.png",
-            guess_path=f"{out_dir}/lsystems/generated-color-256/*/system-*.png",
-            featurizer=featurizer,
-            title=name,
-        )
+        # # lsystem images
+        # measure_dataset_dist(
+        #     target_path=f"{out_dir}/lsystems/rgba-256/*.png",
+        #     guess_path=f"{out_dir}/lsystems/generated-color-256/*/system-*.png",
+        #     featurizer=featurizer,
+        #     title=name,
+        # )
