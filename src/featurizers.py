@@ -242,6 +242,9 @@ class ViTBase(Featurizer):
         return 197 * 768
 
     def apply(self, batch: Any) -> np.ndarray:
+        if isinstance(batch, List):
+            batch = np.stack(batch)
+
         assert batch.ndim == 4, f"Expected shape [b h w c] but got {batch.shape}"
         assert batch.shape[-1] in {3, 4}, f"Expected 3 or 4 channels but got {batch.shape[-1]} in shape {batch.shape}"
 
