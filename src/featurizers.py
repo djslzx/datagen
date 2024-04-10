@@ -242,6 +242,17 @@ class ViTBase(Featurizer):
         return 197 * 768
 
     def apply(self, batch: Any) -> np.ndarray:
+        assert batch.ndim == 4, f"Expected shape [b h w c] but got {batch.shape}"
+        assert batch.shape[-1] in {3, 4}, f"Expected 3 or 4 channels but got {batch.shape[-1]} in shape {batch.shape}"
+
+        # Convert image to uint8
+        if batch.dtype != np.uint8:
+            print(f"WARNING: casting image of type {batch.dtype} to uint8", file=stderr)
+            batch = batch.astype(np.uint8)
+
+        # Remove alpha channel, reshape to channels-first
+        batch = T.from_numpy(rearrange(batch[..., :3], "b h w c -> b c h w"))
+
         inputs = self.processor(images=batch, return_tensors="pt")
         outputs = self.model(**inputs)
         last_hidden = outputs.last_hidden_state.detach().numpy()
@@ -265,6 +276,7 @@ class ViTDINOv2(Featurizer):
         last_hidden = outputs.last_hidden_state.detach().numpy()
         features = rearrange(last_hidden, "b n m -> b (n m)")
         return features
+
 
 class RawFeaturizer(Featurizer):
     """
