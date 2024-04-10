@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union, Generator
+from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union, Generator, Any
 import numpy as np
 import pandas as pd
 import yaml
@@ -25,38 +25,46 @@ class VectorArchive:
 
         self.capacity = n
         self.dim = d
-        self.data = np.zeros((n, d))
+        self._vecs = np.zeros((n, d))
+        self._tags = np.empty(n, dtype=object)
         self.n_entries = 0
         self.step = 0
 
     @staticmethod
-    def from_vecs(vecs: np.ndarray, n: int) -> "VectorArchive":
+    def from_vecs(n: int, vecs: np.ndarray, tags: List[Any]) -> "VectorArchive":
         assert vecs.ndim == 2, f"Expected 2D vector, but got {vecs.shape}"
-        _, d = vecs.shape
+        m, d = vecs.shape
+        assert m == len(tags)
+
         archive = VectorArchive(n, d)
-        for vec in vecs[:, None]:
-            archive.add(vec)
+        for vec, tag in zip(vecs[:, None], tags):
+            archive.add(vec, tag)
         return archive
 
-    def add(self, vec: np.ndarray):
-        """Extend archive by a single entry"""
+    def add(self, vec: np.ndarray, tag: Any):
+        """Extend archive by a single entry. Returns True if the vec was added to the archive."""
         assert vec.ndim == 2, f"Expected 2D vector, but got {vec.shape}"
         assert vec.shape[0] == 1
         assert vec.shape[1] == self.dim
 
         if self.n_entries < self.capacity:
             # append
-            self.data[self.n_entries] = vec
+            self._vecs[self.n_entries] = vec
+            self._tags[self.n_entries] = tag
             self.n_entries += 1
         else:
             # probabilistically replace
             m = np.random.randint(0, self.step)
             if m < self.capacity:
-                self.data[m] = vec
+                self._vecs[m] = vec
+                self._tags[m] = tag
         self.step += 1
 
-    def read(self) -> np.ndarray:
-        return self.data[:self.n_entries]
+    def data(self) -> np.ndarray:
+        return self._vecs[:self.n_entries]
+
+    def metadata(self) -> np.ndarray:
+        return self._tags[:self.n_entries]
 
 
 def mcmc_lang_rr(
@@ -66,11 +74,11 @@ def mcmc_lang_rr(
         n_epochs: int,
         fit_policy: str,
         accept_policy: str,
-        distance_fn: str,
+        distance_metric: str,
         archive_size: int,
         archive_beta: float,
-        gamma=1,
         length_cap=50,
+        gamma=1,
 ) -> Iterator[dict]:
     """
     MCMC with target distribution f(x) and proposal distribution q(x'|x),
@@ -83,11 +91,15 @@ def mcmc_lang_rr(
 
     assert fit_policy in {"all", "single", "none", "first"}
     assert accept_policy in {"dpp", "energy", "moment", "all"}
-    assert distance_fn in {"cosine", "dot", "euclidean"}
+    assert distance_metric in {"cosine", "dot", "euclidean"}
 
     x = x_init.copy()
     x_feat = lang.extract_features(x)
-    archive = VectorArchive.from_vecs(x_feat, n=archive_size)
+    archive = VectorArchive.from_vecs(
+        n=archive_size,
+        vecs=x_feat,
+        tags=[lang.to_str(tree) for tree in x]
+    )
 
     if fit_policy == "first":
         lang.fit(x_init, alpha=1.0)
@@ -132,8 +144,8 @@ def mcmc_lang_rr(
 
             # add archive correction term to target distribution
             if archive_beta > 0:
-                archive.add(s_feat[None, :])
-                log_f += archive_beta * archive_correction_update(x_feat, up_feat, archive.read(), i)
+                archive.add(s_feat[None, :], tag=lang.to_str(s))
+                log_f += archive_beta * archive_correction_update(x_feat, up_feat, archive.data(), i)
 
             # compute log q(x|x')/q(x'|x)
             if fit_policy == "all":
@@ -164,6 +176,7 @@ def mcmc_lang_rr(
             "x'": [lang.to_str(p) for p in samples],
             "x_feat": x_feat.copy(),
             "x'_feat": samples_feat.copy(),
+            "archive": archive.metadata(),
             "log f(x')/f(x)": sum_log_f / popn_size,
             "log q(x|x')/q(x'|x)": sum_log_q / popn_size,
             "log A(x',x)": sum_log_accept / popn_size,
@@ -175,75 +188,6 @@ def uniform_nonzero() -> float:
     while u == 0:
         u = np.random.uniform()
     return u
-
-
-def mcmc_lang_full_step(
-        lang: Language,
-        x_init: List[Tree],
-        popn_size: int,
-        n_epochs: int,
-        fit_policy: str,
-        accept_policy: str,
-        gamma=1,
-        length_cap=50,
-):
-    """
-    MCMC with target distribution f(x) and proposal distribution q(x'|x),
-    chosen via f=accept_policy and q=fit_policy.
-
-    At each iteration, x' consists of |x| independent samples from G(x).
-    """
-    # this function is no longer updated in step with rr
-    raise NotImplementedError
-
-    assert fit_policy in {"all"}
-    assert accept_policy in {"dpp", "energy", "moment"}
-
-    x = x_init
-    x_feat = lang.extract_features(x)
-
-    for t in range(n_epochs):
-        lang.fit(x, alpha=1.0)
-        x_new = lang.samples(n_samples=popn_size, length_cap=length_cap)
-        x_new_feat = lang.extract_features(x_new)
-
-        # compute log f(x')/f(x)
-        if accept_policy == "dpp":
-            log_f = dpp_rbf_update(x_feat, x_new_feat, gamma)
-        elif accept_policy == "energy":
-            log_f = slow_energy_update(x_feat, x_new_feat)
-        elif accept_policy == "moment":
-            log_f = slow_fom_update(x_feat, x_new_feat)
-        else:
-            raise ValueError(f"Unknown accept policy: {accept_policy}")
-
-        # compute log q(x|x')/q(x'|x)
-        log_q_x_given_new = lang_log_prs(lang, x, x_new)
-        log_q_new_given_x = lang_log_prs(lang, x_new, x)
-        log_q = log_q_x_given_new.sum() - log_q_new_given_x.sum()
-        wandb.log({
-            "log q(x|x')": wandb.Histogram(log_q_x_given_new),
-            "log q(x'|x)": wandb.Histogram(log_q_new_given_x),
-        }, commit=False)
-
-        log_accept = np.min([0, log_f + log_q])
-        u = np.random.uniform()
-        while u == 0:
-            u = np.random.uniform()
-        if np.log(u) < log_accept:
-            x = x_new
-            x_feat = x_new_feat
-
-        yield {
-            "t": t,
-            "x": [lang.to_str(p) for p in x],
-            "x_feat": x_feat.copy(),
-            "x'": [lang.to_str(p) for p in x_new],
-            "x'_feat": x_new_feat.copy(),
-            "log f(x')/f(x)": log_f,
-            "log q(x|x')/q(x'|x)": log_q,
-            "log A(x',x)": log_accept,
-        }
 
 
 def logdet(m: np.ndarray) -> float:
@@ -500,7 +444,7 @@ def run_point_search(
                 n_epochs=n_epochs,
                 fit_policy=fit_policy,
                 accept_policy=accept_policy,
-                distance_fn="euclidean",
+                distance_metric="euclidean",
                 archive_beta=archive_beta,
                 archive_size=archive_size,
             )
@@ -635,7 +579,7 @@ def run_maze_search(
                 n_epochs=n_epochs,
                 fit_policy=fit_policy,
                 accept_policy=accept_policy,
-                distance_fn="euclidean",
+                distance_metric="euclidean",
                 archive_beta=archive_beta,
                 archive_size=archive_size,
             )
@@ -701,25 +645,11 @@ def run_lsys_search(config):
         x_init = lang.samples(popn_size, length_cap=length_cap)
 
     # init generator
-    update_policy = config.search["update_policy"]
-    epochs = config.search["epochs"]
-    if update_policy == "rr":
-        generator_fn = mcmc_lang_rr
-    elif update_policy == "full_step":
-        generator_fn = mcmc_lang_full_step
-    else:
-        raise ValueError(f"Unknown update policy: {update_policy}")
-
-    fit_policy = config.search["fit_policy"]
-    accept_policy = config.search["accept_policy"]
-    generator = generator_fn(
+    epochs = config.search["n_epochs"]
+    generator = mcmc_lang_rr(
         lang=lang,
         x_init=x_init,
-        popn_size=popn_size,
-        n_epochs=epochs,
-        fit_policy=fit_policy,
-        accept_policy=accept_policy,
-        length_cap=length_cap,
+        **config.search,
     )
 
     # make run directory
@@ -732,8 +662,14 @@ def run_lsys_search(config):
     util.mkdir(f"{save_dir}/data/")
     util.mkdir(f"{save_dir}/images/")
 
-    wandb_process_data_epochs(lang=lang, generator=generator, popn_size=popn_size, n_epochs=epochs,
-                              save=True, save_dir=save_dir)
+    wandb_process_data_epochs(
+        lang=lang,
+        generator=generator,
+        popn_size=popn_size,
+        n_epochs=epochs,
+        save=True,
+        save_dir=save_dir
+    )
 
 
 def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
@@ -775,6 +711,7 @@ def wandb_process_data_epochs(
             **bw,
             "step": i,
             "renders": render_program_batch_as_wandb_image(lang, d["x"]),
+            "archive": render_program_batch_as_wandb_image(lang, d["archive"]),
             "scatter": wandb.Image(coord_image),
         }
         rm_keys = {"x", "x'"}

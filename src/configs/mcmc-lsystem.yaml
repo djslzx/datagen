@@ -56,18 +56,14 @@ parameters:
         value: 0
       popn_size:
         value: 1000
-      epochs:
+      n_epochs:
         value: 100
-      update_policy:
-        value: rr
       fit_policy:
         values: [ single, all, first ]
       accept_policy:
         values: [ energy, moment, all ]
       archive_beta:
-        values: [ 0, 1, 10 ]
-      # archive_correction:
-      #   values: [ true, false ]
+        values: [ 0., 1., 10. ]
       archive_size:
         value: 100
       length_cap:
