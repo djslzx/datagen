@@ -19,41 +19,38 @@ import util
 
 
 class VectorArchive:
-    def __init__(self, n: int, d: int, rng: np.random.Generator):
-        assert n >= 0
+    def __init__(self, n: int, d: int):
+        assert n > 0
         assert d > 0
 
         self.capacity = n
         self.dim = d
-        self.rng = rng
         self.data = np.zeros((n, d))
         self.n_entries = 0
         self.step = 0
 
     @staticmethod
-    def from_vecs(vecs: np.ndarray, n: int, rng: np.random.Generator) -> "VectorArchive":
-        assert vecs.ndim == 2
+    def from_vecs(vecs: np.ndarray, n: int) -> "VectorArchive":
+        assert vecs.ndim == 2, f"Expected 2D vector, but got {vecs.shape}"
         _, d = vecs.shape
-        archive = VectorArchive(n, d, rng)
-        for vec in vecs:
+        archive = VectorArchive(n, d)
+        for vec in vecs[:, None]:
             archive.add(vec)
         return archive
 
     def add(self, vec: np.ndarray):
         """Extend archive by a single entry"""
-        assert vec.ndim == 2
+        assert vec.ndim == 2, f"Expected 2D vector, but got {vec.shape}"
         assert vec.shape[0] == 1
         assert vec.shape[1] == self.dim
 
-        if self.capacity == 0:
-            pass
-        elif self.n_entries < self.capacity:
+        if self.n_entries < self.capacity:
             # append
             self.data[self.n_entries] = vec
             self.n_entries += 1
         else:
             # probabilistically replace
-            m = self.rng.integers(0, self.step)
+            m = np.random.randint(0, self.step)
             if m < self.capacity:
                 self.data[m] = vec
         self.step += 1
@@ -70,6 +67,8 @@ def mcmc_lang_rr(
         fit_policy: str,
         accept_policy: str,
         distance_fn: str,
+        archive_size: int,
+        archive_beta: float,
         gamma=1,
         length_cap=50,
 ) -> Iterator[dict]:
@@ -88,6 +87,7 @@ def mcmc_lang_rr(
 
     x = x_init.copy()
     x_feat = lang.extract_features(x)
+    archive = VectorArchive.from_vecs(x_feat, n=archive_size)
 
     if fit_policy == "first":
         lang.fit(x_init, alpha=1.0)
@@ -114,6 +114,9 @@ def mcmc_lang_rr(
             up_feat = x_feat.copy()
             up_feat[i] = s_feat
 
+            # update archive
+            archive.add(s_feat[None, :])
+
             # save samples
             samples.append(s)
             samples_feat.append(s_feat)
@@ -129,6 +132,11 @@ def mcmc_lang_rr(
                 log_f = np.inf
             else:
                 raise ValueError(f"Unknown accept policy: {accept_policy}")
+
+            # add archive correction term to target distribution
+            if archive_beta > 0:
+                # archive correction term: + beta *
+                pass
 
             # compute log q(x|x')/q(x'|x)
             if fit_policy == "all":
@@ -542,33 +550,53 @@ def run_maze_search(
         n_epochs: int,
         fit_policies: List[str],
         accept_policies: List[str],
+        archive_size,
         spread=1,
 ):
     # lang = point.RealPoint(lim=lim, std=1)
     str_mask = [
-        "#####################################",
-        "#_#_______#_______#_____#_________#_#",
-        "#_#_#####_#_###_#####_###_###_###_#_#",
-        "#_______#___#_#_____#_____#_#_#___#_#",
-        "#####_#_#####_#####_###_#_#_#_#####_#",
-        "#___#_#_______#_____#_#_#_#_#_____#_#",
-        "#_#_#######_#_#_#####_###_#_#####_#_#",
-        "#_#_______#_#_#___#_____#_____#___#_#",
-        "#_#######_###_###_#_###_#####_#_###_#",
-        "#_____#___#_#___#_#___#_____#_#_____#",
-        "#_###_###_#_###_#_#####_#_#_#_#######",
-        "#___#___#_#_#___#___#___#_#_#___#___#",
-        "#######_#_#_#_#####_#_###_#_###_###_#",
-        "#_____#_#_____#___#_#___#_#___#_____#",
-        "#_###_#_#####_###_#_###_###_#######_#",
-        "#_#___#_____#_____#___#_#_#_______#_#",
-        "#_#_#####_#_###_#####_#_#_#######_#_#",
-        "#_#_____#_#_#_#_#_____#_______#_#___#",
-        "#_#####_#_#_#_###_#####_#####_#_#####",
-        "#_#___#_#_#_____#_____#_#___#_______#",
-        "#_#_###_###_###_#####_###_#_#####_#_#",
-        "#_#_________#_____#_______#_______#_#",
-        "#####################################",
+        "####################",
+        "#                  #",
+        "####   ######      #",
+        "#  ## ##           #",
+        "#   ###            #",
+        "###   #  ##        #",
+        "# ##  ##  ###      #",
+        "#  ## ###   ##     #",
+        "#     # ###  ##    #",
+        "#     #   ##  ##   #",
+        "#     #    ##  #####",
+        "#     #     ##  ####",
+        "#                  #",
+        "#          ##      #",
+        "#         ##       #",
+        "#        ##        #",
+        "####################",
+
+        # "#####################################",
+        # "#_#_______#_______#_____#_________#_#",
+        # "#_#_#####_#_###_#####_###_###_###_#_#",
+        # "#_______#___#_#_____#_____#_#_#___#_#",
+        # "#####_#_#####_#####_###_#_#_#_#####_#",
+        # "#___#_#_______#_____#_#_#_#_#_____#_#",
+        # "#_#_#######_#_#_#####_###_#_#####_#_#",
+        # "#_#_______#_#_#___#_____#_____#___#_#",
+        # "#_#######_###_###_#_###_#####_#_###_#",
+        # "#_____#___#_#___#_#___#_____#_#_____#",
+        # "#_###_###_#_###_#_#####_#_#_#_#######",
+        # "#___#___#_#_#___#___#___#_#_#___#___#",
+        # "#######_#_#_#_#####_#_###_#_###_###_#",
+        # "#_____#_#_____#___#_#___#_#___#_____#",
+        # "#_###_#_#####_###_#_###_###_#######_#",
+        # "#_#___#_____#_____#___#_#_#_______#_#",
+        # "#_#_#####_#_###_#####_#_#_#######_#_#",
+        # "#_#_____#_#_#_#_#_____#_______#_#___#",
+        # "#_#####_#_#_#_###_#####_#####_#_#####",
+        # "#_#___#_#_#_____#_____#_#___#_______#",
+        # "#_#_###_###_###_#####_###_#_#####_#_#",
+        # "#_#_________#_____#_______#_______#_#",
+        # "#####################################",
+
         # "##########",
         # "#________#",
         # "#_######_#",
@@ -599,6 +627,7 @@ def run_maze_search(
                 fit_policy=fit_policy,
                 accept_policy=accept_policy,
                 distance_fn="euclidean",
+                archive_size=archive_size,
             )
             data = list(tqdm(generator, total=n_epochs))
 
@@ -795,16 +824,17 @@ def local_searches():
         n_epochs=100,
         fit_policies=["single", "all", "none", "first"],
         accept_policies=["energy", "moment", "all"],
+        archive_size=0,
     )
-    run_point_search(
-        popn_size=100,
-        save_dir=save_dir,
-        n_epochs=100,
-        fit_policies=["single", "all", "none", "first"],
-        accept_policies=["energy", "moment", "all"],
-    )
+    # run_point_search(
+    #     popn_size=100,
+    #     save_dir=save_dir,
+    #     n_epochs=100,
+    #     fit_policies=["single", "all", "none", "first"],
+    #     accept_policies=["energy", "moment", "all"],
+    # )
 
 
 if __name__ == "__main__":
-    sweep()
-    # local_searches()
+    # sweep()
+    local_searches()
