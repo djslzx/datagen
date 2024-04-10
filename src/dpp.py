@@ -645,11 +645,18 @@ def run_lsys_search(config):
         x_init = lang.samples(popn_size, length_cap=length_cap)
 
     # init generator
-    epochs = config.search["n_epochs"]
+    n_epochs = config.search["n_epochs"]
     generator = mcmc_lang_rr(
         lang=lang,
         x_init=x_init,
-        **config.search,
+        popn_size=popn_size,
+        n_epochs=n_epochs,
+        fit_policy=config.search["fit_policy"],
+        accept_policy=config.search["accept_policy"],
+        distance_metric=config.search["distance_metric"],
+        archive_size=config.search["archive_size"],
+        archive_beta=config.search["archive_beta"],
+        length_cap=config.search["length_cap"],
     )
 
     # make run directory
@@ -666,7 +673,7 @@ def run_lsys_search(config):
         lang=lang,
         generator=generator,
         popn_size=popn_size,
-        n_epochs=epochs,
+        n_epochs=n_epochs,
         save=True,
         save_dir=save_dir
     )
