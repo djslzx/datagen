@@ -135,8 +135,7 @@ def mcmc_lang_rr(
 
             # add archive correction term to target distribution
             if archive_beta > 0:
-                # archive correction term: + beta *
-                pass
+                log_f += archive_beta * archive_correction_update(x_feat, up_feat, archive.read(), i)
 
             # compute log q(x|x')/q(x'|x)
             if fit_policy == "all":
@@ -286,6 +285,15 @@ def fast_energy_update(x_feat: np.ndarray, up_feat: np.ndarray, k: int) -> float
     # = 2 * sum_{i != k} exp -d(x_i', x_k') - exp -d(x_i, x_k) by symmetry
     return 2 * np.sum(-np.exp(-np.linalg.norm(up_feat - up_feat[k], axis=-1))
                       + np.exp(-np.linalg.norm(x_feat - x_feat[k], axis=-1)))
+
+
+def archive_correction_update(x_feat: np.ndarray, up_feat: np.ndarray, archive_feat: np.ndarray, k: int) -> float:
+    # C(X', A) - C(X, A)
+    #   = sum_{x in X'} min_{a in A} d(x, a)
+    #     - sum_{x in X} min_{a in A} d(x, a)
+    #   = min_{a in A} d(x_i', a) - min_{a in A} d(x_i, a)
+    return (np.min(np.linalg.norm(archive_feat - up_feat[k], axis=-1))
+            - np.min(np.linalg.norm(archive_feat - x_feat[k], axis=-1)))
 
 
 def dpp_rbf_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> float:
@@ -473,6 +481,8 @@ def run_point_search(
         n_epochs: int,
         fit_policies: List[str],
         accept_policies: List[str],
+        archive_beta: float,
+        archive_size: int,
         spread=1,
 ):
     parse_lang = point.RealPoint()
@@ -493,6 +503,8 @@ def run_point_search(
                 fit_policy=fit_policy,
                 accept_policy=accept_policy,
                 distance_fn="euclidean",
+                archive_beta=archive_beta,
+                archive_size=archive_size,
             )
             data = list(tqdm(generator, total=n_epochs))
 
@@ -550,7 +562,8 @@ def run_maze_search(
         n_epochs: int,
         fit_policies: List[str],
         accept_policies: List[str],
-        archive_size,
+        archive_size: int,
+        archive_beta: float,
         spread=1,
 ):
     # lang = point.RealPoint(lim=lim, std=1)
@@ -572,7 +585,6 @@ def run_maze_search(
         "#         ##       #",
         "#        ##        #",
         "####################",
-
         # "#####################################",
         # "#_#_______#_______#_____#_________#_#",
         # "#_#_#####_#_###_#####_###_###_###_#_#",
@@ -596,7 +608,6 @@ def run_maze_search(
         # "#_#_###_###_###_#####_###_#_#####_#_#",
         # "#_#_________#_____#_______#_______#_#",
         # "#####################################",
-
         # "##########",
         # "#________#",
         # "#_######_#",
@@ -627,6 +638,7 @@ def run_maze_search(
                 fit_policy=fit_policy,
                 accept_policy=accept_policy,
                 distance_fn="euclidean",
+                archive_beta=archive_beta,
                 archive_size=archive_size,
             )
             data = list(tqdm(generator, total=n_epochs))
@@ -824,7 +836,8 @@ def local_searches():
         n_epochs=100,
         fit_policies=["single", "all", "none", "first"],
         accept_policies=["energy", "moment", "all"],
-        archive_size=0,
+        archive_beta=1,
+        archive_size=100,
     )
     # run_point_search(
     #     popn_size=100,
