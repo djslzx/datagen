@@ -258,7 +258,7 @@ class ViTBase(Featurizer):
 
         inputs = self.processor(images=batch, return_tensors="pt")
         outputs = self.model(**inputs)
-        last_hidden = outputs.last_hidden_state.detach().numpy()
+        last_hidden = outputs.last_hidden_state.detach().cpu().numpy()
         features = rearrange(last_hidden, "b n m -> b (n m)")
         return features
 
