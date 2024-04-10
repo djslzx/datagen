@@ -178,7 +178,7 @@ class RealMaze(RealPoint):
         self.allowed_cells = np.ones_like(self.mask)
         nx, ny = self.mask.shape
         super().__init__(xlim=(0, nx), ylim=(0, ny), std=std)
-        self._update_allowed(coords=np.zeros((1, 2)))
+        self.update_allowed(coords=np.zeros((1, 2)))
 
     @property
     def background(self) -> np.ndarray:
@@ -200,7 +200,7 @@ class RealMaze(RealPoint):
                 and not bool(self.mask[int(x), int(y)])
                 and bool(self.allowed_cells[int(x), int(y)]))
 
-    def _update_allowed(self, coords: np.ndarray):
+    def update_allowed(self, coords: np.ndarray):
         assert coords.shape[1] == 2, f"Expected 2d coords [n, 2], but got {coords.shape}"
 
         self.allowed_cells = np.zeros_like(self.mask)
@@ -220,7 +220,7 @@ class RealMaze(RealPoint):
     def fit(self, corpus: List[Tree], alpha=0.):
         super().fit(corpus, alpha)
         coords = self._trees_to_coords(corpus)
-        self._update_allowed(coords)
+        self.update_allowed(coords)
 
     def sample(self) -> Tree:
         # keep resampling until we get something that's within the bounds of the maze

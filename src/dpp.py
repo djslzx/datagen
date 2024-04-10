@@ -104,10 +104,9 @@ def mcmc_lang_rr(
                 lang.fit(x, alpha=1.0)
             elif fit_policy == "single":
                 lang.fit([x[i]], alpha=1.0)
-            else:
+            elif isinstance(lang, point.RealMaze):
                 # maze: allow points to spread based on current positions
-                if isinstance(lang, point.RealMaze):
-                    lang._update_allowed(x_feat)
+                lang.update_allowed(x_feat)
 
             # sample and featurize
             s = lang.samples(n_samples=1, length_cap=length_cap)[0]
@@ -161,8 +160,8 @@ def mcmc_lang_rr(
             "x_feat": x_feat.copy(),
             "x'_feat": samples_feat.copy(),
             "log f(x')/f(x)": sum_log_f / popn_size,
-            "log q(x|x')/q(x'|x)": log_q / popn_size,
-            "log A(x',x)": log_accept / popn_size,
+            "log q(x|x')/q(x'|x)": sum_log_q / popn_size,
+            "log A(x',x)": sum_log_accept / popn_size,
         }
 
 
@@ -189,6 +188,9 @@ def mcmc_lang_full_step(
 
     At each iteration, x' consists of |x| independent samples from G(x).
     """
+    # this function is no longer updated in step with rr
+    raise NotImplementedError
+
     assert fit_policy in {"all"}
     assert accept_policy in {"dpp", "energy", "moment"}
 
