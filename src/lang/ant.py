@@ -92,6 +92,10 @@ class FixedDepthAnt(Language):
     """
 
     def __init__(self, env_dim: int, primitive_policies: np.ndarray, depth: int, structure_params=False):
+        assert depth > 1
+        self.n_conds = depth - 1
+        self.n_stmts = depth
+
         super().__init__(
             parser_grammar=FixedDepthAnt.grammar,
             parser_start="root",
@@ -99,8 +103,6 @@ class FixedDepthAnt(Language):
             model=None,
             featurizer=AntFeaturizer(),
         )
-        self.n_conds = depth - 1
-        self.n_stmts = depth
 
         self.env_dim = env_dim
         assert primitive_policies.ndim == 2
@@ -177,14 +179,13 @@ class FixedDepthAnt(Language):
             i: int,
     ) -> np.ndarray:
         assert i <= len(cond_params)
-
         if i == len(cond_params):
             return stmt_params[i]
 
         b = cond_params[i]
         c = stmt_params[i]
         w = softmax(b[-1] + np.dot(b[:-1], env_state))
-        return w * c + (1 - w) * self._eval_E(cond_params, stmt_params, env_state, i=i+1)
+        return w * c + (1 - w) * self._eval_E(cond_params, stmt_params, env_state, i=i + 1)
 
     @property
     def str_semantics(self) -> Dict:
@@ -217,12 +218,12 @@ if __name__ == "__main__":
     lang = FixedDepthAnt(
         env_dim=1,
         primitive_policies=primitives,
-        depth=6,
+        depth=2,
     )
     # s = "if (1.0 + [0 1 2] * X >= 0) then [1 2 3] else [4, 5, 6]"
     s = """
-        (ant (conds [0.1 0.2] [1.1 1.2] [2 2] [3 3] [4 4]) 
-             (stmts [0 0 0] [1 1 1] [2 2 2] [3 3 3] [4 4 4] [5 5 5]))
+        (ant (conds [0 1]) 
+             (stmts [0.3 0.3 0.3] [1 0 0]))
     """
     tree = lang.parse(s)
     print(tree, lang.to_str(tree), sep='\n')
