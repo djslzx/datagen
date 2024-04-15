@@ -153,7 +153,7 @@ class Language:
     # TODO: separate model from language
 
     def __init__(self, parser_grammar: str, parser_start: str, root_type: str,
-                 model: Grammar, featurizer: Featurizer):
+                 model: Optional[Grammar], featurizer: Featurizer):
         self.parser = lark.Lark(parser_grammar, start=parser_start, parser='lalr')
         self.start = root_type
         self.model = model
@@ -190,6 +190,8 @@ class Language:
         return out
 
     def fit(self, corpus: List[Tree], alpha):
+        if self.model is None:
+            raise ValueError("Cannot fit with empty model")
         ones = np.ones(len(corpus))
         if self.model.gram == 1:
             counts = sum_scans(corpus, weights=ones, scanner=unigram_scan)
