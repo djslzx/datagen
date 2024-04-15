@@ -130,7 +130,7 @@ class GaussianBlur(Featurizer):
 
 class ResnetFeaturizer(Featurizer):
 
-    def __init__(self, disable_last_layer=True, softmax_outputs=False, center=False, sigma=0.):
+    def __init__(self, disable_last_layer=True, softmax_outputs=False, center=False, sigma=0., **kwargs):
         weights = ResNet50_Weights.DEFAULT
         resnet = resnet50(weights=weights)
 
@@ -233,7 +233,7 @@ class ResnetFeaturizer(Featurizer):
 
 
 class ViTBase(Featurizer):
-    def __init__(self):
+    def __init__(self, **kwargs):
         model_id = 'google/vit-base-patch16-224-in21k'
         self.processor = ViTImageProcessor.from_pretrained(model_id)
         self.model = ViTModel.from_pretrained(model_id)
