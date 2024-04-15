@@ -152,11 +152,19 @@ class Language:
 
     # TODO: separate model from language
 
-    def __init__(self, parser_grammar: str, parser_start: str, root_type: str,
-                 model: Optional[Grammar], featurizer: Featurizer):
+    def __init__(
+            self,
+            parser_grammar: str,
+            parser_start: str,
+            root_type: Optional[str],
+            model: Optional[Grammar],
+            featurizer: Featurizer
+    ):
         self.parser = lark.Lark(parser_grammar, start=parser_start, parser='lalr')
-        self.start = root_type
         self.model = model
+        if model is not None and root_type is None:
+            raise ValueError("Root type must be defined for non-empty model")
+        self.start = root_type
         if self.model: self.model.normalize_()
         self.featurizer = featurizer
 
@@ -174,6 +182,9 @@ class Language:
 
     def sample(self) -> Tree:
         """Probabilistically sample a tree from the language"""
+        if self.model is None:
+            raise ValueError("Cannot sample from an empty model")
+
         s = self.model.sample(self.start)
         t = Tree.from_tuple(s)
         return t
