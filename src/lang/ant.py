@@ -164,14 +164,14 @@ class FixedDepthAnt(Language):
         cond_params, stmt_params = self._structured_params(t)
 
         # simulate program to get choice of primitives
-        action = self._eval_E(cond_params, stmt_params, env_state, i=0)
+        action = self.fold_eval_E(cond_params, stmt_params, env_state, i=0)
 
         # simulate ant in mujoco using combination of primitive policies
         pass
 
         return action
 
-    def _eval_E(
+    def rec_eval_E(
             self,
             cond_params: np.ndarray,
             stmt_params: np.ndarray,
@@ -185,7 +185,19 @@ class FixedDepthAnt(Language):
         b = cond_params[i]
         c = stmt_params[i]
         w = softmax(b[-1] + np.dot(b[:-1], env_state))
-        return w * c + (1 - w) * self._eval_E(cond_params, stmt_params, env_state, i=i + 1)
+        return w * c + (1 - w) * self.rec_eval_E(cond_params, stmt_params, env_state, i=i + 1)
+
+    def fold_eval_E(
+            self, 
+            cond_params: np.ndarray,
+            stmt_params: np.ndarray,
+            env_state: np.ndarray,
+    ) -> np.ndarray:
+        e = stmt_params[-1]
+        for b, c in zip(cond_params[::-1], stmt_params[:-1][::-1]):
+            w = softmax(b[-1] + np.dot(b[:-1], env_state))
+            e = w * c + (1 - w) * e
+        return e
 
     @property
     def str_semantics(self) -> Dict:
