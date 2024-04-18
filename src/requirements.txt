@@ -58,3 +58,12 @@ nvidia-ml-py3
 
 scikit-image  # image filters
 adjustText
+
+# ant domain
+mujoco == 2.3.7
+gymnasium == 0.29.1
+# gymnasium == 1.0.0a1  # use alpha to avoid niter bug
+gymnasium-robotics == 1.2.4
+moviepy  # for viz
+PyOpenGL
+PyOpenGL_accelerate
