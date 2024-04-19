@@ -47,21 +47,25 @@ class FixedDepthAnt(Language):
             self, 
             env_dim: int, 
             depth: int, 
-            primitives: List[nn.Module],
             maze_map: List[List[int]],
             steps: int,
+            primitives: List[nn.Module],
             featurizer: Featurizer,
-            structure_params=False
+            temperature=0.5,
+            structure_params=False,
     ):
         assert depth > 1
-        assert steps > 0
         assert env_dim > 0
+        assert 0 <= temperature <= 1
+        assert steps > 0
         assert all(cell == 0 or cell == 1
-                   for row in maze_map for cell in row), \
-                           f"Expected binary map but got {maze_map}"
+                   for row in maze_map 
+                   for cell in row), \
+            f"Expected binary map but got {maze_map}"
 
         self.n_conds = depth - 1
         self.n_stmts = depth
+        self.temperature = temperature
 
         super().__init__(
             parser_grammar=FixedDepthAnt.grammar,
@@ -73,22 +77,21 @@ class FixedDepthAnt(Language):
 
         self.env_dim = env_dim
         self.n_primitives = len(primitives)
+        self.primitives = primitives
 
         if structure_params:
             raise NotImplementedError("Structured params are not yet implemented")
         self.structure_params = structure_params
 
-        self.primitives = primitives
-
         # mujoco env
         self.maze_map = maze_map
-        self.env = gym.make(
-            "AntMaze_UMaze-v4", 
-            maze_map=self.maze_map, 
-            render_mode="rgb_array_list",
-            use_contact_forces=True,
-        )
         self.steps = steps
+        self.gym_env = gym.make(
+            "AntMaze_UMaze-v4", 
+            maze_map=maze_map, 
+            render_mode="rgb_array_list",
+            use_contact_forces=True,  # required to get enough observations to match ICLR'22 paper
+        )
 
     def _structured_params(self, t: Tree) -> Tuple[np.ndarray, np.ndarray]:
         assert t.value == "root"
@@ -116,10 +119,6 @@ class FixedDepthAnt(Language):
 
     def _flat_params(self, t: Tree) -> np.ndarray:
         cond_vec, stmt_vec = FixedDepthAnt._structured_params(self, t)
-        return FixedDepthAnt._flatten(cond_vec, stmt_vec)
-
-    @staticmethod
-    def _flatten(cond_vec: np.ndarray, stmt_vec: np.ndarray) -> np.ndarray:
         return ein.pack([cond_vec, stmt_vec], "*")[0]
 
     def sample(self) -> Tree:
@@ -128,89 +127,79 @@ class FixedDepthAnt(Language):
     def fit(self, corpus: List[Tree], alpha):
         raise NotImplementedError
 
-    @staticmethod
-    def get_action(model: nn.Module, x: np.ndarray) -> np.ndarray:
-        with torch.no_grad():
-            x = torch.as_tensor(x, dtype=torch.float32)
-            action = model(x, deterministic=True)
-        return action
-
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> np.ndarray:
         assert t.value == "root"
         assert not self.structure_params
         assert "state" in env, "Ant must evaluate on an env state"
-        env_state = env["state"]
-        assert isinstance(env_state, np.ndarray)
-        assert env_state.ndim == 1
-        assert env_state.shape[0] == self.env_dim
 
-        # extract all parameters from program
+        obs = env["state"]
+        assert isinstance(obs, np.ndarray)
+        assert obs.ndim == 1
+        assert obs.shape[0] == self.env_dim
+
+        # extract parameters and act
         cond_params, stmt_params = self._structured_params(t)
-
-        # simulate program to get weights over primitive policies
-        action_weights = self.fold_eval_E(cond_params, stmt_params, env_state)
-
-        # run mujoco env for `self.steps` steps and collect vector of positions of
-        # ant center of mass
-        obs, info = self.env.reset()
+        
+        obs, info = self.gym_env.reset()
         step_start = 0
         episode = 0
         for step in tqdm(range(self.steps)):
-            primitive_actions = []
-            for pi in self.primitives:
-                pi_action, _ = self.get_action(pi, obs['observation'][None, :])
-                primitive_actions.append(pi_action.numpy())
-
-            primitive_actions = ein.rearrange(primitive_actions, "n 1 d -> (n 1) d")
-            plt.imshow(primitive_actions)
-            plt.savefig(f"videos/frame-{step}.png")
-
-            # weighted sum of primitive policies
-            # todo: gumbel softmax
-            action = action_weights @ primitive_actions
-            observation, reward, terminated, truncated, info = self.env.step(action)
-
+            action = self.act_from_params(cond_params, stmt_params, obs['observation'])
+            obs, reward, terminated, truncated, info = self.gym_env.step(action)
+            
             if terminated or truncated:
                 save_video(
-                    self.env.render(),
+                    self.gym_env.render(),
                     "videos",
-                    fps=self.env.metadata["render_fps"],
+                    fps=self.gym_env.metadata["render_fps"],
                     step_starting_index=step_start,
                     episode_index = episode,
                 )
                 step_start = step + 1
                 episode += 1
-                observation, info = self.env.reset()
+                observation, info = self.gym_env.reset()
         
         save_video(
-            self.env.render(),
+            self.gym_env.render(),
             "videos",
-            fps=self.env.metadata["render_fps"],
+            fps=self.gym_env.metadata["render_fps"],
             step_starting_index=step_start,
             episode_index = episode,
         )
-        self.env.close()
+        self.gym_env.close()
 
-        # todo: return some feature of the animation
         return action
 
+    @staticmethod
+    def get_action(model: nn.Module, x: np.ndarray) -> np.ndarray:
+        assert x.ndim == 2, f"Model expects 2D array x, got {x.shape}"
+        with torch.no_grad():
+            x = torch.as_tensor(x, dtype=torch.float32)
+            action, _ = model(x, deterministic=True)
+        return action.numpy()
 
-    def rec_eval_E(
-            self,
-            cond_params: np.ndarray,
-            stmt_params: np.ndarray,
-            env_state: np.ndarray,
-            i=0,
-    ) -> np.ndarray:
-        """Evaluate E recursively"""
-        assert i <= len(cond_params)
-        if i == len(cond_params):
-            return stmt_params[i]
+    def act_from_params(self, cond_params: np.ndarray, stmt_params: np.ndarray, obs: np.ndarray) -> np.ndarray:
+        assert not self.structure_params
+        assert obs.ndim == 1, f"Expected 1D obs array, got {obs.shape}"
+        assert obs.shape[0] == self.env_dim
 
-        b = cond_params[i]
-        c = stmt_params[i]
-        w = softmax(b[-1] + np.dot(b[:-1], env_state))
-        return w * c + (1 - w) * self.rec_eval_E(cond_params, stmt_params, env_state, i=i + 1)
+        # simulate program to get weights over primitive policies
+        action_weights = self.fold_eval_E(cond_params, stmt_params, obs)
+
+        # compile primitives
+        primitive_actions = []
+        for pi in self.primitives:
+            pi_action = self.get_action(pi, obs[None, :])
+            primitive_actions.append(pi_action)
+        primitive_actions = ein.rearrange(primitive_actions, "n 1 d -> (n 1) d")
+
+        # action = weighted sum of primitives
+        action = action_weights @ primitive_actions
+        
+        return action
+
+    def extract_features(self, trees: Collection[Tree], n_samples=1, batch_size=4, load_bar=False) -> np.ndarray:
+        raise NotImplementedError("Ant should handle feature extraction differently than exec-once langs")
 
     def fold_eval_E(
             self, 
@@ -222,6 +211,7 @@ class FixedDepthAnt(Language):
         e = stmt_params[-1]
         for b, c in zip(cond_params[::-1], stmt_params[:-1][::-1]):
             w = softmax(b[-1] + np.dot(b[:-1], env_state))
+            # todo: gumbel softmax for c
             e = w * c + (1 - w) * e
         return e
 
@@ -240,12 +230,18 @@ class MujocoAntFeaturizer(Featurizer):
     Ant features: center of gravity along trajectory of ant, i.e. body pos over time?
     """
     def __init__(self):
+        # # mujoco env
+        # self.maze_map = maze_map
+        # self.steps = steps
+        # self.gym_env = gym.make(
+        #     "AntMaze_UMaze-v4", 
+        #     maze_map=maze_map, 
+        #     render_mode="rgb_array_list",
+        #     use_contact_forces=True,  # required to get enough observations to match ICLR'22 paper
+        # )
         pass
 
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
-        """
-        Translates a series of weights over primitive functions into an ant path
-        """
         return batch
 
 
