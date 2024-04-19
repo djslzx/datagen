@@ -127,7 +127,7 @@ class FixedDepthAnt(Language):
     def fit(self, corpus: List[Tree], alpha):
         raise NotImplementedError
 
-    def eval(self, t: Tree, env: Dict[str, Any] = None) -> np.ndarray:
+    def eval(self, t: Tree, env: Dict[str, Any] = None) -> Iterable[np.ndarray]:
         assert t.value == "root"
         assert not self.structure_params
         assert "state" in env, "Ant must evaluate on an env state"
@@ -140,12 +140,16 @@ class FixedDepthAnt(Language):
         # extract parameters and act
         cond_params, stmt_params = self._structured_params(t)
         
+        # run sim loop
         obs, info = self.gym_env.reset()
+        yield obs['achieved_goal']  # contains info on ant position
+
         step_start = 0
         episode = 0
-        for step in tqdm(range(self.steps)):
+        for step in range(self.steps):
             action = self.act_from_params(cond_params, stmt_params, obs['observation'])
-            obs, reward, terminated, truncated, info = self.gym_env.step(action)
+            obs, _, terminated, truncated, info = self.gym_env.step(action)
+            yield obs['achieved_goal']  # contains info on ant position
             
             if terminated or truncated:
                 save_video(
@@ -167,8 +171,6 @@ class FixedDepthAnt(Language):
             episode_index = episode,
         )
         self.gym_env.close()
-
-        return action
 
     @staticmethod
     def get_action(model: nn.Module, x: np.ndarray) -> np.ndarray:
@@ -230,23 +232,19 @@ class MujocoAntFeaturizer(Featurizer):
     Ant features: center of gravity along trajectory of ant, i.e. body pos over time?
     """
     def __init__(self):
-        # # mujoco env
-        # self.maze_map = maze_map
-        # self.steps = steps
-        # self.gym_env = gym.make(
-        #     "AntMaze_UMaze-v4", 
-        #     maze_map=maze_map, 
-        #     render_mode="rgb_array_list",
-        #     use_contact_forces=True,  # required to get enough observations to match ICLR'22 paper
-        # )
         pass
 
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
+        if isinstance(batch, list):
+            batch = np.stack(batch)
+        assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
         return batch
 
 
 if __name__ == "__main__":
     np.random.seed(0)
+    STEPS = 100
+
     primitives_dir = "/home/djl328/prob-repl/src/lang/primitives/ant/"
     primitives = [
         torch.load(f"{primitives_dir}/{direction}.pt").pi
@@ -265,7 +263,7 @@ if __name__ == "__main__":
         primitives=primitives,
         env_dim=111,
         depth=2,
-        steps=1000,
+        steps=STEPS,
         featurizer=featurizer,
     )
     # s = "if (1.0 + [0 1 2] * X >= 0) then [1 2 3] else [4, 5, 6]"
@@ -278,7 +276,10 @@ if __name__ == "__main__":
     print(tree, lang.to_str(tree), sep='\n')
     print(lang._structured_params(tree))
     print(lang._flat_params(tree))
-    weights = lang.eval(tree, {"state": np.random.rand(111)})
-    print(weights)
-    featurizer.apply([weights])
+    actions = lang.eval(tree, {"state": np.random.rand(111)})
+    obs = []
+    for action in tqdm(actions, total=lang.steps):
+        feat_vec = featurizer.apply([action])
+        obs.append(feat_vec)
+    print(obs)
 
