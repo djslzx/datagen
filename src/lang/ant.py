@@ -9,6 +9,7 @@ import torch.nn as nn
 import gymnasium as gym
 from gymnasium.utils.save_video import save_video
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from lang.tree import Language, Tree, Grammar, ParseError, Featurizer
 from spinup.algos.pytorch.sac.core import SquashedGaussianMLPActor
@@ -41,7 +42,7 @@ class FixedDepthAnt(Language):
     #     %import common.WS
     #     %ignore WS
     # """
-    
+
     def __init__(
             self, 
             env_dim: int, 
@@ -85,6 +86,7 @@ class FixedDepthAnt(Language):
             "AntMaze_UMaze-v4", 
             maze_map=self.maze_map, 
             render_mode="rgb_array_list",
+            use_contact_forces=True,
         )
         self.steps = steps
 
@@ -126,6 +128,13 @@ class FixedDepthAnt(Language):
     def fit(self, corpus: List[Tree], alpha):
         raise NotImplementedError
 
+    @staticmethod
+    def get_action(model: nn.Module, x: np.ndarray) -> np.ndarray:
+        with torch.no_grad():
+            x = torch.as_tensor(x, dtype=torch.float32)
+            action = model(x, deterministic=True)
+        return action
+
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> np.ndarray:
         assert t.value == "root"
         assert not self.structure_params
@@ -146,37 +155,41 @@ class FixedDepthAnt(Language):
         obs, info = self.env.reset()
         step_start = 0
         episode = 0
-        for step in tqdm(range(100)):
-            pdb.set_trace()
-            primitive_actions = np.stack([
-                pi.act(obs, deterministic=True) for pi in self.primitives
-            ])
+        for step in tqdm(range(self.steps)):
+            primitive_actions = []
+            for pi in self.primitives:
+                pi_action, _ = self.get_action(pi, obs['observation'][None, :])
+                primitive_actions.append(pi_action.numpy())
+
+            primitive_actions = ein.rearrange(primitive_actions, "n 1 d -> (n 1) d")
+            plt.imshow(primitive_actions)
+            plt.savefig(f"videos/frame-{step}.png")
 
             # weighted sum of primitive policies
             # todo: gumbel softmax
-            action = np.matmul(action_weights, primitive_actions)
-            observation, reward, terminated, truncated, info = env.step(action)
+            action = action_weights @ primitive_actions
+            observation, reward, terminated, truncated, info = self.env.step(action)
 
             if terminated or truncated:
                 save_video(
-                    env.render(),
+                    self.env.render(),
                     "videos",
-                    fps=env.metadata["render_fps"],
+                    fps=self.env.metadata["render_fps"],
                     step_starting_index=step_start,
                     episode_index = episode,
                 )
                 step_start = step + 1
                 episode += 1
-                observation, info = env.reset()
+                observation, info = self.env.reset()
         
         save_video(
-            env.render(),
+            self.env.render(),
             "videos",
-            fps=env.metadata["render_fps"],
+            fps=self.env.metadata["render_fps"],
             step_starting_index=step_start,
             episode_index = episode,
         )
-        env.close()
+        self.env.close()
 
         # todo: return some feature of the animation
         return action
@@ -237,6 +250,7 @@ class MujocoAntFeaturizer(Featurizer):
 
 
 if __name__ == "__main__":
+    np.random.seed(0)
     primitives_dir = "/home/djl328/prob-repl/src/lang/primitives/ant/"
     primitives = [
         torch.load(f"{primitives_dir}/{direction}.pt").pi
@@ -255,20 +269,20 @@ if __name__ == "__main__":
         primitives=primitives,
         env_dim=111,
         depth=2,
-        steps=100,
+        steps=1000,
         featurizer=featurizer,
     )
     # s = "if (1.0 + [0 1 2] * X >= 0) then [1 2 3] else [4, 5, 6]"
-    s = """
-        (ant (conds [0 1]) 
-             (stmts [0.25 0.25 0.25 0.25] 
-                    [0.5 0.5 0. 0.]))
+    s = f"""
+        (ant (conds [{' '.join([str(i) for i in range(112)])}]) 
+             (stmts [1. 0. 0. 0.] 
+                    [0. 1. 0. 0.]))
     """
     tree = lang.parse(s)
     print(tree, lang.to_str(tree), sep='\n')
     print(lang._structured_params(tree))
     print(lang._flat_params(tree))
-    weights = lang.eval(tree, {"state": np.ones(1)})
+    weights = lang.eval(tree, {"state": np.random.rand(111)})
     print(weights)
     featurizer.apply([weights])
 
