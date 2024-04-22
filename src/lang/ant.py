@@ -12,6 +12,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from lang.tree import Language, Tree, Grammar, ParseError, Featurizer
+import lang.maze as maze
 from spinup.algos.pytorch.sac.core import SquashedGaussianMLPActor
 
 
@@ -45,8 +46,9 @@ class FixedDepthAnt(Language):
 
     def __init__(
             self, 
-            env_dim: int, 
-            depth: int, 
+            high_state_dim: int, 
+            low_state_dim: int, 
+            program_depth: int, 
             maze_map: List[List[int]],
             steps: int,
             primitives: List[nn.Module],
@@ -54,8 +56,9 @@ class FixedDepthAnt(Language):
             temperature=0.5,
             structure_params=False,
     ):
-        assert depth > 1
-        assert env_dim > 0
+        assert program_depth > 1
+        assert high_state_dim > 0
+        assert low_state_dim > 0
         assert 0 <= temperature <= 1
         assert steps > 0
         assert all(cell == 0 or cell == 1
@@ -63,8 +66,8 @@ class FixedDepthAnt(Language):
                    for cell in row), \
             f"Expected binary map but got {maze_map}"
 
-        self.n_conds = depth - 1
-        self.n_stmts = depth
+        self.n_conds = program_depth - 1
+        self.n_stmts = program_depth
         self.temperature = temperature
 
         super().__init__(
@@ -75,8 +78,9 @@ class FixedDepthAnt(Language):
             featurizer=featurizer,
         )
 
-        self.env_dim = env_dim
-        self.n_primitives = len(primitives)
+        self.high_state_dim = high_state_dim
+        self.low_state_dim = low_state_dim
+        self.action_dim = len(primitives)
         self.primitives = primitives
 
         if structure_params:
@@ -84,7 +88,10 @@ class FixedDepthAnt(Language):
         self.structure_params = structure_params
 
         # mujoco env
-        self.maze_map = maze_map
+        self.maze_map = np.array(maze_map)
+        # used for rangefinder features
+        self.maze_walls = maze.polygon_from_bitmap(self.maze_map)  
+        self.maze_w, self.maze_h = self.maze_map.shape
         self.steps = steps
         self.gym_env = gym.make(
             "AntMaze_UMaze-v4", 
@@ -103,16 +110,18 @@ class FixedDepthAnt(Language):
             np.array([float(gc.value) for gc in c.children])
             for c in conds.children
         ])
-        assert cond_vec.shape == (self.n_conds, self.env_dim + 1), \
-            (f"Expected condition params of shape {(self.n_conds, self.env_dim + 1)}, "
+        expected_cond_vec_shape = (self.n_conds, self.high_state_dim + 1)
+        assert cond_vec.shape == expected_cond_vec_shape, \
+            (f"Expected condition params of shape {expected_cond_vec_shape}, "
              f"but got {cond_vec.shape}")
 
         stmt_vec = np.stack([
             np.array([float(gc.value) for gc in c.children])
             for c in stmts.children
         ])
-        assert stmt_vec.shape == (self.n_stmts, self.n_primitives), \
-            (f"Expected statement params of shape {(self.n_stmts, self.n_primitives)}, "
+        expected_stmt_vec_shape = (self.n_stmts, self.action_dim) 
+        assert stmt_vec.shape == expected_stmt_vec_shape, \
+            (f"Expected statement params of shape {expected_stmt_vec_shape}, "
              f"but got {stmt_vec.shape}")
 
         return cond_vec, stmt_vec
@@ -129,46 +138,45 @@ class FixedDepthAnt(Language):
 
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Iterable[np.ndarray]:
         assert t.value == "root"
-        assert not self.structure_params
-        assert "state" in env, "Ant must evaluate on an env state"
 
-        obs = env["state"]
-        assert isinstance(obs, np.ndarray)
-        assert obs.ndim == 1
-        assert obs.shape[0] == self.env_dim
-
-        # extract parameters and act
+        # extract parameters from program
         cond_params, stmt_params = self._structured_params(t)
         
         # run sim loop
         obs, info = self.gym_env.reset()
-        yield obs['achieved_goal']  # contains info on ant position
 
-        step_start = 0
-        episode = 0
+        # construct high-level observations for symbolic program
+        x, y = obs['achieved_goal']
+        yield np.array([x, y])
+        dists = maze.wall_cardinal_distances(
+            x, y, 
+            self.maze_walls,
+            width=self.maze_w, 
+            height=self.maze_h
+        )
+       # todo: add more high-level features?
+        
         for step in range(self.steps):
-            action = self.act_from_params(cond_params, stmt_params, obs['observation'])
+            action = self.act_from_params(
+                cond_params, 
+                stmt_params, 
+                high_obs=dists,
+                low_obs=obs['observation'],
+            )
             obs, _, terminated, truncated, info = self.gym_env.step(action)
-            yield obs['achieved_goal']  # contains info on ant position
+
+            x, y = obs['achieved_goal']
+            yield np.array([x, y])
             
             if terminated or truncated:
-                save_video(
-                    self.gym_env.render(),
-                    "videos",
-                    fps=self.gym_env.metadata["render_fps"],
-                    step_starting_index=step_start,
-                    episode_index = episode,
-                )
-                step_start = step + 1
-                episode += 1
-                observation, info = self.gym_env.reset()
-        
+                break
+
         save_video(
             self.gym_env.render(),
             "videos",
             fps=self.gym_env.metadata["render_fps"],
-            step_starting_index=step_start,
-            episode_index = episode,
+            step_starting_index=0,
+            episode_index = 0,
         )
         self.gym_env.close()
 
@@ -180,18 +188,25 @@ class FixedDepthAnt(Language):
             action, _ = model(x, deterministic=True)
         return action.numpy()
 
-    def act_from_params(self, cond_params: np.ndarray, stmt_params: np.ndarray, obs: np.ndarray) -> np.ndarray:
-        assert not self.structure_params
-        assert obs.ndim == 1, f"Expected 1D obs array, got {obs.shape}"
-        assert obs.shape[0] == self.env_dim
+    def act_from_params(
+            self, 
+            cond_params: np.ndarray,
+            stmt_params: np.ndarray,
+            high_obs: np.ndarray,
+            low_obs: np.ndarray,
+    ) -> np.ndarray:
+        assert high_obs.ndim == 1, f"Expected 1D high-level obs array, got {high_obs.shape}"
+        assert low_obs.ndim == 1, f"Expected 1D low-level obs array, got {low_obs.shape}"
+        assert high_obs.shape[0] == self.high_state_dim
+        assert low_obs.shape[0] == self.low_state_dim
 
         # simulate program to get weights over primitive policies
-        action_weights = self.fold_eval_E(cond_params, stmt_params, obs)
+        action_weights = self.fold_eval_E(cond_params, stmt_params, high_obs)
 
         # compile primitives
         primitive_actions = []
         for pi in self.primitives:
-            pi_action = self.get_action(pi, obs[None, :])
+            pi_action = self.get_action(pi, low_obs[None, :])
             primitive_actions.append(pi_action)
         primitive_actions = ein.rearrange(primitive_actions, "n 1 d -> (n 1) d")
 
@@ -207,13 +222,12 @@ class FixedDepthAnt(Language):
             self, 
             cond_params: np.ndarray,
             stmt_params: np.ndarray,
-            env_state: np.ndarray,
+            state: np.ndarray,
     ) -> np.ndarray:
         """Evaluate E by folding, no recursion"""
         e = stmt_params[-1]
         for b, c in zip(cond_params[::-1], stmt_params[:-1][::-1]):
-            w = softmax(b[-1] + np.dot(b[:-1], env_state))
-            # todo: gumbel softmax for c
+            w = softmax(b[-1] + np.dot(b[:-1], state))
             e = w * c + (1 - w) * e
         return e
 
@@ -244,7 +258,6 @@ class MujocoAntFeaturizer(Featurizer):
 if __name__ == "__main__":
     np.random.seed(0)
     STEPS = 100
-
     primitives_dir = "/home/djl328/prob-repl/src/lang/primitives/ant/"
     primitives = [
         torch.load(f"{primitives_dir}/{direction}.pt").pi
@@ -261,14 +274,14 @@ if __name__ == "__main__":
             [1, 1, 1, 1, 1],
         ],
         primitives=primitives,
-        env_dim=111,
-        depth=2,
+        high_state_dim=4,
+        low_state_dim=111,
+        program_depth=2,
         steps=STEPS,
         featurizer=featurizer,
     )
-    # s = "if (1.0 + [0 1 2] * X >= 0) then [1 2 3] else [4, 5, 6]"
     s = f"""
-        (ant (conds [{' '.join([str(i) for i in range(112)])}]) 
+        (ant (conds [{' '.join([str(i) for i in range(4 + 1)])}]) 
              (stmts [1. 0. 0. 0.] 
                     [0. 1. 0. 0.]))
     """
@@ -276,10 +289,10 @@ if __name__ == "__main__":
     print(tree, lang.to_str(tree), sep='\n')
     print(lang._structured_params(tree))
     print(lang._flat_params(tree))
-    actions = lang.eval(tree, {"state": np.random.rand(111)})
-    obs = []
+    actions = lang.eval(tree)
+    pos = []
     for action in tqdm(actions, total=lang.steps):
         feat_vec = featurizer.apply([action])
-        obs.append(feat_vec)
-    print(obs)
+        pos.append(feat_vec)
+    print(pos)
 
