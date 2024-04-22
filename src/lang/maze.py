@@ -57,15 +57,17 @@ def cardinal_rangefinder_lines(p: shp.Point, width: int, height: int) -> List[sh
 def intersection_distances(
         p: shp.Point,
         maze: shp.Polygon,
-        width: int,
-        height: int,
+        rangefinders: List[shp.LineString],
         inf_dist=np.inf,
 ) -> List[float]:
     dists = []
-    for rf in cardinal_rangefinder_lines(p, width=width, height=height):
+    for rf in rangefinders:
         overlaps = rf.intersection(maze)
+        print(overlaps)
+
         if overlaps is None:
-            print("WARNING: no overlaps found; ensure that maze has boundaries to avoid this warning.", file=sys.stderr)
+            print("WARNING: no overlaps found; ensure that maze has boundaries to avoid this warning.", 
+                  file=sys.stderr)
             dists.append(inf_dist)
         else:
             if isinstance(overlaps, shp.LineString):
@@ -77,10 +79,17 @@ def intersection_distances(
     return dists
 
 
-def rangefinder_distances(x: float, y: float, maze: shp.Polygon, width: int, height: int) -> np.ndarray:
+def wall_cardinal_distances(
+        x: float, 
+        y: float, 
+        maze: shp.Polygon, 
+        width: int, 
+        height: int
+) -> np.ndarray:
     p = shp.Point(x, y)
     assert not p.within(maze), f"Point {x, y} is within the walls of the maze"
-    dists = intersection_distances(p, maze, width=width, height=height)
+    rangefinders = cardinal_rangefinder_lines(p, width=width, height=height)
+    dists = intersection_distances(p, maze, rangefinders)
     return np.array(dists)
 
 
@@ -149,7 +158,7 @@ def demo_maze_rangefinders():
         maze = polygon_from_bitmap(bmp)
 
         plot_shapes([maze, ant], width=W, height=H)
-        print(rangefinder_distances(ant.x, ant.y, maze, width=W, height=H))
+        print(wall_cardinal_distances(ant.x, ant.y, maze, width=W, height=H))
         plt.show()
         plt.close()
 
