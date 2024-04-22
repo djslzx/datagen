@@ -5,7 +5,9 @@ from typing import List
 import numpy as np
 import shapely as shp
 import matplotlib.pyplot as plt
-from util import plot_polygon
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch
+from matplotlib.collections import PatchCollection
 
 
 def str_to_float_mask(str_mask: List[str]) -> np.ndarray:
@@ -43,24 +45,25 @@ def polygon_from_bitmap(bmp: np.ndarray) -> shp.Polygon:
     return shp.unary_union(squares)
 
 
-def cardinal_rangefinder_lines(p: shp.Point) -> List[shp.LineString]:
+def cardinal_rangefinder_lines(p: shp.Point, width: int, height: int) -> List[shp.LineString]:
     return [
-        shp.LineString([(p.x, p.y), (p.x, p.y + H)]),
-        shp.LineString([(p.x, p.y), (p.x, p.y - H)]),
-        shp.LineString([(p.x, p.y), (p.x - W, p.y)]),
-        shp.LineString([(p.x, p.y), (p.x + W, p.y)]),
+        shp.LineString([(p.x, p.y), (p.x, p.y + height)]),
+        shp.LineString([(p.x, p.y), (p.x, p.y - height)]),
+        shp.LineString([(p.x, p.y), (p.x - width, p.y)]),
+        shp.LineString([(p.x, p.y), (p.x + width, p.y)]),
     ]
 
 
 def intersection_distances(
         p: shp.Point,
-        lines: List[shp.LineString],
         maze: shp.Polygon,
-        inf_dist=np.inf
+        width: int,
+        height: int,
+        inf_dist=np.inf,
 ) -> List[float]:
     dists = []
-    for line in lines:
-        overlaps = line.intersection(maze)
+    for rf in cardinal_rangefinder_lines(p, width=width, height=height):
+        overlaps = rf.intersection(maze)
         if overlaps is None:
             print("WARNING: no overlaps found; ensure that maze has boundaries to avoid this warning.", file=sys.stderr)
             dists.append(inf_dist)
@@ -74,56 +77,82 @@ def intersection_distances(
     return dists
 
 
-str_mask = [
-    "###################",
-    "#                 #",
-    "####   ######     #",
-    "#  ## ##          #",
-    "#   ###           #",
-    "###   #  ##       #",
-    "# ##  ##  ###     #",
-    "#  ## ###   ##    #",
-    "#     # ###  ##   #",
-    "#     #   ##  ##  #",
-    "#     #    ##  ## #",
-    "#     #     ##  ###",
-    "#                 #",
-    "#          ##     #",
-    "#         ##      #",
-    "#        ##       #",
-    "###################",
-]
-bmp = str_to_float_mask(str_mask)
-# bmp = np.array([
-#     [1, 1, 1, 1, 1],
-#     [1, 1, 0, 1, 1],
-#     [1, 0, 0, 0, 1],
-#     [1, 1, 0, 1, 1],
-#     [1, 1, 1, 1, 1],
-# ])
-W, H = bmp.shape
+def rangefinder_distances(x: float, y: float, maze: shp.Polygon, width: int, height: int) -> np.ndarray:
+    p = shp.Point(x, y)
+    assert not p.within(maze), f"Point {x, y} is within the walls of the maze"
+    dists = intersection_distances(p, maze, width=width, height=height)
+    return np.array(dists)
 
-valid_locs = np.array(list(zip(*np.nonzero(1 - bmp)))) + 0.5
 
-i = np.random.choice(len(valid_locs))
-ant_loc = valid_locs[i]
-ant_orientation = np.pi
-ant = shp.Point(*ant_loc)
-maze = polygon_from_bitmap(bmp)
+def plot_shapes(shapes: shp.geometry, width: int, height: int, **kwargs):
+    fig, ax = plt.subplots()
+    for shape in shapes:
+        if isinstance(shape, shp.Polygon):
+            plot_polygon(ax, shape, color="gray")
+        elif isinstance(shape, shp.LineString):
+            ax.plot(*shape.xy)
+        elif isinstance(shape, shp.Point):
+            ax.plot(shape.x, shape.y, "or")
+    plt.xlim((0, width))
+    plt.ylim((0, height))
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
 
-# ant rangefinders
-rangefinders = cardinal_rangefinder_lines(ant)
 
-dists = intersection_distances(ant, rangefinders, maze)
-print(dists)
+def plot_polygon(ax, poly, **kwargs):
+    path = Path.make_compound_path(
+        Path(np.asarray(poly.exterior.coords)[:, :2]),
+        *[Path(np.asarray(ring.coords)[:, :2]) for ring in poly.interiors])
 
-fig, ax = plt.subplots()
-plot_polygon(ax, maze, color="gray")
-ax.plot(ant.x, ant.y, "or")
-for rf in rangefinders:
-    ax.plot(*rf.xy)
-plt.xlim((0, W))
-plt.ylim((0, H))
-ax.get_xaxis().set_visible(False)
-ax.get_yaxis().set_visible(False)
-plt.show()
+    patch = PathPatch(path, **kwargs)
+    collection = PatchCollection([patch], **kwargs)
+
+    ax.add_collection(collection, autolim=True)
+    ax.autoscale_view()
+    return collection
+
+
+def demo_maze_rangefinders():
+    str_mask = [
+        "###################",
+        "#                 #",
+        "####   ######     #",
+        "#  ## ##          #",
+        "#   ###           #",
+        "###   #  ##       #",
+        "# ##  ##  ###     #",
+        "#  ## ###   ##    #",
+        "#     # ###  ##   #",
+        "#     #   ##  ##  #",
+        "#     #    ##  ## #",
+        "#     #     ##  ###",
+        "#                 #",
+        "#          ##     #",
+        "#         ##      #",
+        "#        ##       #",
+        "###################",
+    ]
+    bmp = str_to_float_mask(str_mask)
+    # bmp = np.array([
+    #     [1, 1, 1, 1, 1],
+    #     [1, 1, 0, 1, 1],
+    #     [1, 0, 0, 0, 1],
+    #     [1, 1, 0, 1, 1],
+    #     [1, 1, 1, 1, 1],
+    # ])
+    W, H = bmp.shape
+    valid_locs = np.array(list(zip(*np.nonzero(1 - bmp)))) + 0.5
+
+    for _ in range(10):
+        i = np.random.choice(len(valid_locs))
+        ant = shp.Point(*valid_locs[i])
+        maze = polygon_from_bitmap(bmp)
+
+        plot_shapes([maze, ant], width=W, height=H)
+        print(rangefinder_distances(ant.x, ant.y, maze, width=W, height=H))
+        plt.show()
+        plt.close()
+
+
+if __name__ == "__main__":
+    demo_maze_rangefinders()
