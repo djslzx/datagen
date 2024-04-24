@@ -40,21 +40,31 @@ class Maze:
             for line in str_mask
         ])
 
+    def cardinal_rangefinder_lines(self, p: shp.Point) -> List[shp.LineString]:
+        return [
+            shp.LineString([(p.x, p.y), (p.x, p.y + self.height)]),
+            shp.LineString([(p.x, p.y), (p.x, p.y - self.height)]),
+            shp.LineString([(p.x, p.y), (p.x - self.width, p.y)]),
+            shp.LineString([(p.x, p.y), (p.x + self.width, p.y)]),
+        ]
+
     def cardinal_wall_distances(self, x: float, y: float) -> np.ndarray:
         p = shp.Point(x, y)
         assert not p.within(self.walls), \
             f"Point {p.x, p.y} is within the walls of the maze"
-        rfs = cardinal_rangefinder_lines(p, width=self.width, height=self.height)
+        rfs = self.cardinal_rangefinder_lines(p)
         dists = intersection_distances(p, self.walls, rfs)
         return np.array(dists)
 
 
 def make_square(x: float, y: float, s: float) -> shp.Polygon:
+    """Make a square centered at (x, y) with side length s"""
+    d = 0.5 * s
     return shp.Polygon(shell=[
-        (x, y),
-        (x, y + s),
-        (x + s, y + s),
-        (x + s, y),
+        (x - d, y - d),
+        (x - d, y + d),
+        (x + d, y + d),
+        (x + d, y - d),
     ])
 
 
@@ -64,8 +74,8 @@ def polygon_from_bitmap(bmp: np.ndarray, scaling: float = 1.0) -> shp.Polygon:
     assert bmp.min() in {0, 1}, f"Expected bitmap, but got values in range {bmp.min(), bmp.max()}"
 
     height, width = bmp.shape
-    x_center = width / 2 * scaling
-    y_center = height / 2 * scaling
+    x_center = width / 2. * scaling
+    y_center = height / 2. * scaling
     squares = []
     for i in range(height):
         for j in range(width):
@@ -74,15 +84,6 @@ def polygon_from_bitmap(bmp: np.ndarray, scaling: float = 1.0) -> shp.Polygon:
                 y = -((i + 0.5) * scaling - y_center)
                 squares.append(make_square(x, y, s=scaling))
     return shp.unary_union(squares)
-
-
-def cardinal_rangefinder_lines(p: shp.Point, width: int, height: int) -> List[shp.LineString]:
-    return [
-        shp.LineString([(p.x, p.y), (p.x, p.y + height)]),
-        shp.LineString([(p.x, p.y), (p.x, p.y - height)]),
-        shp.LineString([(p.x, p.y), (p.x - width, p.y)]),
-        shp.LineString([(p.x, p.y), (p.x + width, p.y)]),
-    ]
 
 
 def intersection_distances(
@@ -168,16 +169,17 @@ def demo_maze_rangefinders():
         [1, 1, 0, 1, 1],
         [1, 1, 1, 1, 1],
     ]
-    maze = Maze(bmp, scaling=4)
+    maze = Maze(bmp, scaling=4.)
     # hull = maze.walls.convex_hull
     # non_walls = hull.difference(maze.walls)
     # ant = non_walls.representative_point()
-    ant = shp.Point(0.8669061676890559, -3.7016983612545915)
+    # ant = shp.Point(0.8669061676890559, -3.7016983612545915)
+    ant = shp.Point(-0.6673714628512808, -3.758217991828773)
 
     plot_shapes([maze.walls, ant])
-    print(maze.cardinal_wall_distances(ant.x, ant.y))
     plt.show()
     plt.close()
+    print(maze.cardinal_wall_distances(ant.x, ant.y))
 
 
 if __name__ == "__main__":
