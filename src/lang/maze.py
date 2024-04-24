@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pdb
 import sys
-from typing import List
+from typing import List, Optional
 import numpy as np
 import shapely as shp
 import matplotlib.pyplot as plt
@@ -12,7 +12,7 @@ from matplotlib.collections import PatchCollection
 
 
 class Maze:
-    def __init__(self, maze_map: List[List[int]]):
+    def __init__(self, maze_map: List[List[int]], scaling: float):
         walls = np.array([
             [
                 int(x == 1)
@@ -20,8 +20,10 @@ class Maze:
             ]
             for row in maze_map
         ])
-        self.height, self.width = walls.shape
-        self.walls = polygon_from_bitmap(walls)
+        self.scaling = scaling
+        self.height = walls.shape[0] * scaling
+        self.width = walls.shape[1] * scaling
+        self.walls = polygon_from_bitmap(walls, scaling=scaling)
 
     @staticmethod
     def bmp_from_str(str_mask: List[str]) -> np.ndarray:
@@ -38,7 +40,8 @@ class Maze:
             for line in str_mask
         ])
 
-    def cardinal_wall_distances(self, p: shp.Point) -> np.ndarray:
+    def cardinal_wall_distances(self, x: float, y: float) -> np.ndarray:
+        p = shp.Point(x, y)
         assert not p.within(self.walls), \
             f"Point {p.x, p.y} is within the walls of the maze"
         rfs = cardinal_rangefinder_lines(p, width=self.width, height=self.height)
@@ -46,25 +49,30 @@ class Maze:
         return np.array(dists)
 
 
-def unit_square(x: int, y: int) -> shp.Polygon:
+def make_square(x: float, y: float, s: float) -> shp.Polygon:
     return shp.Polygon(shell=[
-        (x, y), (x, y + 1), (x + 1, y + 1), (x + 1, y),
+        (x, y),
+        (x, y + s),
+        (x + s, y + s),
+        (x + s, y),
     ])
 
 
-def polygon_from_bitmap(bmp: np.ndarray) -> shp.Polygon:
+def polygon_from_bitmap(bmp: np.ndarray, scaling: float = 1.0) -> shp.Polygon:
     assert bmp.ndim == 2, f"Expected 2D bitmap, but got {bmp.shape}"
     assert bmp.max() in {0, 1}, f"Expected bitmap, but got values in range {bmp.min(), bmp.max()}"
     assert bmp.min() in {0, 1}, f"Expected bitmap, but got values in range {bmp.min(), bmp.max()}"
 
     height, width = bmp.shape
+    x_center = width / 2 * scaling
+    y_center = height / 2 * scaling
     squares = []
     for i in range(height):
         for j in range(width):
             if bmp[i][j]:
-                x = j + 0.5 - width / 2
-                y = height / 2 - i + 0.5
-                squares.append(unit_square(x, y))
+                x = (j + 0.5) * scaling - x_center
+                y = -((i + 0.5) * scaling - y_center)
+                squares.append(make_square(x, y, s=scaling))
     return shp.unary_union(squares)
 
 
@@ -86,24 +94,26 @@ def intersection_distances(
     dists = []
     for rf in rangefinders:
         overlaps = rf.intersection(maze)
-
-        if overlaps is None:
+        closest_point = first_point(overlaps)
+        if closest_point is None:
             print("WARNING: no overlaps found; ensure that maze has boundaries to avoid this warning.",
                   file=sys.stderr)
             dists.append(inf_dist)
         else:
-            if isinstance(overlaps, shp.LineString):
-                if len(overlaps.coords) > 0:
-                    closest_point = overlaps.coords[0]
-                else:
-                    print("WARNING: no overlaps found; ensure that maze has boundaries to avoid this warning.",
-                          file=sys.stderr)
-                    dists.append(inf_dist)
-            else:
-                closest_point = overlaps.geoms[0].coords[0]
-            dist = p.distance(shp.Point(closest_point))
+            dist = p.distance(closest_point)
             dists.append(dist)
     return dists
+
+
+def first_point(overlaps) -> Optional[shp.Point]:
+    if overlaps is None:
+        return None
+    if isinstance(overlaps, shp.LineString):
+        if len(overlaps.coords) > 0:
+            return shp.Point(overlaps.coords[0])
+        else:
+            return None
+    return shp.Point(overlaps.geoms[0].coords[0])
 
 
 def plot_shapes(shapes: shp.geometry, **kwargs):
@@ -131,40 +141,41 @@ def plot_polygon(ax, poly, **kwargs):
 
 
 def demo_maze_rangefinders():
-    str_mask = [
-        "###################",
-        "#                 #",
-        "####   ######     #",
-        "#  ## ##          #",
-        "#   ###           #",
-        "###   #  ##       #",
-        "# ##  ##  ###     #",
-        "#  ## ###   ##    #",
-        "#     # ###  ##   #",
-        "#     #   ##  ##  #",
-        "#     #    ##  ## #",
-        "#     #     ##  ###",
-        "#                 #",
-        "#          ##     #",
-        "#         ##      #",
-        "#        ##       #",
-        "###################",
+    # str_mask = [
+    #     "###################",
+    #     "#                 #",
+    #     "####   ######     #",
+    #     "#  ## ##          #",
+    #     "#   ###           #",
+    #     "###   #  ##       #",
+    #     "# ##  ##  ###     #",
+    #     "#  ## ###   ##    #",
+    #     "#     # ###  ##   #",
+    #     "#     #   ##  ##  #",
+    #     "#     #    ##  ## #",
+    #     "#     #     ##  ###",
+    #     "#                 #",
+    #     "#          ##     #",
+    #     "#         ##      #",
+    #     "#        ##       #",
+    #     "###################",
+    # ]
+    # bmp = Maze.bmp_from_str(str_mask)
+    bmp = [
+        [1, 1, 1, 1, 1],
+        [1, 0, 0, 1, 1],
+        [1, 0, 0, 0, 1],
+        [1, 1, 0, 1, 1],
+        [1, 1, 1, 1, 1],
     ]
-    bmp = Maze.bmp_from_str(str_mask)
-    # bmp = np.array([
-    #     [1, 1, 1, 1, 1],
-    #     [1, 1, 0, 1, 1],
-    #     [1, 0, 0, 0, 1],
-    #     [1, 1, 0, 1, 1],
-    #     [1, 1, 1, 1, 1],
-    # ])
-    maze = Maze(bmp)
-    hull = maze.walls.convex_hull
-    non_walls = hull.difference(maze.walls)
-    ant = non_walls.representative_point()
+    maze = Maze(bmp, scaling=4)
+    # hull = maze.walls.convex_hull
+    # non_walls = hull.difference(maze.walls)
+    # ant = non_walls.representative_point()
+    ant = shp.Point(0.8669061676890559, -3.7016983612545915)
 
     plot_shapes([maze.walls, ant])
-    print(maze.cardinal_wall_distances(ant))
+    print(maze.cardinal_wall_distances(ant.x, ant.y))
     plt.show()
     plt.close()
 
