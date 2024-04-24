@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pdb
 import sys
 from typing import List
 import numpy as np
@@ -10,19 +11,39 @@ from matplotlib.patches import PathPatch
 from matplotlib.collections import PatchCollection
 
 
-def str_to_float_mask(str_mask: List[str]) -> np.ndarray:
-    """
-    Convert a list of strings into a binary float array,
-    where any '#' chars are interpreted as 1, any other char
-    is interpreted as 0.
-    """
-    return np.rot90(np.array([
-        [
-            float(c == "#")
-            for c in line
-        ]
-        for line in str_mask
-    ]), axes=(1, 0))
+class Maze:
+    def __init__(maze_map: List[List[int]]):
+        walls = np.array([
+            [
+                int(x == 1)
+                for x in row
+            ]
+            for row in maze_map
+        ])
+        self.height, self.width = walls.shape
+        self.polygon = polygon_from_bitmap(walls)
+    
+    @staticmethod
+    def from_str(str_mask: List[str]):
+        """
+        Convert a list of strings into a binary float array,
+        where any '#' chars are interpreted as 1, any other char
+        is interpreted as 0.
+        """
+        return np.rot90(np.array([
+            [
+                float(c == "#")
+                for c in line
+            ]
+            for line in str_mask
+        ]), axes=(1, 0))
+
+    def cardinal_wall_distances(self, p: shp.Point) -> np.ndarray:
+        assert not p.within(self.polygon), \
+            f"Point {x, y} is within the walls of the maze"
+        rfs = cardinal_rangefinder_lines(p, width=self.width, height=self.height)
+        dists = intersection_distances(p, maze, rangefinders)
+        return np.array(dists)
 
 
 def unit_square(x: int, y: int) -> shp.Polygon:
@@ -36,12 +57,14 @@ def polygon_from_bitmap(bmp: np.ndarray) -> shp.Polygon:
     assert bmp.max() in {0, 1}, f"Expected bitmap, but got values in range {bmp.min(), bmp.max()}"
     assert bmp.min() in {0, 1}, f"Expected bitmap, but got values in range {bmp.min(), bmp.max()}"
 
-    squares = [
-        unit_square(i, j)
-        for i in range(bmp.shape[0])
-        for j in range(bmp.shape[1])
-        if bmp[i][j]
-    ]
+    height, width = bmp.shape
+    squares = []
+    for i in range(height):
+        for j in range(width):
+            if bmp[i][j]:
+                x = j - width / 2
+                y = height / 2 - i
+                squares.append(unit_square(x, y))
     return shp.unary_union(squares)
 
 
@@ -63,7 +86,7 @@ def intersection_distances(
     dists = []
     for rf in rangefinders:
         overlaps = rf.intersection(maze)
-        print(overlaps)
+        pdb.set_trace()
 
         if overlaps is None:
             print("WARNING: no overlaps found; ensure that maze has boundaries to avoid this warning.", 
@@ -77,20 +100,6 @@ def intersection_distances(
             dist = p.distance(shp.Point(closest_point))
             dists.append(dist)
     return dists
-
-
-def wall_cardinal_distances(
-        x: float, 
-        y: float, 
-        maze: shp.Polygon, 
-        width: int, 
-        height: int
-) -> np.ndarray:
-    p = shp.Point(x, y)
-    assert not p.within(maze), f"Point {x, y} is within the walls of the maze"
-    rangefinders = cardinal_rangefinder_lines(p, width=width, height=height)
-    dists = intersection_distances(p, maze, rangefinders)
-    return np.array(dists)
 
 
 def plot_shapes(shapes: shp.geometry, width: int, height: int, **kwargs):
@@ -155,10 +164,10 @@ def demo_maze_rangefinders():
     for _ in range(10):
         i = np.random.choice(len(valid_locs))
         ant = shp.Point(*valid_locs[i])
-        maze = polygon_from_bitmap(bmp)
+        maze = Maze(bmp)
 
         plot_shapes([maze, ant], width=W, height=H)
-        print(wall_cardinal_distances(ant.x, ant.y, maze, width=W, height=H))
+        print(maze.cardinal_wall_distances(ant))
         plt.show()
         plt.close()
 
