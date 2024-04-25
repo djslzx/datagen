@@ -12,7 +12,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from lang.tree import Language, Tree, Grammar, ParseError, Featurizer
-import lang.maze as maze
+from lang.maze import Maze
 from spinup.algos.pytorch.sac.core import SquashedGaussianMLPActor
 
 
@@ -49,7 +49,7 @@ class FixedDepthAnt(Language):
             high_state_dim: int, 
             low_state_dim: int, 
             program_depth: int, 
-            maze_map: List[List[int]],
+            maze: Maze,
             steps: int,
             primitives: List[nn.Module],
             featurizer: Featurizer,
@@ -61,10 +61,6 @@ class FixedDepthAnt(Language):
         assert low_state_dim > 0
         assert 0 <= temperature <= 1
         assert steps > 0
-        assert all(cell in {0, 1, 'g', 'r', 'c'}
-                   for row in maze_map 
-                   for cell in row), \
-            f"Unexpected cell value in maze: {maze_map}"
 
         self.n_conds = program_depth - 1
         self.n_stmts = program_depth
@@ -89,14 +85,16 @@ class FixedDepthAnt(Language):
 
         # mujoco env
         self.steps = steps
+        assert maze.scaling == 4, \
+            f"gymnasium AntMaze assumes scale of 4, but got maze with scale={maze.scaling}"
+        self.maze = maze
         self.gym_env = gym.make(
             "AntMaze_UMaze-v4", 
-            maze_map=maze_map, 
+            maze_map=maze.str_map, 
             render_mode="rgb_array_list",
             camera_name="free",
             use_contact_forces=True,  # required to match ICLR'22 paper
         )
-        self.maze = maze.Maze(maze_map, scaling=4.)  # setup geometries for rangefinders
 
         # camera settings
         ant_env = self.gym_env.unwrapped.ant_env
@@ -260,41 +258,16 @@ class MujocoAntFeaturizer(Featurizer):
 
 if __name__ == "__main__":
     np.random.seed(0)
-    STEPS = 100
+    STEPS = 1000
     primitives_dir = "/home/djl328/prob-repl/src/lang/primitives/ant/"
     primitives = [
         torch.load(f"{primitives_dir}/{direction}.pt").pi
         for direction in ["up", "down", "left", "right"]
     ]
-    # maze_map = [
-    #     [1, 1, 1, 1, 1],
-    #     [1, 1, 0, 1, 1],
-    #     [1, 0, 0, 0, 1],
-    #     [1, 1, 'r', 1, 1],
-    #     [1, 1, 1, 1, 1],
-    # ]
-    maze_map = [
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,],
-        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,],
-        [1,1,1,1,0,0,0,1,1,1,1,1,1,0,0,0,0,0,1,],
-        [1,0,0,1,1,0,1,1,0,0,0,0,0,0,0,0,0,0,1,],
-        [1,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,],
-        [1,1,1,0,0,0,1,0,0,1,1,0,0,0,0,0,0,0,1,],
-        [1,0,1,1,0,0,1,1,0,0,1,1,1,0,0,0,0,0,1,],
-        [1,0,0,1,1,0,1,1,1,0,0,0,1,1,0,0,0,0,1,],
-        [1,0,0,0,0,0,1,0,1,1,1,0,0,1,1,0,0,0,1,],
-        [1,0,0,0,0,0,1,0,0,0,1,1,0,0,1,1,0,0,1,],
-        [1,0,0,0,0,0,1,0,0,0,0,1,1,0,0,1,1,0,1,],
-        [1,0,0,0,0,0,1,0,0,0,0,0,1,1,0,0,1,1,1,],
-        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,],
-        [1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,1,],
-        [1,0,'r',0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,],
-        [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,],
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,],
-    ]
     featurizer = MujocoAntFeaturizer()
+    maze = Maze.from_saved("lehman-ecj-11-hard")
     lang = FixedDepthAnt(
-        maze_map=maze_map,
+        maze=maze,
         primitives=primitives,
         high_state_dim=4,
         low_state_dim=111,
