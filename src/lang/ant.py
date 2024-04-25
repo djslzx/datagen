@@ -12,7 +12,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from lang.tree import Language, Tree, Grammar, ParseError, Featurizer
-import lang.maze as maze
+from lang.maze import Maze
 from spinup.algos.pytorch.sac.core import SquashedGaussianMLPActor
 
 
@@ -49,7 +49,7 @@ class FixedDepthAnt(Language):
             high_state_dim: int, 
             low_state_dim: int, 
             program_depth: int, 
-            maze_map: List[List[int]],
+            maze: Maze,
             steps: int,
             primitives: List[nn.Module],
             featurizer: Featurizer,
@@ -61,10 +61,6 @@ class FixedDepthAnt(Language):
         assert low_state_dim > 0
         assert 0 <= temperature <= 1
         assert steps > 0
-        assert all(cell == 0 or cell == 1
-                   for row in maze_map 
-                   for cell in row), \
-            f"Expected binary map but got {maze_map}"
 
         self.n_conds = program_depth - 1
         self.n_stmts = program_depth
@@ -88,17 +84,27 @@ class FixedDepthAnt(Language):
         self.structure_params = structure_params
 
         # mujoco env
-        self.maze_map = np.array(maze_map)
-        # used for rangefinder features
-        self.maze_walls = maze.polygon_from_bitmap(self.maze_map)  
-        self.maze_w, self.maze_h = self.maze_map.shape
         self.steps = steps
+        assert maze.scaling == 4, \
+            f"gymnasium AntMaze assumes scale of 4, but got maze with scale={maze.scaling}"
+        self.maze = maze
         self.gym_env = gym.make(
             "AntMaze_UMaze-v4", 
-            maze_map=maze_map, 
+            maze_map=maze.str_map, 
             render_mode="rgb_array_list",
-            use_contact_forces=True,  # required to get enough observations to match ICLR'22 paper
+            camera_name="free",
+            use_contact_forces=True,  # required to match ICLR'22 paper
         )
+
+        # camera settings
+        ant_env = self.gym_env.unwrapped.ant_env
+        ant_env.mujoco_renderer.default_cam_config = {
+            "trackbodyid": 0,
+            "elevation": -60,
+            "lookat": np.array([0, 0.0, 0.0]),
+            "distance": ant_env.model.stat.extent * 1.5,
+            "azimuth": 0,
+        }
 
     def _structured_params(self, t: Tree) -> Tuple[np.ndarray, np.ndarray]:
         assert t.value == "root"
@@ -143,17 +149,12 @@ class FixedDepthAnt(Language):
         cond_params, stmt_params = self._structured_params(t)
         
         # run sim loop
-        obs, info = self.gym_env.reset()
+        obs, info = self.gym_env.reset(seed=0)
 
         # construct high-level observations for symbolic program
         x, y = obs['achieved_goal']
         yield np.array([x, y])
-        dists = maze.wall_cardinal_distances(
-            x, y, 
-            self.maze_walls,
-            width=self.maze_w, 
-            height=self.maze_h
-        )
+        dists = self.maze.cardinal_wall_distances(x, y)
        # todo: add more high-level features?
         
         for step in range(self.steps):
@@ -178,7 +179,7 @@ class FixedDepthAnt(Language):
             step_starting_index=0,
             episode_index = 0,
         )
-        self.gym_env.close()
+        # self.gym_env.close()
 
     @staticmethod
     def get_action(model: nn.Module, x: np.ndarray) -> np.ndarray:
@@ -197,8 +198,8 @@ class FixedDepthAnt(Language):
     ) -> np.ndarray:
         assert high_obs.ndim == 1, f"Expected 1D high-level obs array, got {high_obs.shape}"
         assert low_obs.ndim == 1, f"Expected 1D low-level obs array, got {low_obs.shape}"
-        assert high_obs.shape[0] == self.high_state_dim
-        assert low_obs.shape[0] == self.low_state_dim
+        assert high_obs.shape[0] == self.high_state_dim, f"Expected high obs dim {self.high_state_dim}, got {high_obs.shape}"
+        assert low_obs.shape[0] == self.low_state_dim, f"Expected low obs dim {self.low_state_dim}, got {low_obs.shape}"
 
         # simulate program to get weights over primitive policies
         action_weights = self.fold_eval_E(cond_params, stmt_params, high_obs)
@@ -241,18 +242,59 @@ class FixedDepthAnt(Language):
         }
 
 
-class MujocoAntFeaturizer(Featurizer):
+class TrailFull(Featurizer):
     """
-    Ant features: center of gravity along trajectory of ant, i.e. body pos over time?
+    Take the full trail as features, using stride to cut if desired
     """
-    def __init__(self):
-        pass
+    
+    def __init__(self, stride: int = 1):
+        self.stride = stride
 
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
         assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
-        return batch
+        assert batch.shape[1] == 2, f"Expected 2D points, got {batch.shape}"
+        return batch[::self.stride]
+
+
+class TrailEnd(Featurizer):
+    def __init__(self):
+        pass
+    
+    def apply(self, batch: List[np.ndarray]) -> np.ndarray:
+        if isinstance(batch, list):
+            batch = np.stack(batch)
+        assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
+        assert batch.shape[1] == 2, f"Expected 2D points, got {batch.shape}"
+        return batch[-1]
+
+
+class TrailHeatMap(Featurizer):
+    """
+    Generate a heatmap over maze cells; an 'unordered', discrete representation
+    """
+
+    def __init__(self, width: int, height: int, scaling: float):
+        self.width = width
+        self.height = height
+        self.scaling = scaling
+        
+    def apply(self, batch: List[np,ndarray]) -> np.ndarray:
+        if isinstance(batch, list):
+            batch = np.stack(batch)
+        assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
+        assert batch.shape[1] == 2, f"Expected 2D points, got {batch.shape}"
+
+        heatmap = np.zeros((self.width, self.height))  # treat i,j as equal to x,y
+        for x, y in batch:
+            heatmap[int(x // self.scaling),
+                    int(y // self.scaling)] += 1
+
+        # normalize
+        heatmap = heatmap / heatmap.sum()
+
+        return heatmap
 
 
 if __name__ == "__main__":
@@ -263,16 +305,10 @@ if __name__ == "__main__":
         torch.load(f"{primitives_dir}/{direction}.pt").pi
         for direction in ["up", "down", "left", "right"]
     ]
-    # pdb.set_trace()
-    featurizer = MujocoAntFeaturizer()
+    maze = Maze.from_saved("lehman-ecj-11-hard")
+    featurizer = TrailHeatMap(maze.width, maze.height, maze.scaling)
     lang = FixedDepthAnt(
-        maze_map=[
-            [1, 1, 1, 1, 1],
-            [1, 1, 0, 1, 1],
-            [1, 0, 0, 0, 1],
-            [1, 1, 0, 1, 1],
-            [1, 1, 1, 1, 1],
-        ],
+        maze=maze,
         primitives=primitives,
         high_state_dim=4,
         low_state_dim=111,
@@ -290,9 +326,11 @@ if __name__ == "__main__":
     print(lang._structured_params(tree))
     print(lang._flat_params(tree))
     actions = lang.eval(tree)
-    pos = []
+
+    outputs = []
     for action in tqdm(actions, total=lang.steps):
-        feat_vec = featurizer.apply([action])
-        pos.append(feat_vec)
-    print(pos)
+        outputs.append(action)
+
+    feat_vec = featurizer.apply(outputs)
+    print(feat_vec)
 

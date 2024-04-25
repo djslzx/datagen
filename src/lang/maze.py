@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pdb
 import sys
-from typing import List, Optional
+from typing import List, Optional, Union
 import numpy as np
 import shapely as shp
 import matplotlib.pyplot as plt
@@ -11,8 +11,103 @@ from matplotlib.patches import PathPatch
 from matplotlib.collections import PatchCollection
 
 
+def bmp_from_str(str_map: List[str]) -> List[List[Union[int, str]]]:
+    """
+    Convert a list of strings into a binary float array,
+    where any '#' chars are interpreted as 1, any other char
+    is interpreted as 0.
+    """
+    def convert(s: str) -> Union[str, int]:
+        if s == "#":
+            return 1
+        elif s in " _.":
+            return 0
+        elif s in "grc":
+            return s
+        else:
+            raise ValueError(f"Unexpected cell value: '{s}'")
+
+    return [
+        [convert(c) for c in line]
+        for line in str_map
+    ]
+
+
+SAVED_MAZES = {
+    "cross": bmp_from_str([
+        "#####",
+        "##g##",
+        "#g g#",
+        "##r##",
+        "#####",
+    ]),
+    "lehman-ecj-11-hard": bmp_from_str([
+        "###################",
+        "#g                #",
+        "####   ######     #",
+        "#  ## ##          #",
+        "#   ###           #",
+        "###   #  ##       #",
+        "# ##  ##  ###     #",
+        "#  ## ###   ##    #",
+        "#     # ###  ##   #",
+        "#     #   ##  ##  #",
+        "#     #    ##  ## #",
+        "#     #     ##  ###",
+        "#                 #",
+        "#          ##     #",
+        "#         ##      #",
+        "#r       ##       #",
+        "###################",
+    ]),
+    "users-guide": bmp_from_str([
+        "##########",
+        "#r       #",
+        "# ###### #",
+        "# #      #",
+        "# #    # #",
+        "# # #### #",
+        "# #    # #",
+        "# ###  # #",
+        "#   #  # #",
+            "#  ##g # #",
+            "##########",
+        ]),
+        "big-symm": bmp_from_str([
+            "#####################################",
+            "# #       #       #     #         #g#",
+            "# # ##### # ### ##### ### ### ### # #",
+            "#       #   # #     #     # # #   # #",
+            "##### # ##### ##### ### # # # ##### #",
+            "#   # #       #     # # # # #     # #",
+            "# # ####### # # ##### ### # ##### # #",
+            "# #       # # #   #     #     #   # #",
+            "# ####### ### ### # ### ##### # ### #",
+            "#     #   # #   # #   #     # #     #",
+            "# ### ### # ### # ##### # # # #######",
+            "#   #   # # #   #   #   # # #   #   #",
+            "####### # # # ##### # ### # ### ### #",
+            "#     # #     #   # #   # #   #     #",
+            "# ### # ##### ### # ### ### ####### #",
+            "# #   #     #     #   # # #       # #",
+            "# # ##### # ### ##### # # ####### # #",
+            "# #     # # # # #     #       # #   #",
+            "# ##### # # # ### ##### ##### # #####",
+            "# #   # # #     #     # #   #       #",
+            "# # ### ### ### ##### ### # ##### # #",
+            "#r#         #     #       #       # #",
+            "#####################################",
+        ]),
+    }
+
+
 class Maze:
-    def __init__(self, maze_map: List[List[int]], scaling: float):
+
+    def __init__(
+            self, 
+            maze_map: List[List[Union[str, int]]], 
+            scaling: float
+    ):
         walls = np.array([
             [
                 int(x == 1)
@@ -21,31 +116,29 @@ class Maze:
             for row in maze_map
         ])
         self.scaling = scaling
-        self.height = walls.shape[0] * scaling
-        self.width = walls.shape[1] * scaling
+        self.height = walls.shape[0]
+        self.width = walls.shape[1]
         self.walls = polygon_from_bitmap(walls, scaling=scaling)
+        self.str_map = maze_map
 
     @staticmethod
-    def bmp_from_str(str_mask: List[str]) -> np.ndarray:
-        """
-        Convert a list of strings into a binary float array,
-        where any '#' chars are interpreted as 1, any other char
-        is interpreted as 0.
-        """
-        return np.array([
-            [
-                float(c == "#")
-                for c in line
-            ]
-            for line in str_mask
-        ])
+    def from_saved(name: str, scaling=4.) -> "Maze":
+        if name not in SAVED_MAZES:
+            raise ValueError(
+                f"Uknown maze name {name}; must be from "
+                f"{list(SAVED_MAZES.keys())}"
+            )
+        else:
+            return Maze(maze_map=SAVED_MAZES[name], scaling=scaling)
 
     def cardinal_rangefinder_lines(self, p: shp.Point) -> List[shp.LineString]:
+        h = self.height * self.scaling
+        w = self.width * self.scaling
         return [
-            shp.LineString([(p.x, p.y), (p.x, p.y + self.height)]),
-            shp.LineString([(p.x, p.y), (p.x, p.y - self.height)]),
-            shp.LineString([(p.x, p.y), (p.x - self.width, p.y)]),
-            shp.LineString([(p.x, p.y), (p.x + self.width, p.y)]),
+            shp.LineString([(p.x, p.y), (p.x, p.y + h)]),
+            shp.LineString([(p.x, p.y), (p.x, p.y - h)]),
+            shp.LineString([(p.x, p.y), (p.x - w, p.y)]),
+            shp.LineString([(p.x, p.y), (p.x + w, p.y)]),
         ]
 
     def cardinal_wall_distances(self, x: float, y: float) -> np.ndarray:
@@ -142,34 +235,7 @@ def plot_polygon(ax, poly, **kwargs):
 
 
 def demo_maze_rangefinders():
-    # str_mask = [
-    #     "###################",
-    #     "#                 #",
-    #     "####   ######     #",
-    #     "#  ## ##          #",
-    #     "#   ###           #",
-    #     "###   #  ##       #",
-    #     "# ##  ##  ###     #",
-    #     "#  ## ###   ##    #",
-    #     "#     # ###  ##   #",
-    #     "#     #   ##  ##  #",
-    #     "#     #    ##  ## #",
-    #     "#     #     ##  ###",
-    #     "#                 #",
-    #     "#          ##     #",
-    #     "#         ##      #",
-    #     "#        ##       #",
-    #     "###################",
-    # ]
-    # bmp = Maze.bmp_from_str(str_mask)
-    bmp = [
-        [1, 1, 1, 1, 1],
-        [1, 0, 0, 1, 1],
-        [1, 0, 0, 0, 1],
-        [1, 1, 0, 1, 1],
-        [1, 1, 1, 1, 1],
-    ]
-    maze = Maze(bmp, scaling=4.)
+    maze = Maze.from_saved("lehman-ecj-11-hard", scaling=4.)
     # hull = maze.walls.convex_hull
     # non_walls = hull.difference(maze.walls)
     # ant = non_walls.representative_point()
