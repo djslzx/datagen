@@ -61,10 +61,10 @@ class FixedDepthAnt(Language):
         assert low_state_dim > 0
         assert 0 <= temperature <= 1
         assert steps > 0
-        assert all(cell == 0 or cell == 1
+        assert all(cell in {0, 1, 'g', 'r', 'c'}
                    for row in maze_map 
                    for cell in row), \
-            f"Expected binary map but got {maze_map}"
+            f"Unexpected cell value in maze: {maze_map}"
 
         self.n_conds = program_depth - 1
         self.n_stmts = program_depth
@@ -88,17 +88,25 @@ class FixedDepthAnt(Language):
         self.structure_params = structure_params
 
         # mujoco env
-        self.maze_map = np.array(maze_map)
-        # used for rangefinder features
-        self.maze_walls = maze.polygon_from_bitmap(self.maze_map)  
-        self.maze_w, self.maze_h = self.maze_map.shape
         self.steps = steps
         self.gym_env = gym.make(
             "AntMaze_UMaze-v4", 
             maze_map=maze_map, 
             render_mode="rgb_array_list",
-            use_contact_forces=True,  # required to get enough observations to match ICLR'22 paper
+            camera_name="free",
+            use_contact_forces=True,  # required to match ICLR'22 paper
         )
+        self.maze = maze.Maze(maze_map, scaling=4.)  # setup geometries for rangefinders
+
+        # camera settings
+        ant_env = self.gym_env.unwrapped.ant_env
+        ant_env.mujoco_renderer.default_cam_config = {
+            "trackbodyid": 0,
+            "elevation": -60,
+            "lookat": np.array([0, 0.0, 0.0]),
+            "distance": ant_env.model.stat.extent * 1.5,
+            "azimuth": 0,
+        }
 
     def _structured_params(self, t: Tree) -> Tuple[np.ndarray, np.ndarray]:
         assert t.value == "root"
@@ -148,12 +156,7 @@ class FixedDepthAnt(Language):
         # construct high-level observations for symbolic program
         x, y = obs['achieved_goal']
         yield np.array([x, y])
-        dists = maze.wall_cardinal_distances(
-            x, y, 
-            self.maze_walls,
-            width=self.maze_w, 
-            height=self.maze_h
-        )
+        dists = self.maze.cardinal_wall_distances(x, y)
        # todo: add more high-level features?
         
         for step in range(self.steps):
@@ -197,8 +200,8 @@ class FixedDepthAnt(Language):
     ) -> np.ndarray:
         assert high_obs.ndim == 1, f"Expected 1D high-level obs array, got {high_obs.shape}"
         assert low_obs.ndim == 1, f"Expected 1D low-level obs array, got {low_obs.shape}"
-        assert high_obs.shape[0] == self.high_state_dim
-        assert low_obs.shape[0] == self.low_state_dim
+        assert high_obs.shape[0] == self.high_state_dim, f"Expected high obs dim {self.high_state_dim}, got {high_obs.shape}"
+        assert low_obs.shape[0] == self.low_state_dim, f"Expected low obs dim {self.low_state_dim}, got {low_obs.shape}"
 
         # simulate program to get weights over primitive policies
         action_weights = self.fold_eval_E(cond_params, stmt_params, high_obs)
@@ -263,16 +266,35 @@ if __name__ == "__main__":
         torch.load(f"{primitives_dir}/{direction}.pt").pi
         for direction in ["up", "down", "left", "right"]
     ]
-    # pdb.set_trace()
+    # maze_map = [
+    #     [1, 1, 1, 1, 1],
+    #     [1, 1, 0, 1, 1],
+    #     [1, 0, 0, 0, 1],
+    #     [1, 1, 'r', 1, 1],
+    #     [1, 1, 1, 1, 1],
+    # ]
+    maze_map = [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,],
+        [1,1,1,1,0,0,0,1,1,1,1,1,1,0,0,0,0,0,1,],
+        [1,0,0,1,1,0,1,1,0,0,0,0,0,0,0,0,0,0,1,],
+        [1,0,0,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,],
+        [1,1,1,0,0,0,1,0,0,1,1,0,0,0,0,0,0,0,1,],
+        [1,0,1,1,0,0,1,1,0,0,1,1,1,0,0,0,0,0,1,],
+        [1,0,0,1,1,0,1,1,1,0,0,0,1,1,0,0,0,0,1,],
+        [1,0,0,0,0,0,1,0,1,1,1,0,0,1,1,0,0,0,1,],
+        [1,0,0,0,0,0,1,0,0,0,1,1,0,0,1,1,0,0,1,],
+        [1,0,0,0,0,0,1,0,0,0,0,1,1,0,0,1,1,0,1,],
+        [1,0,0,0,0,0,1,0,0,0,0,0,1,1,0,0,1,1,1,],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,],
+        [1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,1,],
+        [1,0,'r',0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,],
+        [1,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,1,],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,],
+    ]
     featurizer = MujocoAntFeaturizer()
     lang = FixedDepthAnt(
-        maze_map=[
-            [1, 1, 1, 1, 1],
-            [1, 1, 0, 1, 1],
-            [1, 0, 0, 0, 1],
-            [1, 1, 0, 1, 1],
-            [1, 1, 1, 1, 1],
-        ],
+        maze_map=maze_map,
         primitives=primitives,
         high_state_dim=4,
         low_state_dim=111,
