@@ -149,7 +149,7 @@ class FixedDepthAnt(Language):
         cond_params, stmt_params = self._structured_params(t)
         
         # run sim loop
-        obs, info = self.gym_env.reset()
+        obs, info = self.gym_env.reset(seed=0)
 
         # construct high-level observations for symbolic program
         x, y = obs['achieved_goal']
@@ -179,7 +179,7 @@ class FixedDepthAnt(Language):
             step_starting_index=0,
             episode_index = 0,
         )
-        self.gym_env.close()
+        # self.gym_env.close()
 
     @staticmethod
     def get_action(model: nn.Module, x: np.ndarray) -> np.ndarray:
@@ -242,30 +242,71 @@ class FixedDepthAnt(Language):
         }
 
 
-class MujocoAntFeaturizer(Featurizer):
+class TrailFull(Featurizer):
     """
-    Ant features: center of gravity along trajectory of ant, i.e. body pos over time?
+    Take the full trail as features, using stride to cut if desired
     """
-    def __init__(self):
-        pass
+    
+    def __init__(self, stride: int = 1):
+        self.stride = stride
 
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
         assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
-        return batch
+        assert batch.shape[1] == 2, f"Expected 2D points, got {batch.shape}"
+        return batch[::self.stride]
+
+
+class TrailEnd(Featurizer):
+    def __init__(self):
+        pass
+    
+    def apply(self, batch: List[np.ndarray]) -> np.ndarray:
+        if isinstance(batch, list):
+            batch = np.stack(batch)
+        assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
+        assert batch.shape[1] == 2, f"Expected 2D points, got {batch.shape}"
+        return batch[-1]
+
+
+class TrailHeatMap(Featurizer):
+    """
+    Generate a heatmap over maze cells; an 'unordered', discrete representation
+    """
+
+    def __init__(self, width: int, height: int, scaling: float):
+        self.width = width
+        self.height = height
+        self.scaling = scaling
+        
+    def apply(self, batch: List[np,ndarray]) -> np.ndarray:
+        if isinstance(batch, list):
+            batch = np.stack(batch)
+        assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
+        assert batch.shape[1] == 2, f"Expected 2D points, got {batch.shape}"
+
+        heatmap = np.zeros((self.width, self.height))  # treat i,j as equal to x,y
+        for x, y in batch:
+            heatmap[int(x // self.scaling),
+                    int(y // self.scaling)] += 1
+
+        # normalize
+        heatmap = heatmap / heatmap.sum()
+
+        return heatmap
 
 
 if __name__ == "__main__":
     np.random.seed(0)
-    STEPS = 1000
+    STEPS = 100
     primitives_dir = "/home/djl328/prob-repl/src/lang/primitives/ant/"
     primitives = [
         torch.load(f"{primitives_dir}/{direction}.pt").pi
         for direction in ["up", "down", "left", "right"]
     ]
-    featurizer = MujocoAntFeaturizer()
     maze = Maze.from_saved("lehman-ecj-11-hard")
+    featurizer = TrailHeatMap(maze.width, maze.height, maze.scaling)
     lang = FixedDepthAnt(
         maze=maze,
         primitives=primitives,
@@ -285,9 +326,11 @@ if __name__ == "__main__":
     print(lang._structured_params(tree))
     print(lang._flat_params(tree))
     actions = lang.eval(tree)
-    pos = []
+
+    outputs = []
     for action in tqdm(actions, total=lang.steps):
-        feat_vec = featurizer.apply([action])
-        pos.append(feat_vec)
-    print(pos)
+        outputs.append(action)
+
+    feat_vec = featurizer.apply(outputs)
+    print(feat_vec)
 

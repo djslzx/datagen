@@ -116,8 +116,8 @@ class Maze:
             for row in maze_map
         ])
         self.scaling = scaling
-        self.height = walls.shape[0] * scaling
-        self.width = walls.shape[1] * scaling
+        self.height = walls.shape[0]
+        self.width = walls.shape[1]
         self.walls = polygon_from_bitmap(walls, scaling=scaling)
         self.str_map = maze_map
 
@@ -132,11 +132,13 @@ class Maze:
             return Maze(maze_map=SAVED_MAZES[name], scaling=scaling)
 
     def cardinal_rangefinder_lines(self, p: shp.Point) -> List[shp.LineString]:
+        h = self.height * self.scaling
+        w = self.width * self.scaling
         return [
-            shp.LineString([(p.x, p.y), (p.x, p.y + self.height)]),
-            shp.LineString([(p.x, p.y), (p.x, p.y - self.height)]),
-            shp.LineString([(p.x, p.y), (p.x - self.width, p.y)]),
-            shp.LineString([(p.x, p.y), (p.x + self.width, p.y)]),
+            shp.LineString([(p.x, p.y), (p.x, p.y + h)]),
+            shp.LineString([(p.x, p.y), (p.x, p.y - h)]),
+            shp.LineString([(p.x, p.y), (p.x - w, p.y)]),
+            shp.LineString([(p.x, p.y), (p.x + w, p.y)]),
         ]
 
     def cardinal_wall_distances(self, x: float, y: float) -> np.ndarray:
