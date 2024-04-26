@@ -52,7 +52,7 @@ class FixedDepthAnt(Language):
             program_depth: int,
             maze: Maze,
             steps: int,
-            primitives: List[nn.Module],
+            primitives_dir="/home/djl328/prob-repl/src/lang/primitives/ant",
             featurizer: Featurizer,
     ):
         assert program_depth > 1
@@ -74,14 +74,19 @@ class FixedDepthAnt(Language):
         self.high_state_dim = high_state_dim
         self.low_state_dim = low_state_dim
         self.action_dim = len(primitives)
-        self.primitives = primitives
 
         self.n_cond_params = self.n_conds * (self.high_state_dim + 1)
         self.n_stmt_params = self.n_stmts * self.action_dim
+        self.n_params = self.n_cond_params + self.n_stmt_params
 
         self.cond_shape = (self.n_conds, self.high_state_dim + 1)
         self.stmt_shape = (self.n_stmts, self.action_dim)
 
+        # load primitives
+        self.primitives = [
+            torch.load(f"{primitives_dir}/{direction}.pt").pi
+            for direction in ["up", "down", "left", "right"]
+        ]
 
         # mujoco env
         self.steps = steps
@@ -134,18 +139,13 @@ class FixedDepthAnt(Language):
 
         return t_conds, t_stmts
 
-    def _flat_params(self, t: Tree) -> np.ndarray:
-        conds, stmts = self._extract_params(t)
+    def flatten_params(self, conds: np.ndarray, stmts: np.ndarray) -> np.ndarray:
         return ein.pack([conds, stmts], "*")[0]
 
-    @staticmethod
-    def _sample_params() -> Tuple[np.ndarray, np.ndarray]:
-        params = self.distribution.sample(k=1)
-        assert len(params) == (self.n_cond_params + self.n_stmt_params)
-
+    def unflatten_params(self, params: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        assert len(params) == self.n_params
         conds = ein.rearrange(params[:self.n_cond_params], "(n d) -> n d", n=self.n_conds)
         stmts = ein.rearrange(params[self.n_cond_params:], "(n d) -> n d", n=self.n_stmts)
-
         return conds, stmts
 
     @staticmethod
@@ -154,21 +154,26 @@ class FixedDepthAnt(Language):
             str(v) for v in arr
         ) + "]"
 
-    def sample(self) -> Tree:
-        conds, stmts = self._sample_params()
+    def make_program(self, params: np.ndarray) -> Tree:
+        conds, stmts = self.unflatten_params(params)
         conds_str = " ".join(self._array_to_str(cond) for cond in conds)
         stmts_str = " ".join(self._array_to_str(stmt) for stmt in stmts)
-
         return self.parse(f"""
             (ant (conds {conds_str}) 
                  (stmts {stmts_str}))
         """)
 
+    def sample(self) -> Tree:
+        params = self.distribution.sample(k=1)
+        return self.make_program(params)
+
     def fit(self, corpus: List[Tree], alpha):
-        all_params = [
-            self._flat_params(tree)
-            for tree in corpus
-        ]
+        all_params = []
+        for tree in corpus:
+            c, s = self._extract_params(tree)
+            params = self.flatten_params(c, s)
+            all_params.append(params)
+
         self.distribution = MultivariateGaussianSampler(data)
 
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Iterable[np.ndarray]:
@@ -283,7 +288,7 @@ class FixedDepthAnt(Language):
         }
 
 
-class TrailFull(Featurizer):
+class TrailFeaturizer(Featurizer):
     """
     Take the full trail as features, using stride to cut if desired
     """
@@ -299,7 +304,7 @@ class TrailFull(Featurizer):
         return batch[::self.stride]
 
 
-class TrailEnd(Featurizer):
+class EndFeaturizer(Featurizer):
     def __init__(self):
         pass
     
@@ -311,7 +316,7 @@ class TrailEnd(Featurizer):
         return batch[-1]
 
 
-class TrailHeatMap(Featurizer):
+class HeatMapFeaturizer(Featurizer):
     """
     Generate a heatmap over maze cells; an 'unordered', discrete representation
     """
@@ -372,19 +377,13 @@ class MultivariateGaussianSampler:
 if __name__ == "__main__":
     np.random.seed(0)
     STEPS = 100
-    primitives_dir = "/home/djl328/prob-repl/src/lang/primitives/ant/"
-    primitives = [
-        torch.load(f"{primitives_dir}/{direction}.pt").pi
-        for direction in ["up", "down", "left", "right"]
-    ]
     maze = Maze.from_saved(
         "lehman-ecj-11-hard"
         # "cross"
     )
-    featurizer = TrailHeatMap(maze.width, maze.height, maze.scaling)
+    featurizer = HeatMapFeaturizer(maze.width, maze.height, maze.scaling)
     lang = FixedDepthAnt(
         maze=maze,
-        primitives=primitives,
         high_state_dim=4,
         low_state_dim=111,
         program_depth=2,
