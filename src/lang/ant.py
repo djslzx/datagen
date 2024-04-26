@@ -54,6 +54,7 @@ class FixedDepthAnt(Language):
             steps: int,
             featurizer: Featurizer,
             primitives_dir="/home/djl328/prob-repl/src/lang/primitives/ant",
+            save_video=True,
     ):
         assert program_depth > 1
         assert high_state_dim > 0
@@ -62,6 +63,7 @@ class FixedDepthAnt(Language):
 
         self.n_conds = program_depth - 1
         self.n_stmts = program_depth
+        self.save_video = save_video
 
         super().__init__(
             parser_grammar=FixedDepthAnt.grammar,
@@ -179,6 +181,8 @@ class FixedDepthAnt(Language):
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Iterable[np.ndarray]:
         assert t.value == "root"
 
+        outputs = []
+
         # extract parameters from program
         conds, stmts = self._extract_params(t)
         
@@ -187,7 +191,7 @@ class FixedDepthAnt(Language):
 
         # construct high-level observations for symbolic program
         x, y = obs['achieved_goal']
-        yield np.array([x, y])
+        outputs.append([x, y])
 
         # rangefinder distances, nsew
         dists = self.maze.cardinal_wall_distances(x, y)
@@ -203,19 +207,21 @@ class FixedDepthAnt(Language):
             obs, _, terminated, truncated, info = self.gym_env.step(action)
 
             x, y = obs['achieved_goal']
-            yield np.array([x, y])
+            outputs.append([x, y])
             
             if terminated or truncated:
                 break
 
-        save_video(
-            self.gym_env.render(),
-            "videos",
-            fps=self.gym_env.metadata["render_fps"],
-            step_starting_index=0,
-            episode_index = 0,
-        )
+        if self.save_video:
+            save_video(
+                self.gym_env.render(),
+                "videos",
+                fps=self.gym_env.metadata["render_fps"],
+                step_starting_index=0,
+                episode_index = 0,
+            )
         # self.gym_env.close()
+        return np.array(outputs)
 
     @staticmethod
     def get_action(model: nn.Module, x: np.ndarray) -> np.ndarray:
@@ -253,17 +259,6 @@ class FixedDepthAnt(Language):
         action = action_weights @ primitive_actions
         
         return action
-
-    def extract_features(
-            self, 
-            trees: Collection[Tree], 
-            n_samples=1,
-            batch_size=4,
-            load_bar=False
-    ) -> np.ndarray:
-        raise NotImplementedError(
-            "Ant should handle feature extraction differently than exec-once langs"
-        )
 
     def fold_eval_E(
             self, 
@@ -321,10 +316,11 @@ class HeatMapFeaturizer(Featurizer):
     Generate a heatmap over maze cells; an 'unordered', discrete representation
     """
 
-    def __init__(self, width: int, height: int, scaling: float):
-        self.width = width
-        self.height = height
-        self.scaling = scaling
+    def __init__(self, maze: Maze):
+        self.width = maze.width
+        self.height = maze.height
+        self.scaling = maze.scaling
+        self.xy_to_rc = maze.xy_to_rc
         
     def apply(self, batch: List[np,ndarray]) -> np.ndarray:
         if isinstance(batch, list):
@@ -334,8 +330,9 @@ class HeatMapFeaturizer(Featurizer):
 
         heatmap = np.zeros((self.width, self.height))  # treat i,j as equal to x,y
         for x, y in batch:
-            heatmap[int(x // self.scaling),
-                    int(y // self.scaling)] += 1
+            r, c = self.xy_to_rc(x, y)
+            print(f"{x, y} => {r, c}")
+            heatmap[r, c] += 1
 
         # normalize
         heatmap = heatmap / heatmap.sum()
@@ -381,7 +378,7 @@ if __name__ == "__main__":
         "lehman-ecj-11-hard"
         # "cross"
     )
-    featurizer = HeatMapFeaturizer(maze.width, maze.height, maze.scaling)
+    featurizer = HeatMapFeaturizer(maze)
     lang = FixedDepthAnt(
         maze=maze,
         high_state_dim=4,
@@ -389,6 +386,7 @@ if __name__ == "__main__":
         program_depth=2,
         steps=STEPS,
         featurizer=featurizer,
+        save_video=False,
     )
     s = f"""
         (ant (conds [{' '.join([str(i) for i in range(4 + 1)])}]) 
@@ -398,12 +396,7 @@ if __name__ == "__main__":
     tree = lang.parse(s)
     print(tree, lang.to_str(tree), sep='\n')
     print(lang._extract_params(tree))
-    actions = lang.eval(tree)
-
-    outputs = []
-    for action in tqdm(actions, total=lang.steps):
-        outputs.append(action)
-
+    outputs = lang.eval(tree)
     feat_vec = featurizer.apply(outputs)
     print(feat_vec)
 
