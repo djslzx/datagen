@@ -14,7 +14,7 @@ import wandb
 import einops as ein
 
 from lang.tree import Language, Tree
-from lang import lindenmayer, point, arc
+from lang import lindenmayer, point, arc, ant, maze
 import util
 
 
@@ -527,40 +527,6 @@ def run_maze_search(
         "#         ##       #",
         "#        ##        #",
         "####################",
-        # "#####################################",
-        # "#_#_______#_______#_____#_________#_#",
-        # "#_#_#####_#_###_#####_###_###_###_#_#",
-        # "#_______#___#_#_____#_____#_#_#___#_#",
-        # "#####_#_#####_#####_###_#_#_#_#####_#",
-        # "#___#_#_______#_____#_#_#_#_#_____#_#",
-        # "#_#_#######_#_#_#####_###_#_#####_#_#",
-        # "#_#_______#_#_#___#_____#_____#___#_#",
-        # "#_#######_###_###_#_###_#####_#_###_#",
-        # "#_____#___#_#___#_#___#_____#_#_____#",
-        # "#_###_###_#_###_#_#####_#_#_#_#######",
-        # "#___#___#_#_#___#___#___#_#_#___#___#",
-        # "#######_#_#_#_#####_#_###_#_###_###_#",
-        # "#_____#_#_____#___#_#___#_#___#_____#",
-        # "#_###_#_#####_###_#_###_###_#######_#",
-        # "#_#___#_____#_____#___#_#_#_______#_#",
-        # "#_#_#####_#_###_#####_#_#_#######_#_#",
-        # "#_#_____#_#_#_#_#_____#_______#_#___#",
-        # "#_#####_#_#_#_###_#####_#####_#_#####",
-        # "#_#___#_#_#_____#_____#_#___#_______#",
-        # "#_#_###_###_###_#####_###_#_#####_#_#",
-        # "#_#_________#_____#_______#_______#_#",
-        # "#####################################",
-        # "##########",
-        # "#________#",
-        # "#_######_#",
-        # "#_#______#",
-        # "#_#____#_#",
-        # "#_#_####_#",
-        # "#_#____#_#",
-        # "#_###__#_#",
-        # "#___#__#_#",
-        # "#__##__#_#",
-        # "##########",
     ]
     point_lang = point.RealPoint()
     coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
@@ -677,6 +643,68 @@ def run_lsys_search(config):
         save=True,
         save_dir=save_dir
     )
+
+
+def run_ant_search(config):
+    expected_keys = {"search"}
+    assert all(k in config for k in expected_keys), \
+        f"Expected keys {expected_keys}, got {set(config.keys())}"
+
+    seed = config.search["random_seed"]
+    np.random.seed(seed)
+
+    popn_size = config.search["popn_size"]
+    n_epochs = config.search["n_epochs"]
+    sim_steps = config.search["sim_steps"]
+    program_depth = config.search["program_depth"]
+
+    maze_map = maze.Maze.from_saved("lehman-ecj-11-hard")
+    # featurizer = ant.TrailFeaturizer(stride=1)
+    featurizer = ant.HeatMapFeaturizer(maze)
+    lang = ant.FixedDepthAnt(
+        maze=maze_map,
+        high_state_dim=4,
+        low_state_dim=111,
+        program_depth=program_depth,
+        steps=sim_steps,
+        featurizer=featurizer
+    )
+
+    # make starting set of programs
+    x_init_params = np.random.multivariate_normal(
+        np.zeros(ant.n_params),
+        np.eye(ant.n_params),
+        size=popn_size,
+    )
+    x_init = [lang.make_program(p) for p in x_init_params]
+
+    generator = mcmc_lang_rr(
+        lang=lang,
+        x_init=x_init,
+        popn_size=popn_size,
+        n_epochs=n_epochs,
+        fit_policy=config.search["fit_policy"],
+        accept_policy=config.search["accept_policy"],
+        distance_metric=config.search["distance_metric"],
+        archive_size=config.search["archive_size"],
+        archive_beta=config.search["archive_beta"],
+        length_cap=config.search["length_cap"],
+    )
+    
+    # process data
+    for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
+        np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
+        analysis_data = analyzer_iter(d, threshold=1e-10)
+        # todo: ant trail/heatmap viz
+        heatmap = d["x_feat"]
+        log = {
+            **d,
+            **analysis_data,
+            "step": i,
+        }
+        log = {k: v for k, v in log.items()
+               if k not in {"x", "x'"} and not k.endswith("_feat")}
+        wandb.log(log)
 
 
 def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
