@@ -46,14 +46,14 @@ class FixedDepthAnt(Language):
     # """
 
     def __init__(
-            self, 
+            self,
             high_state_dim: int,  # state space dimensions in symbolic program (rangefinders)
             low_state_dim: int,   # state space dim for primitive policies
             program_depth: int,
             maze: Maze,
             steps: int,
-            primitives_dir="/home/djl328/prob-repl/src/lang/primitives/ant",
             featurizer: Featurizer,
+            primitives_dir="/home/djl328/prob-repl/src/lang/primitives/ant",
     ):
         assert program_depth > 1
         assert high_state_dim > 0
@@ -71,9 +71,15 @@ class FixedDepthAnt(Language):
             featurizer=featurizer,
         )
 
+        # load primitives
+        self.primitives = [
+            torch.load(f"{primitives_dir}/{direction}.pt").pi
+            for direction in ["up", "down", "left", "right"]
+        ]
+
         self.high_state_dim = high_state_dim
         self.low_state_dim = low_state_dim
-        self.action_dim = len(primitives)
+        self.action_dim = len(self.primitives)
 
         self.n_cond_params = self.n_conds * (self.high_state_dim + 1)
         self.n_stmt_params = self.n_stmts * self.action_dim
@@ -81,12 +87,6 @@ class FixedDepthAnt(Language):
 
         self.cond_shape = (self.n_conds, self.high_state_dim + 1)
         self.stmt_shape = (self.n_stmts, self.action_dim)
-
-        # load primitives
-        self.primitives = [
-            torch.load(f"{primitives_dir}/{direction}.pt").pi
-            for direction in ["up", "down", "left", "right"]
-        ]
 
         # mujoco env
         self.steps = steps
@@ -398,7 +398,6 @@ if __name__ == "__main__":
     tree = lang.parse(s)
     print(tree, lang.to_str(tree), sep='\n')
     print(lang._extract_params(tree))
-    print(lang._flat_params(tree))
     actions = lang.eval(tree)
 
     outputs = []
