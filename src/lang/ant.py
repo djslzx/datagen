@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Tuple
 import numpy as np
 import einops as ein
 from scipy.special import softmax
+from scipy import stats
 import torch
 import torch.nn as nn
 import gymnasium as gym
@@ -46,25 +47,21 @@ class FixedDepthAnt(Language):
 
     def __init__(
             self, 
-            high_state_dim: int, 
-            low_state_dim: int, 
-            program_depth: int, 
+            high_state_dim: int,  # state space dimensions in symbolic program (rangefinders)
+            low_state_dim: int,   # state space dim for primitive policies
+            program_depth: int,
             maze: Maze,
             steps: int,
             primitives: List[nn.Module],
             featurizer: Featurizer,
-            temperature=0.5,
-            structure_params=False,
     ):
         assert program_depth > 1
         assert high_state_dim > 0
         assert low_state_dim > 0
-        assert 0 <= temperature <= 1
         assert steps > 0
 
         self.n_conds = program_depth - 1
         self.n_stmts = program_depth
-        self.temperature = temperature
 
         super().__init__(
             parser_grammar=FixedDepthAnt.grammar,
@@ -79,9 +76,12 @@ class FixedDepthAnt(Language):
         self.action_dim = len(primitives)
         self.primitives = primitives
 
-        if structure_params:
-            raise NotImplementedError("Structured params are not yet implemented")
-        self.structure_params = structure_params
+        self.n_cond_params = self.n_conds * (self.high_state_dim + 1)
+        self.n_stmt_params = self.n_stmts * self.action_dim
+
+        self.cond_shape = (self.n_conds, self.high_state_dim + 1)
+        self.stmt_shape = (self.n_stmts, self.action_dim)
+
 
         # mujoco env
         self.steps = steps
@@ -106,47 +106,76 @@ class FixedDepthAnt(Language):
             "azimuth": 0,
         }
 
-    def _structured_params(self, t: Tree) -> Tuple[np.ndarray, np.ndarray]:
+        # initial sampling distribution: assume uniform weights
+        null_data = np.zeros(self.n_cond_params + self.n_stmt_params)
+        self.distribution = MultivariateGaussianSampler(null_data)
+
+    def _extract_params(self, t: Tree) -> Tuple[np.ndarray, np.ndarray]:
         assert t.value == "root"
         assert len(t.children) == 2
         conds = t.children[0]
         stmts = t.children[1]
 
-        cond_vec = np.stack([
+        t_conds = np.stack([
             np.array([float(gc.value) for gc in c.children])
             for c in conds.children
         ])
-        expected_cond_vec_shape = (self.n_conds, self.high_state_dim + 1)
-        assert cond_vec.shape == expected_cond_vec_shape, \
-            (f"Expected condition params of shape {expected_cond_vec_shape}, "
-             f"but got {cond_vec.shape}")
+        assert t_conds.shape == self.cond_shape, \
+            (f"Expected condition params of shape {self.cond_shape}, "
+             f"but got {t_conds.shape}")
 
-        stmt_vec = np.stack([
+        t_stmts = np.stack([
             np.array([float(gc.value) for gc in c.children])
             for c in stmts.children
         ])
-        expected_stmt_vec_shape = (self.n_stmts, self.action_dim) 
-        assert stmt_vec.shape == expected_stmt_vec_shape, \
-            (f"Expected statement params of shape {expected_stmt_vec_shape}, "
-             f"but got {stmt_vec.shape}")
+        assert t_stmts.shape == self.stmt_shape, \
+            (f"Expected statement params of shape {self.stmt_shape}, "
+             f"but got {t_stmts.shape}")
 
-        return cond_vec, stmt_vec
+        return t_conds, t_stmts
 
     def _flat_params(self, t: Tree) -> np.ndarray:
-        cond_vec, stmt_vec = FixedDepthAnt._structured_params(self, t)
-        return ein.pack([cond_vec, stmt_vec], "*")[0]
+        conds, stmts = self._extract_params(t)
+        return ein.pack([conds, stmts], "*")[0]
+
+    @staticmethod
+    def _sample_params() -> Tuple[np.ndarray, np.ndarray]:
+        params = self.distribution.sample(k=1)
+        assert len(params) == (self.n_cond_params + self.n_stmt_params)
+
+        conds = ein.rearrange(params[:self.n_cond_params], "(n d) -> n d", n=self.n_conds)
+        stmts = ein.rearrange(params[self.n_cond_params:], "(n d) -> n d", n=self.n_stmts)
+
+        return conds, stmts
+
+    @staticmethod
+    def _array_to_str(arr: np.ndarray) -> str:
+        return "[" + " ".join(
+            str(v) for v in arr
+        ) + "]"
 
     def sample(self) -> Tree:
-        raise NotImplementedError
+        conds, stmts = self._sample_params()
+        conds_str = " ".join(self._array_to_str(cond) for cond in conds)
+        stmts_str = " ".join(self._array_to_str(stmt) for stmt in stmts)
+
+        return self.parse(f"""
+            (ant (conds {conds_str}) 
+                 (stmts {stmts_str}))
+        """)
 
     def fit(self, corpus: List[Tree], alpha):
-        raise NotImplementedError
+        all_params = [
+            self._flat_params(tree)
+            for tree in corpus
+        ]
+        self.distribution = MultivariateGaussianSampler(data)
 
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Iterable[np.ndarray]:
         assert t.value == "root"
 
         # extract parameters from program
-        cond_params, stmt_params = self._structured_params(t)
+        conds, stmts = self._extract_params(t)
         
         # run sim loop
         obs, info = self.gym_env.reset(seed=0)
@@ -154,13 +183,15 @@ class FixedDepthAnt(Language):
         # construct high-level observations for symbolic program
         x, y = obs['achieved_goal']
         yield np.array([x, y])
+
+        # rangefinder distances, nsew
         dists = self.maze.cardinal_wall_distances(x, y)
        # todo: add more high-level features?
         
         for step in range(self.steps):
             action = self.act_from_params(
-                cond_params, 
-                stmt_params, 
+                conds, 
+                stmts, 
                 high_obs=dists,
                 low_obs=obs['observation'],
             )
@@ -191,18 +222,20 @@ class FixedDepthAnt(Language):
 
     def act_from_params(
             self, 
-            cond_params: np.ndarray,
-            stmt_params: np.ndarray,
+            conds: np.ndarray,
+            stmts: np.ndarray,
             high_obs: np.ndarray,
             low_obs: np.ndarray,
     ) -> np.ndarray:
         assert high_obs.ndim == 1, f"Expected 1D high-level obs array, got {high_obs.shape}"
         assert low_obs.ndim == 1, f"Expected 1D low-level obs array, got {low_obs.shape}"
-        assert high_obs.shape[0] == self.high_state_dim, f"Expected high obs dim {self.high_state_dim}, got {high_obs.shape}"
-        assert low_obs.shape[0] == self.low_state_dim, f"Expected low obs dim {self.low_state_dim}, got {low_obs.shape}"
+        assert high_obs.shape[0] == self.high_state_dim, \
+            f"Expected high obs dim {self.high_state_dim}, got {high_obs.shape}"
+        assert low_obs.shape[0] == self.low_state_dim, \
+            f"Expected low obs dim {self.low_state_dim}, got {low_obs.shape}"
 
         # simulate program to get weights over primitive policies
-        action_weights = self.fold_eval_E(cond_params, stmt_params, high_obs)
+        action_weights = self.fold_eval_E(conds, stmts, high_obs)
 
         # compile primitives
         primitive_actions = []
@@ -216,18 +249,26 @@ class FixedDepthAnt(Language):
         
         return action
 
-    def extract_features(self, trees: Collection[Tree], n_samples=1, batch_size=4, load_bar=False) -> np.ndarray:
-        raise NotImplementedError("Ant should handle feature extraction differently than exec-once langs")
+    def extract_features(
+            self, 
+            trees: Collection[Tree], 
+            n_samples=1,
+            batch_size=4,
+            load_bar=False
+    ) -> np.ndarray:
+        raise NotImplementedError(
+            "Ant should handle feature extraction differently than exec-once langs"
+        )
 
     def fold_eval_E(
             self, 
-            cond_params: np.ndarray,
-            stmt_params: np.ndarray,
+            conds: np.ndarray,
+            stmts: np.ndarray,
             state: np.ndarray,
     ) -> np.ndarray:
         """Evaluate E by folding, no recursion"""
-        e = stmt_params[-1]
-        for b, c in zip(cond_params[::-1], stmt_params[:-1][::-1]):
+        e = stmts[-1]
+        for b, c in zip(conds[::-1], stmts[:-1][::-1]):
             w = softmax(b[-1] + np.dot(b[:-1], state))
             e = w * c + (1 - w) * e
         return e
@@ -297,6 +338,37 @@ class TrailHeatMap(Featurizer):
         return heatmap
 
 
+class MultivariateGaussianSampler:
+    def __init__(self, data: np.ndarray):
+        assert data.ndim in {1, 2}, f"Expected 1D or 2D data, but got {data.shape}"
+
+        # if data consists of a single example in 2D, flatten to 1D
+        if data.shape[0] == 1:
+            data = np.ravel()
+
+        # use different distributions depending on whether we get
+        #  a single data point or many
+        if data.ndim == 1:
+            self.rv_kind = "single"
+            self.rv = stats.multivariate_normal(mean=data)
+        else:
+            n, d = data.shape
+            assert n >= d, "Number of samples must be greater than number of dimensions"
+
+            self.rv_kind = "multiple"
+            self.rv = stats.gaussian_kde(data.T)
+
+    def sample(self, k: int) -> np.ndarray:
+        if self.rv_kind == "single":
+            return self.rv.rvs(k)
+        else:
+            samples = self.rv.resample(k)
+            return ein.rearrange(samples, "d k -> k d", k=k)
+
+    def logpdf(self, x) -> float:
+        return self.rv.logpdf(x).item()
+
+
 if __name__ == "__main__":
     np.random.seed(0)
     STEPS = 100
@@ -305,7 +377,10 @@ if __name__ == "__main__":
         torch.load(f"{primitives_dir}/{direction}.pt").pi
         for direction in ["up", "down", "left", "right"]
     ]
-    maze = Maze.from_saved("lehman-ecj-11-hard")
+    maze = Maze.from_saved(
+        "lehman-ecj-11-hard"
+        # "cross"
+    )
     featurizer = TrailHeatMap(maze.width, maze.height, maze.scaling)
     lang = FixedDepthAnt(
         maze=maze,
@@ -323,7 +398,7 @@ if __name__ == "__main__":
     """
     tree = lang.parse(s)
     print(tree, lang.to_str(tree), sep='\n')
-    print(lang._structured_params(tree))
+    print(lang._extract_params(tree))
     print(lang._flat_params(tree))
     actions = lang.eval(tree)
 
