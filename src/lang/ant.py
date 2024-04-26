@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from lang.tree import Language, Tree, Grammar, ParseError, Featurizer
 from lang.maze import Maze
 from spinup.algos.pytorch.sac.core import SquashedGaussianMLPActor
+import util
 
 
 class FixedDepthAnt(Language):
@@ -23,11 +24,11 @@ class FixedDepthAnt(Language):
     """
     # grammar with list structure
     grammar = r"""
-        root: "(" "ant" "(" "conds" conds ")" \
-                        "(" "stmts" stmts ")" ")" -> root
-        conds: vec+                               -> conds
-        stmts: vec+                               -> stmts
-        vec: "[" (NUMBER ","?)* "]"               -> vec
+        root: "(" "root" "(" "conds" conds ")" \
+                         "(" "stmts" stmts ")" ")" -> root
+        conds: vec+                                -> conds
+        stmts: vec+                                -> stmts
+        vec: "[" (NUMBER ","?)* "]"                -> vec
 
         %import common.NUMBER
         %import common.WS
@@ -47,23 +48,32 @@ class FixedDepthAnt(Language):
 
     def __init__(
             self,
-            high_state_dim: int,  # state space dimensions in symbolic program (rangefinders)
-            low_state_dim: int,   # state space dim for primitive policies
             program_depth: int,
             maze: Maze,
             steps: int,
             featurizer: Featurizer,
+            high_state_dim=9,   # state space dimensions in symbolic program (rangefinders)
+            low_state_dim=111,  # state space dim for primitive policies
             primitives_dir="/home/djl328/prob-repl/src/lang/primitives/ant",
+            camera="fixed",
             save_video=True,
+            video_dir="videos",
+            seed=0,
     ):
         assert program_depth > 1
         assert high_state_dim > 0
         assert low_state_dim > 0
         assert steps > 0
+        assert camera in {"fixed", "follow"}, f"Camera setting must be either 'fixed' or 'follow'"
+        assert maze.scaling == 4, \
+            f"gymnasium AntMaze assumes scale of 4, but got maze with scale={maze.scaling}"
 
         self.n_conds = program_depth - 1
         self.n_stmts = program_depth
         self.save_video = save_video
+        self.video_dir = video_dir
+        self.camera_mode = camera
+        self.seed = seed
 
         super().__init__(
             parser_grammar=FixedDepthAnt.grammar,
@@ -92,30 +102,29 @@ class FixedDepthAnt(Language):
 
         # mujoco env
         self.steps = steps
-        assert maze.scaling == 4, \
-            f"gymnasium AntMaze assumes scale of 4, but got maze with scale={maze.scaling}"
         self.maze = maze
         self.gym_env = gym.make(
             "AntMaze_UMaze-v4", 
             maze_map=maze.str_map, 
             render_mode="rgb_array_list",
-            camera_name="free",
+            camera_name="free" if self.camera_mode == "fixed" else None,
             use_contact_forces=True,  # required to match ICLR'22 paper
         )
-
-        # camera settings
-        ant_env = self.gym_env.unwrapped.ant_env
-        ant_env.mujoco_renderer.default_cam_config = {
-            "trackbodyid": 0,
-            "elevation": -60,
-            "lookat": np.array([0, 0.0, 0.0]),
-            "distance": ant_env.model.stat.extent * 1.5,
-            "azimuth": 0,
-        }
 
         # initial sampling distribution: assume uniform weights
         null_data = np.zeros(self.n_cond_params + self.n_stmt_params)
         self.distribution = MultivariateGaussianSampler(null_data)
+
+        # camera settings
+        if self.save_video and self.camera_mode == "fixed":
+            ant_env = self.gym_env.unwrapped.ant_env
+            ant_env.mujoco_renderer.default_cam_config = {
+                "trackbodyid": 0,
+                "elevation": -60,
+                "lookat": np.array([0, 0.0, 0.0]),
+                "distance": ant_env.model.stat.extent * 1.5,
+                "azimuth": 0,
+            }
 
     def _extract_params(self, t: Tree) -> Tuple[np.ndarray, np.ndarray]:
         assert t.value == "root"
@@ -141,9 +150,6 @@ class FixedDepthAnt(Language):
 
         return t_conds, t_stmts
 
-    def flatten_params(self, conds: np.ndarray, stmts: np.ndarray) -> np.ndarray:
-        return ein.pack([conds, stmts], "*")[0]
-
     def unflatten_params(self, params: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         assert len(params) == self.n_params
         conds = ein.rearrange(params[:self.n_cond_params], "(n d) -> n d", n=self.n_conds)
@@ -157,12 +163,15 @@ class FixedDepthAnt(Language):
         ) + "]"
 
     def make_program(self, params: np.ndarray) -> Tree:
+        assert params.ndim == 1
+        assert params.shape[0] == self.n_params, f"Expected {self.n_params}, got {params.shape}"
+
         conds, stmts = self.unflatten_params(params)
         conds_str = " ".join(self._array_to_str(cond) for cond in conds)
         stmts_str = " ".join(self._array_to_str(stmt) for stmt in stmts)
         return self.parse(f"""
-            (ant (conds {conds_str}) 
-                 (stmts {stmts_str}))
+            (root (conds {conds_str}) 
+                  (stmts {stmts_str}))
         """)
 
     def sample(self) -> Tree:
@@ -173,7 +182,7 @@ class FixedDepthAnt(Language):
         all_params = []
         for tree in corpus:
             c, s = self._extract_params(tree)
-            params = self.flatten_params(c, s)
+            params, _ = ein.pack([c, s], "*")
             all_params.append(params)
 
         self.distribution = MultivariateGaussianSampler(data)
@@ -181,46 +190,43 @@ class FixedDepthAnt(Language):
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Iterable[np.ndarray]:
         assert t.value == "root"
 
-        outputs = []
-
         # extract parameters from program
         conds, stmts = self._extract_params(t)
         
         # run sim loop
-        obs, info = self.gym_env.reset(seed=0)
+        obs, info = self.gym_env.reset(seed=self.seed)
 
-        # construct high-level observations for symbolic program
-        x, y = obs['achieved_goal']
-        outputs.append([x, y])
+        # output ant trail
+        outputs = []
 
-        # rangefinder distances, nsew
-        dists = self.maze.cardinal_wall_distances(x, y)
-       # todo: add more high-level features?
-        
         for step in range(self.steps):
-            action = self.act_from_params(
-                conds, 
-                stmts, 
-                high_obs=dists,
-                low_obs=obs['observation'],
-            )
-            obs, _, terminated, truncated, info = self.gym_env.step(action)
-
             x, y = obs['achieved_goal']
             outputs.append([x, y])
-            
+
+            # construct high-level observations for symbolic program
+            orientation = obs['observation'][:5]
+            dists = self.maze.cardinal_wall_distances(x, y)
+            high_obs, _ = ein.pack([orientation, dists], "*")
+
+            # get low-level observations for policy
+            low_obs = obs['observation']
+        
+            action = self.act_from_params(conds, stmts, high_obs=high_obs, low_obs=low_obs)
+            obs, _, terminated, truncated, info = self.gym_env.step(action)
+
             if terminated or truncated:
                 break
 
         if self.save_video:
+            pdb.set_trace()
             save_video(
                 self.gym_env.render(),
-                "videos",
+                self.video_dir,
                 fps=self.gym_env.metadata["render_fps"],
                 step_starting_index=0,
                 episode_index = 0,
             )
-        # self.gym_env.close()
+        # self.gym_env.close()  # don't close for now b/c we want to eval multiple times per language
         return np.array(outputs)
 
     @staticmethod
@@ -373,7 +379,11 @@ class MultivariateGaussianSampler:
 
 if __name__ == "__main__":
     np.random.seed(0)
-    STEPS = 100
+
+    ts = util.timestamp()
+    video_dir = f"videos/{ts}"
+    util.try_mkdir(video_dir)
+
     maze = Maze.from_saved(
         "lehman-ecj-11-hard"
         # "cross"
@@ -381,18 +391,17 @@ if __name__ == "__main__":
     featurizer = HeatMapFeaturizer(maze)
     lang = FixedDepthAnt(
         maze=maze,
-        high_state_dim=4,
-        low_state_dim=111,
-        program_depth=2,
-        steps=STEPS,
+        program_depth=6,
+        steps=500,
         featurizer=featurizer,
-        save_video=False,
+        save_video=True,
+        video_dir=video_dir,
+        camera="follow",
     )
-    s = f"""
-        (ant (conds [{' '.join([str(i) for i in range(4 + 1)])}]) 
-             (stmts [1. 0. 0. 0.] 
-                    [0. 1. 0. 0.]))
-    """
+    params = np.random.rand(lang.n_params)
+    p = lang.make_program(params)
+    s = lang.to_str(p)
+
     tree = lang.parse(s)
     print(tree, lang.to_str(tree), sep='\n')
     print(lang._extract_params(tree))
