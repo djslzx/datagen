@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pdb
 import sys
+import math
 from typing import List, Optional, Union
 import numpy as np
 import shapely as shp
@@ -121,6 +122,9 @@ class Maze:
         self.walls = polygon_from_bitmap(walls, scaling=scaling)
         self.str_map = maze_map
 
+        self.x_center = self.width * self.scaling / 2.
+        self.y_center = self.height * self.scaling / 2.
+
     @staticmethod
     def from_saved(name: str, scaling=4.) -> "Maze":
         if name not in SAVED_MAZES:
@@ -148,6 +152,16 @@ class Maze:
         rfs = self.cardinal_rangefinder_lines(p)
         dists = intersection_distances(p, self.walls, rfs)
         return np.array(dists)
+
+    def xy_to_rc(self, x: float, y: float) -> Tuple[int, int]:
+        r = math.floor((self.y_center - y) / self.scaling)
+        c = math.floor((x + self.x_center) / self.scaling)
+        return r, c
+
+    def rc_to_xy(self, r: int, c: int) -> Tuple[float, float]:
+        x = (c + 0.5) * self.scaling - self.x_center
+        y = -((r + 0.5) * self.scaling - self.y_center)
+        return x, y
 
 
 def make_square(x: float, y: float, s: float) -> shp.Polygon:
