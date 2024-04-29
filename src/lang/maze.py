@@ -3,14 +3,14 @@ from __future__ import annotations
 import pdb
 import sys
 import math
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 import numpy as np
 import shapely as shp
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 from matplotlib.collections import PatchCollection
-import PIL
+from PIL import Image
 from io import BytesIO
 
 
@@ -165,21 +165,22 @@ class Maze:
         y = -(r * self.scaling - self.y_center)
         return x, y
 
-    @property
     def limits(self) -> Tuple[Tuple[float, float],
                               Tuple[float, float]]:
-        xmin, ymin = self.rc_to_xy(0, 0)
-        xmax, ymax = self.rc_to_xy(self.height, self.width)
+        xmin = -self.x_center
+        ymin = -self.y_center
+        xmax = self.width * self.scaling - self.x_center
+        ymax = self.height * self.scaling - self.y_center
         return (xmin, xmax), (ymin, ymax)
 
-    def wandb_trail(self, path: np.ndarray) -> PIL.Image:
-        assert path.ndim == 2, f"Expected 2D trail, got {path.shape}"
+    def trail_img(self, coords: np.ndarray) -> Image:
+        assert coords.ndim == 2, f"Expected 2D trail, got {coords.shape}"
 
         # time colorscale
-        t = np.arange(len(path))  
+        t = np.arange(len(coords))
 
         fig, ax = plt.subplots()
-        plt.scatter(path[:, 0], path[:, 1], s=2, c=t, cmap='viridis')
+        plt.scatter(coords[:, 0], coords[:, 1], s=2, c=t, cmap='viridis')
 
         # add maze bitmap
         plot_shapes(ax, [self.walls])
@@ -203,7 +204,7 @@ class Maze:
         buf.seek(0)
 
         # Convert buffer to a PIL image, then to a numpy array
-        img = wandb.Image(Image.open(buf))
+        img = Image.open(buf)
         plt.close()
         return img
 
@@ -303,7 +304,8 @@ def demo_maze_rangefinders():
     plt.show()
     plt.close()
     print(maze.cardinal_wall_distances(ant.x, ant.y))
-
+    xlim, ylim = maze.limits()
+    print(f"xlim={xlim}, ylim={ylim}")
 
 if __name__ == "__main__":
     demo_maze_rangefinders()
