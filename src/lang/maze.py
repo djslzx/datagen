@@ -10,8 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 from matplotlib.collections import PatchCollection
-from PIL import Image
-from io import BytesIO
+import wandb
 
 
 def bmp_from_str(str_map: List[str]) -> List[List[Union[int, str]]]:
@@ -172,7 +171,7 @@ class Maze:
         ymin, ymax = ymax, ymin
         return (xmin, xmax), (ymin, ymax)
 
-    def trail_img(self, coords: np.ndarray) -> Image:
+    def trail_img(self, coords: np.ndarray) -> wandb.Image:
         assert coords.ndim == 2, f"Expected 2D trail, got {coords.shape}"
 
         # time colorscale
@@ -193,18 +192,7 @@ class Maze:
         plt.colorbar()
         plt.tight_layout()
 
-        # test plot
-        plt.savefig("path.png")
-
-        # Render the plot to a buffer
-        buf = BytesIO()
-        fig.savefig(buf)
-        buf.seek(0)
-
-        # Convert buffer to a PIL image, then to a numpy array
-        img = Image.open(buf)
-        plt.close()
-        return img
+        return wandb.Image(fig)
 
 
 def make_square(x: float, y: float, s: float) -> shp.Polygon:
