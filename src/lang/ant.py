@@ -28,7 +28,9 @@ class FixedDepthAnt(Language):
                          "(" "stmts" stmts ")" ")" -> root
         conds: vec+                                -> conds
         stmts: vec+                                -> stmts
-        vec: "[" (NUMBER ","?)* "]"                -> vec
+        vec: "[" (float ","?)* "]"                 -> vec
+        float: NUMBER                              -> pos
+             | "-" NUMBER                          -> neg
 
         %import common.NUMBER
         %import common.WS
@@ -126,6 +128,12 @@ class FixedDepthAnt(Language):
                 "azimuth": 0,
             }
 
+    def _parse_leaf(self, t: Tree) -> float:
+        if t.value == "pos":
+            return float(t.children[0].value)
+        elif t.value == "neg":
+            return -float(t.children[0].value)
+
     def _extract_params(self, t: Tree) -> Tuple[np.ndarray, np.ndarray]:
         assert t.value == "root"
         assert len(t.children) == 2
@@ -133,7 +141,7 @@ class FixedDepthAnt(Language):
         stmts = t.children[1]
 
         t_conds = np.stack([
-            np.array([float(gc.value) for gc in c.children])
+            np.array([self._parse_leaf(gc) for gc in c.children])
             for c in conds.children
         ])
         assert t_conds.shape == self.cond_shape, \
@@ -141,7 +149,7 @@ class FixedDepthAnt(Language):
              f"but got {t_conds.shape}")
 
         t_stmts = np.stack([
-            np.array([float(gc.value) for gc in c.children])
+            np.array([self._parse_leaf(gc) for gc in c.children])
             for c in stmts.children
         ])
         assert t_stmts.shape == self.stmt_shape, \
@@ -285,6 +293,8 @@ class FixedDepthAnt(Language):
             "conds": lambda *conds: " ".join(conds),
             "stmts": lambda *stmts: " ".join(stmts),
             "vec": lambda *xs: "[" + (" ".join(xs)) + "]",
+            "pos": lambda n: f"{n}",
+            "neg": lambda n: f"-{n}",
         }
 
 
@@ -397,7 +407,7 @@ if __name__ == "__main__":
         video_dir=video_dir,
         camera="follow",
     )
-    params = np.random.rand(lang.n_params)
+    params = np.random.rand(lang.n_params) * 2 - 1
     p = lang.make_program(params)
     s = lang.to_str(p)
 
