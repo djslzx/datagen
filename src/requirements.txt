@@ -67,3 +67,4 @@ gymnasium-robotics == 1.2.4
 moviepy  # for viz
 PyOpenGL
 PyOpenGL_accelerate
+shapely  # computational geo
