@@ -185,8 +185,7 @@ class Maze:
         plot_shapes(ax, [self.walls])
 
         # set limits
-        pdb.set_trace()
-        xlim, ylim = self.limits
+        xlim, ylim = self.limits()
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
 
