@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 from matplotlib.collections import PatchCollection
+import PIL
+from io import BytesIO
 
 
 def bmp_from_str(str_map: List[str]) -> List[List[Union[int, str]]]:
@@ -159,19 +161,60 @@ class Maze:
         return r, c
 
     def rc_to_xy(self, r: int, c: int) -> Tuple[float, float]:
-        x = (c + 0.5) * self.scaling - self.x_center
-        y = -((r + 0.5) * self.scaling - self.y_center)
+        x = c * self.scaling - self.x_center
+        y = -(r * self.scaling - self.y_center)
         return x, y
+
+    @property
+    def limits(self) -> Tuple[Tuple[float, float],
+                              Tuple[float, float]]:
+        xmin, ymin = self.rc_to_xy(0, 0)
+        xmax, ymax = self.rc_to_xy(self.height, self.width)
+        return (xmin, xmax), (ymin, ymax)
+
+    def wandb_trail(self, path: np.ndarray) -> PIL.Image:
+        assert path.ndim == 2, f"Expected 2D trail, got {path.shape}"
+
+        # time colorscale
+        t = np.arange(len(path))  
+
+        fig, ax = plt.subplots()
+        plt.scatter(path[:, 0], path[:, 1], s=2, c=t, cmap='viridis')
+
+        # add maze bitmap
+        plot_shapes(ax, [self.walls])
+
+        # set limits
+        pdb.set_trace()
+        xlim, ylim = self.limits
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+
+        # plot setup
+        plt.colorbar()
+        plt.tight_layout()
+
+        # test plot
+        plt.savefig("path.png")
+
+        # Render the plot to a buffer
+        buf = BytesIO()
+        fig.savefig(buf)
+        buf.seek(0)
+
+        # Convert buffer to a PIL image, then to a numpy array
+        img = wandb.Image(Image.open(buf))
+        plt.close()
+        return img
 
 
 def make_square(x: float, y: float, s: float) -> shp.Polygon:
-    """Make a square centered at (x, y) with side length s"""
-    d = 0.5 * s
+    """Make a square with bottom left corner at (x, y) with side length s"""
     return shp.Polygon(shell=[
-        (x - d, y - d),
-        (x - d, y + d),
-        (x + d, y + d),
-        (x + d, y - d),
+        (x, y),
+        (x, y + s),
+        (x + s, y + s),
+        (x + s, y),
     ])
 
 
@@ -187,8 +230,8 @@ def polygon_from_bitmap(bmp: np.ndarray, scaling: float = 1.0) -> shp.Polygon:
     for i in range(height):
         for j in range(width):
             if bmp[i][j]:
-                x = (j + 0.5) * scaling - x_center
-                y = -((i + 0.5) * scaling - y_center)
+                x = j * scaling - x_center
+                y = -(i * scaling - y_center)
                 squares.append(make_square(x, y, s=scaling))
     return shp.unary_union(squares)
 
@@ -224,8 +267,7 @@ def first_point(overlaps) -> Optional[shp.Point]:
     return shp.Point(overlaps.geoms[0].coords[0])
 
 
-def plot_shapes(shapes: shp.geometry, **kwargs):
-    fig, ax = plt.subplots()
+def plot_shapes(ax, shapes: shp.geometry, **kwargs):
     for shape in shapes:
         if isinstance(shape, shp.Polygon):
             plot_polygon(ax, shape, color="gray")
@@ -256,7 +298,8 @@ def demo_maze_rangefinders():
     # ant = shp.Point(0.8669061676890559, -3.7016983612545915)
     ant = shp.Point(-0.6673714628512808, -3.758217991828773)
 
-    plot_shapes([maze.walls, ant])
+    fig, ax = plt.subplots()
+    plot_shapes(ax, [maze.walls, ant])
     plt.show()
     plt.close()
     print(maze.cardinal_wall_distances(ant.x, ant.y))
