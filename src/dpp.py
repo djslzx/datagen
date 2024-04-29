@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union, Generator, Any
+from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union, Generator, Any, Callable
 import numpy as np
 import pandas as pd
 import yaml
@@ -657,13 +657,21 @@ def run_ant_search(config):
     n_epochs = config.search["n_epochs"]
     sim_steps = config.search["sim_steps"]
     program_depth = config.search["program_depth"]
+    featurizer_name = config.featurizer
 
     maze_map = maze.Maze.from_saved("lehman-ecj-11-hard")
-    # featurizer = ant.TrailFeaturizer(stride=1)
-    featurizer = ant.HeatMapFeaturizer(maze)
+    if featurizer_name == "Trail":
+        featurizer = ant.TrailFeaturizer(stride=1)
+    elif featurizer_name == "End":
+        featurizer = ant.EndFeaturizer()
+    elif featurizer_name == "Heatmap":
+        featurizer = ant.HeatMapFeaturizer(maze)
+    else:
+        raise ValueError(f"Invalid featurizer type for ant domain: {featurizer_name}")
+
     lang = ant.FixedDepthAnt(
         maze=maze_map,
-        high_state_dim=4,
+        high_state_dim=9,
         low_state_dim=111,
         program_depth=program_depth,
         steps=sim_steps,
@@ -695,11 +703,12 @@ def run_ant_search(config):
     for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
         np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
         analysis_data = analyzer_iter(d, threshold=1e-10)
-        # todo: ant trail/heatmap viz
-        heatmap = d["x_feat"]
+        coords = d["x_feat"]
+        trail_img = maze_map.trail_img(coords)
         log = {
             **d,
             **analysis_data,
+            "trail": trail_img,
             "step": i,
         }
         log = {k: v for k, v in log.items()
@@ -787,13 +796,11 @@ def check_fuzzballs(filename: str):
                 plt.show()
 
 
-def sweep():
-    sweep_config = "./configs/mcmc-lsystem.yaml"
-    with open(sweep_config, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+def sweep(conf: str, run_fn: Callable):
+    with open(conf, "r") as conf_file:
+        config = yaml.load(conf_file, Loader=yaml.FullLoader)
     wandb.init(project="dpp", config=config)
-    config = wandb.config
-    run_lsys_search(config)
+    run_fn(wandb.config)    
 
 
 def local_searches():
@@ -819,5 +826,5 @@ def local_searches():
 
 
 if __name__ == "__main__":
-    sweep()
+    sweep("./configs/mcmc-ant.yaml", run_ant_search)
     # local_searches()
