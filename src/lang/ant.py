@@ -64,7 +64,7 @@ class FixedDepthAnt(Language):
             low_state_dim=111,  # state space dim for primitive policies
             primitives_dir="/home/djl328/prob-repl/src/lang/primitives/ant",
             camera="fixed",
-            save_video=True,
+            save_video=False,
             video_dir="videos",
             seed=0,
     ):
