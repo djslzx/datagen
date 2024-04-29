@@ -18,6 +18,12 @@ from spinup.algos.pytorch.sac.core import SquashedGaussianMLPActor
 import util
 
 
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+else:
+    device = torch.device("cpu")
+
+
 class FixedDepthAnt(Language):
     """
     Mujoco ant domain from Programmatic RL without Oracles, with fixed tree depth.
@@ -87,7 +93,7 @@ class FixedDepthAnt(Language):
 
         # load primitives
         self.primitives = [
-            torch.load(f"{primitives_dir}/{direction}.pt").pi
+            torch.load(f"{primitives_dir}/{direction}.pt").pi.to(device)
             for direction in ["up", "down", "left", "right"]
         ]
 
@@ -240,9 +246,9 @@ class FixedDepthAnt(Language):
     def get_action(model: nn.Module, x: np.ndarray) -> np.ndarray:
         assert x.ndim == 2, f"Model expects 2D array x, got {x.shape}"
         with torch.no_grad():
-            x = torch.as_tensor(x, dtype=torch.float32)
+            x = torch.as_tensor(x, dtype=torch.float32).to(device)
             action, _ = model(x, deterministic=True)
-        return action.numpy()
+        return action.cpu().numpy()
 
     def act_from_params(
             self, 
