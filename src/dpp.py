@@ -645,19 +645,19 @@ def run_lsys_search(config):
     )
 
 
-def run_ant_search(config):
+def run_ant_search(conf):
     expected_keys = {"search"}
-    assert all(k in config for k in expected_keys), \
-        f"Expected keys {expected_keys}, got {set(config.keys())}"
+    assert all(k in conf for k in expected_keys), \
+        f"Expected keys {expected_keys}, got {set(conf.keys())}"
 
-    seed = config.search["random_seed"]
+    seed = conf.random_seed
     np.random.seed(seed)
 
-    popn_size = config.search["popn_size"]
-    n_epochs = config.search["n_epochs"]
-    sim_steps = config.search["sim_steps"]
-    program_depth = config.search["program_depth"]
-    featurizer_name = config.featurizer
+    popn_size = conf.popn_size
+    n_epochs = conf.n_epochs
+    sim_steps = conf.sim_steps
+    program_depth = conf.program_depth
+    featurizer_name = conf.featurizer
 
     maze_map = maze.Maze.from_saved("lehman-ecj-11-hard")
     if featurizer_name == "Trail":
@@ -691,14 +691,22 @@ def run_ant_search(config):
         x_init=x_init,
         popn_size=popn_size,
         n_epochs=n_epochs,
-        fit_policy=config.search["fit_policy"],
-        accept_policy=config.search["accept_policy"],
-        distance_metric=config.search["distance_metric"],
-        archive_size=config.search["archive_size"],
-        archive_beta=config.search["archive_beta"],
-        length_cap=config.search["length_cap"],
+        fit_policy=conf.fit_policy,
+        accept_policy=conf.accept_policy,
+        distance_metric=conf.distance_metric,
+        archive_size=conf.archive_size,
+        archive_beta=conf.archive_beta,
+        length_cap=conf.length_cap,
     )
     
+    # make run directory
+    save_dir = f"../out/dpp/ant/{wandb.run.id}/"
+    try:
+        util.mkdir(save_dir)
+    except FileExistsError:
+        pass
+    util.mkdir(f"{save_dir}/data/")
+
     # process data
     for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
         np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
