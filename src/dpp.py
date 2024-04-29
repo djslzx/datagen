@@ -646,7 +646,20 @@ def run_lsys_search(config):
 
 
 def run_ant_search(conf):
-    expected_keys = {"search"}
+    expected_keys = {
+        "featurizer",
+        "random_seed",
+        "popn_size",
+        "n_epochs",
+        "sim_steps",
+        "fit_policy",
+        "accept_policy",
+        "distance_metric",
+        "archive_beta",
+        "archive_size",
+        "program_depth",
+        "length_cap",
+    }
     assert all(k in conf for k in expected_keys), \
         f"Expected keys {expected_keys}, got {set(conf.keys())}"
 
@@ -680,8 +693,8 @@ def run_ant_search(conf):
 
     # make starting set of programs
     x_init_params = np.random.multivariate_normal(
-        np.zeros(ant.n_params),
-        np.eye(ant.n_params),
+        np.zeros(lang.n_params),
+        np.eye(lang.n_params),
         size=popn_size,
     )
     x_init = [lang.make_program(p) for p in x_init_params]
