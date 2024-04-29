@@ -168,7 +168,7 @@ class Maze:
 
     def limits(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         xmin, ymin = self.rc_to_xy(-0.5, -0.5)
-        xmax, ymax = self.rc_to_xy(self.height, self.width)
+        xmax, ymax = self.rc_to_xy(self.height - 0.5, self.width - 0.5)
         ymin, ymax = ymax, ymin
         return (xmin, xmax), (ymin, ymax)
 
@@ -302,11 +302,13 @@ def demo_maze_rangefinders():
 
     fig, ax = plt.subplots()
     plot_shapes(ax, [maze.walls, ant])
+    xlim, ylim = maze.limits()
+    print(f"xlim={xlim}, ylim={ylim}")
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
     plt.show()
     plt.close()
     print(maze.cardinal_wall_distances(ant.x, ant.y))
-    xlim, ylim = maze.limits()
-    print(f"xlim={xlim}, ylim={ylim}")
 
 
 if __name__ == "__main__":
