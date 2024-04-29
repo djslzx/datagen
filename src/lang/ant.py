@@ -10,7 +10,7 @@ import torch.nn as nn
 import gymnasium as gym
 from gymnasium.utils.save_video import save_video
 from tqdm import tqdm
-import matplotlib.pyplot as plt
+import wandb
 
 from lang.tree import Language, Tree, Grammar, ParseError, Featurizer
 from lang.maze import Maze
@@ -199,7 +199,7 @@ class FixedDepthAnt(Language):
         # output ant trail
         outputs = []
 
-        for step in range(self.steps):
+        for step in tqdm(range(self.steps), desc="Evaluating ant"):
             x, y = obs['achieved_goal']
             outputs.append([x, y])
 
@@ -218,7 +218,6 @@ class FixedDepthAnt(Language):
                 break
 
         if self.save_video:
-            pdb.set_trace()
             save_video(
                 self.gym_env.render(),
                 self.video_dir,
@@ -392,7 +391,7 @@ if __name__ == "__main__":
     lang = FixedDepthAnt(
         maze=maze,
         program_depth=6,
-        steps=500,
+        steps=1000,
         featurizer=featurizer,
         save_video=True,
         video_dir=video_dir,
@@ -405,7 +404,7 @@ if __name__ == "__main__":
     tree = lang.parse(s)
     print(tree, lang.to_str(tree), sep='\n')
     print(lang._extract_params(tree))
-    outputs = lang.eval(tree)
-    feat_vec = featurizer.apply(outputs)
+    coords = lang.eval(tree)
+    feat_vec = featurizer.apply(coords)
     print(feat_vec)
-
+    print(maze.trail_img(coords))
