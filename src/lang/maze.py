@@ -20,6 +20,7 @@ def bmp_from_str(str_map: List[str]) -> List[List[Union[int, str]]]:
     where any '#' chars are interpreted as 1, any other char
     is interpreted as 0.
     """
+
     def convert(s: str) -> Union[str, int]:
         if s == "#":
             return 1
@@ -73,42 +74,42 @@ SAVED_MAZES = {
         "# #    # #",
         "# ###  # #",
         "#   #  # #",
-            "#  ##g # #",
-            "##########",
-        ]),
-        "big-symm": bmp_from_str([
-            "#####################################",
-            "# #       #       #     #         #g#",
-            "# # ##### # ### ##### ### ### ### # #",
-            "#       #   # #     #     # # #   # #",
-            "##### # ##### ##### ### # # # ##### #",
-            "#   # #       #     # # # # #     # #",
-            "# # ####### # # ##### ### # ##### # #",
-            "# #       # # #   #     #     #   # #",
-            "# ####### ### ### # ### ##### # ### #",
-            "#     #   # #   # #   #     # #     #",
-            "# ### ### # ### # ##### # # # #######",
-            "#   #   # # #   #   #   # # #   #   #",
-            "####### # # # ##### # ### # ### ### #",
-            "#     # #     #   # #   # #   #     #",
-            "# ### # ##### ### # ### ### ####### #",
-            "# #   #     #     #   # # #       # #",
-            "# # ##### # ### ##### # # ####### # #",
-            "# #     # # # # #     #       # #   #",
-            "# ##### # # # ### ##### ##### # #####",
-            "# #   # # #     #     # #   #       #",
-            "# # ### ### ### ##### ### # ##### # #",
-            "#r#         #     #       #       # #",
-            "#####################################",
-        ]),
-    }
+        "#  ##g # #",
+        "##########",
+    ]),
+    "big-symm": bmp_from_str([
+        "#####################################",
+        "# #       #       #     #         #g#",
+        "# # ##### # ### ##### ### ### ### # #",
+        "#       #   # #     #     # # #   # #",
+        "##### # ##### ##### ### # # # ##### #",
+        "#   # #       #     # # # # #     # #",
+        "# # ####### # # ##### ### # ##### # #",
+        "# #       # # #   #     #     #   # #",
+        "# ####### ### ### # ### ##### # ### #",
+        "#     #   # #   # #   #     # #     #",
+        "# ### ### # ### # ##### # # # #######",
+        "#   #   # # #   #   #   # # #   #   #",
+        "####### # # # ##### # ### # ### ### #",
+        "#     # #     #   # #   # #   #     #",
+        "# ### # ##### ### # ### ### ####### #",
+        "# #   #     #     #   # # #       # #",
+        "# # ##### # ### ##### # # ####### # #",
+        "# #     # # # # #     #       # #   #",
+        "# ##### # # # ### ##### ##### # #####",
+        "# #   # # #     #     # #   #       #",
+        "# # ### ### ### ##### ### # ##### # #",
+        "#r#         #     #       #       # #",
+        "#####################################",
+    ]),
+}
 
 
 class Maze:
 
     def __init__(
-            self, 
-            maze_map: List[List[Union[str, int]]], 
+            self,
+            maze_map: List[List[Union[str, int]]],
             scaling: float
     ):
         walls = np.array([
@@ -161,16 +162,14 @@ class Maze:
         return r, c
 
     def rc_to_xy(self, r: int, c: int) -> Tuple[float, float]:
-        x = c * self.scaling - self.x_center
-        y = -(r * self.scaling - self.y_center)
+        x = (c + 0.5) * self.scaling - self.x_center
+        y = -((r + 0.5) * self.scaling - self.y_center)
         return x, y
 
-    def limits(self) -> Tuple[Tuple[float, float],
-                              Tuple[float, float]]:
-        xmin = -self.x_center
-        ymin = -self.y_center
-        xmax = self.width * self.scaling - self.x_center
-        ymax = self.height * self.scaling - self.y_center
+    def limits(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        xmin, ymin = self.rc_to_xy(-0.5, -0.5)
+        xmax, ymax = self.rc_to_xy(self.height, self.width)
+        ymin, ymax = ymax, ymin
         return (xmin, xmax), (ymin, ymax)
 
     def trail_img(self, coords: np.ndarray) -> Image:
@@ -210,12 +209,13 @@ class Maze:
 
 
 def make_square(x: float, y: float, s: float) -> shp.Polygon:
-    """Make a square with bottom left corner at (x, y) with side length s"""
+    """Make a square centered at (x, y) with side length s"""
+    d = 0.5 * s
     return shp.Polygon(shell=[
-        (x, y),
-        (x, y + s),
-        (x + s, y + s),
-        (x + s, y),
+        (x - d, y - d),
+        (x - d, y + d),
+        (x + d, y + d),
+        (x + d, y - d),
     ])
 
 
@@ -231,8 +231,8 @@ def polygon_from_bitmap(bmp: np.ndarray, scaling: float = 1.0) -> shp.Polygon:
     for i in range(height):
         for j in range(width):
             if bmp[i][j]:
-                x = j * scaling - x_center
-                y = -(i * scaling - y_center)
+                x = (j + 0.5) * scaling - x_center
+                y = -((i + 0.5) * scaling - y_center)
                 squares.append(make_square(x, y, s=scaling))
     return shp.unary_union(squares)
 
@@ -297,7 +297,8 @@ def demo_maze_rangefinders():
     # non_walls = hull.difference(maze.walls)
     # ant = non_walls.representative_point()
     # ant = shp.Point(0.8669061676890559, -3.7016983612545915)
-    ant = shp.Point(-0.6673714628512808, -3.758217991828773)
+    # ant = shp.Point(-0.6673714628512808, -3.758217991828773)
+    ant = shp.Point(-32.91805295212761, -28.96694472894294)
 
     fig, ax = plt.subplots()
     plot_shapes(ax, [maze.walls, ant])
@@ -306,6 +307,7 @@ def demo_maze_rangefinders():
     print(maze.cardinal_wall_distances(ant.x, ant.y))
     xlim, ylim = maze.limits()
     print(f"xlim={xlim}, ylim={ylim}")
+
 
 if __name__ == "__main__":
     demo_maze_rangefinders()
