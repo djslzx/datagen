@@ -22,14 +22,14 @@ from adjustText import adjust_text
 from io import BytesIO
 
 
-def scatterplot_image(coords: np.ndarray, figsize: int) -> np.ndarray:
+def scatterplot_image(coords: np.ndarray, figsize: int, **kwargs) -> np.ndarray:
     assert coords.ndim == 2, f"Expected 2d tensor, got {coords.ndim}d"
     assert coords.shape[1] == 2, f"Expected 2d coordinates, got {coords.shape[1]}d"
 
     # Create scatterplot
     fig = plt.Figure(figsize=(figsize, figsize))
     ax = fig.subplots()
-    ax.scatter(coords[:, 0], coords[:, 1], s=2)
+    ax.scatter(coords[:, 0], coords[:, 1], s=2, **kwargs)
     plt.tight_layout()
 
     # Render the plot to a buffer
