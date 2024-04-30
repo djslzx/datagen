@@ -189,8 +189,8 @@ class FixedDepthAnt(Language):
         """)
 
     def sample(self) -> Tree:
-        params = self.distribution.sample(k=1)[0]
-        return self.make_program(params)
+        params = self.distribution.sample(k=1)
+        return self.make_program(params[0])
 
     def fit(self, corpus: List[Tree], alpha):
         # assert self.distribution.rv_kind == "single" or len(corpus) > self.n_params, \
@@ -379,7 +379,7 @@ class MultivariateGaussianSampler:
 
         # if data consists of a single example in 2D, flatten to 1D
         if data.shape[0] == 1:
-            data = np.ravel()
+            data = np.ravel(data)
 
         # use different distributions depending on whether we get
         #  a single data point or many
@@ -395,7 +395,11 @@ class MultivariateGaussianSampler:
 
     def sample(self, k: int) -> np.ndarray:
         if self.rv_kind == "single":
-            return self.rv.rvs(k)
+            samples = self.rv.rvs(k)
+            if k == 1:
+                return samples[None, :]
+            else:
+                return samples
         else:
             samples = self.rv.resample(k)
             return ein.rearrange(samples, "d k -> k d", k=k)
