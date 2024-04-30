@@ -104,6 +104,10 @@ SAVED_MAZES = {
 }
 
 
+class WallCollisionError(Exception):
+    pass
+
+
 class Maze:
 
     def __init__(
@@ -149,8 +153,10 @@ class Maze:
 
     def cardinal_wall_distances(self, x: float, y: float) -> np.ndarray:
         p = shp.Point(x, y)
-        assert not p.within(self.walls), \
-            f"Point {p.x, p.y} is within the walls of the maze"
+        # if not p.within(self.walls):
+        #     raise WallCollisionError(
+        #         f"Point {p.x, p.y} is within the walls of the maze with distance {p.distance(self.walls)}"
+        #     )
         rfs = self.cardinal_rangefinder_lines(p)
         dists = intersection_distances(p, self.walls, rfs)
         return np.array(dists)
@@ -284,8 +290,8 @@ def demo_maze_rangefinders():
     # non_walls = hull.difference(maze.walls)
     # ant = non_walls.representative_point()
     # ant = shp.Point(0.8669061676890559, -3.7016983612545915)
-    # ant = shp.Point(-0.6673714628512808, -3.758217991828773)
-    ant = shp.Point(-32.91805295212761, -28.96694472894294)
+    ant = shp.Point(-34.077333476682725, -22.972487448294483)
+    # ant = shp.Point(-31.836598332945606, -30.043303065771358)
 
     fig, ax = plt.subplots()
     plot_shapes(ax, [maze.walls, ant])
