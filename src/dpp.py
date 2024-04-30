@@ -645,7 +645,7 @@ def run_lsys_search(config):
     )
 
 
-def run_ant_search(conf):
+def run_ant_search_from_conf(conf):
     expected_keys = {
         "featurizer",
         "random_seed",
@@ -663,24 +663,38 @@ def run_ant_search(conf):
     assert all(k in conf for k in expected_keys), \
         f"Expected keys {expected_keys}, got {set(conf.keys())}"
 
-    seed = conf.random_seed
-    np.random.seed(seed)
+    run_ant_search(*conf, run_id=wandb.run.id)
 
-    popn_size = conf.popn_size
-    n_epochs = conf.n_epochs
-    sim_steps = conf.sim_steps
-    program_depth = conf.program_depth
-    featurizer_name = conf.featurizer
+def run_ant_search(
+        featurizer: str,
+        random_seed: int,
+        popn_size: int,
+        n_epochs: int,
+        sim_steps: int,
+        fit_policy: str,
+        accept_policy: str,
+        distance_metric: str,
+        archive_beta: float,
+        archive_size: int,
+        program_depth: int,
+        length_cap: int,
+        run_id: str,
+        wandb_run=True,
+):
+    assert fit_policy != "all" or popn_size >= 46, f"Must have popn size > param dimension if fitting to all"
+
+    np.random.seed(random_seed)
 
     maze_map = maze.Maze.from_saved("lehman-ecj-11-hard")
-    if featurizer_name == "Trail":
-        featurizer = ant.TrailFeaturizer(stride=1)
-    elif featurizer_name == "End":
-        featurizer = ant.EndFeaturizer()
-    elif featurizer_name == "Heatmap":
-        featurizer = ant.HeatMapFeaturizer(maze)
+
+    if featurizer == "Trail":
+        ft = ant.TrailFeaturizer(stride=1)
+    elif featurizer == "End":
+        ft = ant.EndFeaturizer()
+    elif featurizer == "Heatmap":
+        ft = ant.HeatMapFeaturizer(maze)
     else:
-        raise ValueError(f"Invalid featurizer type for ant domain: {featurizer_name}")
+        raise ValueError(f"Invalid featurizer type for ant domain: {featurizer}")
 
     lang = ant.FixedDepthAnt(
         maze=maze_map,
@@ -688,7 +702,7 @@ def run_ant_search(conf):
         low_state_dim=111,
         program_depth=program_depth,
         steps=sim_steps,
-        featurizer=featurizer
+        featurizer=ft,
     )
 
     # make starting set of programs
@@ -704,16 +718,16 @@ def run_ant_search(conf):
         x_init=x_init,
         popn_size=popn_size,
         n_epochs=n_epochs,
-        fit_policy=conf.fit_policy,
-        accept_policy=conf.accept_policy,
-        distance_metric=conf.distance_metric,
-        archive_size=conf.archive_size,
-        archive_beta=conf.archive_beta,
-        length_cap=conf.length_cap,
+        fit_policy=fit_policy,
+        accept_policy=accept_policy,
+        distance_metric=distance_metric,
+        archive_size=archive_size,
+        archive_beta=archive_beta,
+        length_cap=length_cap,
     )
     
     # make run directory
-    save_dir = f"../out/dpp/ant/{wandb.run.id}/"
+    save_dir = f"../out/dpp/ant/{run_id}/"
     try:
         util.mkdir(save_dir)
     except FileExistsError:
@@ -734,7 +748,8 @@ def run_ant_search(conf):
         }
         log = {k: v for k, v in log.items()
                if k not in {"x", "x'"} and not k.endswith("_feat")}
-        wandb.log(log)
+        if wandb_run:
+            wandb.log(log)
 
 
 def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
@@ -787,36 +802,6 @@ def wandb_process_data_epochs(
         prev_feat = d["x_feat"]
 
 
-def check_fuzzballs(filename: str):
-    """See what fuzzballs classify as"""
-
-    from skimage import filters
-
-    classifier = feat.ResnetFeaturizer(disable_last_layer=False, softmax_outputs=False, sigma=5.)
-    lang = lindenmayer.LSys(kind="deterministic", featurizer=classifier, step_length=4, render_depth=3)
-    sigma = 5.
-    n_progs = 4
-    with open(filename, "r") as f:
-        for i in range(n_progs):
-            program = f.readline().strip()
-            tree = lang.parse(program)
-            images = [
-                lang.eval(tree, env={"vary_color": True}),
-                lang.eval(tree, env={"vary_color": False}),
-            ]
-
-            for image in images:
-                image = filters.gaussian(image, sigma=sigma, channel_axis=-1)
-
-                # featurize and classify
-                feat_vec = classifier.apply([image])
-                class_id = classifier.top_k_classes(feat_vec, k=1)[0]
-
-                plt.imshow(image)
-                plt.title(f"{program}\n{class_id}")
-                plt.show()
-
-
 def sweep(conf: str, run_fn: Callable):
     with open(conf, "r") as conf_file:
         config = yaml.load(conf_file, Loader=yaml.FullLoader)
@@ -848,4 +833,23 @@ def local_searches():
 
 if __name__ == "__main__":
     sweep("./configs/mcmc-ant.yaml", run_ant_search)
+
     # local_searches()
+
+    # ts = util.timestamp()
+    # run_ant_search(
+    #     featurizer="End",
+    #     random_seed=0,
+    #     popn_size=50,
+    #     n_epochs=2,
+    #     sim_steps=10,
+    #     fit_policy="all",
+    #     accept_policy="energy",
+    #     distance_metric="euclidean",
+    #     archive_beta=0.,
+    #     archive_size=10,
+    #     program_depth=4,
+    #     length_cap=1000,
+    #     run_id=f"test-{ts}",
+    #     wandb_run=False,
+    # )
