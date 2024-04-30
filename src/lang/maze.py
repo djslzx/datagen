@@ -171,8 +171,25 @@ class Maze:
         ymin, ymax = ymax, ymin
         return (xmin, xmax), (ymin, ymax)
 
-    def trail_img(self, coords: np.ndarray) -> wandb.Image:
-        assert coords.ndim == 2, f"Expected 2D trail, got {coords.shape}"
+    def scatter(self, coords: np.ndarray) -> wandb.Image:
+        assert coords.ndim == 2, f"Expected vector of 2D points, got {coords.shape}"
+
+        fig, ax = plt.subplots()
+        plt.scatter(coords[:, 0], coords[:, 1], s=2)
+
+        # add maze bitmap
+        plot_shapes(ax, [self.walls])
+
+        # set limits
+        xlim, ylim = self.limits()
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        plt.tight_layout()
+
+        return wandb.Image(fig)
+
+    def trails(self, coords: np.ndarray) -> wandb.Image:
+        assert coords.ndim == 3, f"Expected vector of 2D trails, got {coords.shape}"
 
         # time colorscale
         t = np.arange(len(coords))
