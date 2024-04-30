@@ -6,7 +6,7 @@ parameters:
   domain:
     value: ant
   featurizer:
-    value: Trail
+    value: End
   random_seed:
     value: 0
   popn_size:

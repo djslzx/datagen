@@ -177,7 +177,7 @@ class FixedDepthAnt(Language):
         ) + "]"
 
     def make_program(self, params: np.ndarray) -> Tree:
-        assert params.ndim == 1
+        assert params.ndim == 1, f"Programs must be constructed from 1D parameter vectors, got {params.shape}"
         assert params.shape[0] == self.n_params, f"Expected {self.n_params}, got {params.shape}"
 
         conds, stmts = self.unflatten_params(params)
@@ -189,17 +189,27 @@ class FixedDepthAnt(Language):
         """)
 
     def sample(self) -> Tree:
-        params = self.distribution.sample(k=1)
+        params = self.distribution.sample(k=1)[0]
         return self.make_program(params)
 
     def fit(self, corpus: List[Tree], alpha):
+        # assert self.distribution.rv_kind == "single" or len(corpus) > self.n_params, \
+        #     f"To use KDE on multiple samples, the number of samples must exceed the dimensionality" \
+        #     f"of the data, but data dim = {self.n_params} and corpus len = {len(corpus)}"
+
         all_params = []
         for tree in corpus:
             c, s = self._extract_params(tree)
             params, _ = ein.pack([c, s], "*")
             all_params.append(params)
 
-        self.distribution = MultivariateGaussianSampler(data)
+        all_params = np.array(all_params)
+        self.distribution = MultivariateGaussianSampler(all_params)
+
+    def log_probability(self, t: Tree) -> float:
+        c, s = self._extract_params(t)
+        params, _ = ein.pack([c, s], "*")
+        return self.distribution.logpdf(params)
 
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Iterable[np.ndarray]:
         assert t.value == "root"
@@ -311,13 +321,15 @@ class TrailFeaturizer(Featurizer):
     
     def __init__(self, stride: int = 1):
         self.stride = stride
-
+        
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
-        assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
-        assert batch.shape[1] == 2, f"Expected 2D points, got {batch.shape}"
-        return batch[::self.stride]
+        assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
+        assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
+
+        # stride through t dim, then flatten
+        return ein.rearrange(batch[:, ::self.stride, :], "b t xy -> b (t xy)")
 
 
 class EndFeaturizer(Featurizer):
@@ -327,9 +339,9 @@ class EndFeaturizer(Featurizer):
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
-        assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
-        assert batch.shape[1] == 2, f"Expected 2D points, got {batch.shape}"
-        return batch[-1]
+        assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
+        assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
+        return batch[:, -1, :]
 
 
 class HeatMapFeaturizer(Featurizer):
@@ -346,18 +358,18 @@ class HeatMapFeaturizer(Featurizer):
     def apply(self, batch: List[np,ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
-        assert batch.ndim == 2, f"Expected 2D batch, got {batch.shape}"
-        assert batch.shape[1] == 2, f"Expected 2D points, got {batch.shape}"
+        assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
+        assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
 
-        heatmap = np.zeros((self.width, self.height))  # treat i,j as equal to x,y
-        for x, y in batch:
-            r, c = self.xy_to_rc(x, y)
-            print(f"{x, y} => {r, c}")
-            heatmap[r, c] += 1
+        batch_size = batch.shape[0]
+        heatmaps = np.zeros((batch_size, self.width, self.height))  # treat i,j as equal to x,y
+        for i, coords in enumerate(batch):
+            for x, y in coords:
+                r, c = self.xy_to_rc(x, y)
+                heatmap[i, r, c] += 1
 
-        # normalize
-        heatmap = heatmap / heatmap.sum()
-
+        heatmap /= ein.reduce(heatmap, "b h w -> b () ()", "sum") # normalize
+        heatmap = ein.rearrange(heatmap, "b h w -> b (h w)") # flatten
         return heatmap
 
 
@@ -421,6 +433,6 @@ if __name__ == "__main__":
     print(tree, lang.to_str(tree), sep='\n')
     print(lang._extract_params(tree))
     coords = lang.eval(tree)
-    feat_vec = featurizer.apply(coords)
+    feat_vec = featurizer.apply([coords])
     print(feat_vec)
     print(maze.trail_img(coords))

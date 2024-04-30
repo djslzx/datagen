@@ -10,6 +10,7 @@ import numpy as np
 from torch import Tensor
 from tqdm import tqdm
 from einops import rearrange
+import pdb
 
 from featurizers import Featurizer
 from grammar import Grammar
@@ -216,6 +217,8 @@ class Language:
 
     def log_probability(self, t: Tree) -> float:
         """Computes the probability of a tree in the language"""
+        if self.model is None:
+            raise ValueError("Cannot compute log probability of empty model")
         return self.model.log_probability(self.start, t.to_tuple()).item()
 
     def extract_features(self, trees: Collection[Tree], n_samples=1, batch_size=4, load_bar=False) -> np.ndarray:
@@ -241,6 +244,7 @@ class Language:
         out = np.array(ys)
 
         # output shape: (|S| * n_samples, features)
+        assert out.ndim == 2, f"Feature extraction should yield a single vector per tree"
         assert out.shape[0] == (len(trees) * n_samples), \
             f"Expected to get {len(trees)} * {n_samples} = {len(trees) * n_samples} feature vectors, but got out:{out.shape}"
 
