@@ -663,7 +663,22 @@ def run_ant_search_from_conf(conf):
     assert all(k in conf for k in expected_keys), \
         f"Expected keys {expected_keys}, got {set(conf.keys())}"
 
-    run_ant_search(*conf, run_id=wandb.run.id)
+    run_ant_search(
+        featurizer=conf.featurizer,
+        random_seed=conf.random_seed,
+        popn_size=conf.popn_size,
+        n_epochs=conf.n_epochs,
+        sim_steps=conf.sim_steps,
+        fit_policy=conf.fit_policy,
+        accept_policy=conf.accept_policy,
+        distance_metric=conf.distance_metric,
+        archive_beta=conf.archive_beta,
+        archive_size=conf.archive_size,
+        program_depth=conf.program_depth,
+        length_cap=conf.length_cap,
+        run_id=wandb.run.id,
+        wandb_run=True,
+    )
 
 def run_ant_search(
         featurizer: str,
@@ -832,7 +847,7 @@ def local_searches():
 
 
 if __name__ == "__main__":
-    sweep("./configs/mcmc-ant.yaml", run_ant_search)
+    sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
 
     # local_searches()
 
@@ -843,7 +858,7 @@ if __name__ == "__main__":
     #     popn_size=50,
     #     n_epochs=2,
     #     sim_steps=10,
-    #     fit_policy="all",
+    #     fit_policy="single",
     #     accept_policy="energy",
     #     distance_metric="euclidean",
     #     archive_beta=0.,
