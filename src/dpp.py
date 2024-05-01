@@ -547,9 +547,9 @@ def run_maze_search(
             local_dir = f"{save_dir}/{title}"
             util.mkdir(local_dir)
 
-            maze = point.RealMaze(str_mask, std=1)
+            maze_lang = point.RealMaze(str_mask, std=1)
             generator = mcmc_lang_rr(
-                lang=maze,
+                lang=maze_lang,
                 x_init=x_init,
                 popn_size=popn_size,
                 n_epochs=n_epochs,
@@ -569,15 +569,15 @@ def run_maze_search(
             plt.cla()
 
             # animation
-            init_feat = maze.extract_features(x_init)
+            init_feat = maze_lang.extract_features(x_init)
             embeddings = [(0, init_feat)]
             embeddings += [(d["t"] + 1, d["x_feat"]) for d in data]
             anim = util.animate_points(
                 embeddings,
                 title=title,
-                xlim=maze.xlim,
-                ylim=maze.ylim,
-                background=maze.background,
+                xlim=maze_lang.xlim,
+                ylim=maze_lang.ylim,
+                background=maze_lang.background,
             )
             anim.save(f"{local_dir}/embed.mp4")
 
@@ -744,7 +744,7 @@ def run_ant_search(
         archive_beta=archive_beta,
         length_cap=length_cap,
     )
-    
+
     # make run directory
     save_dir = f"../out/dpp/ant/{run_id}/"
     try:
@@ -759,7 +759,7 @@ def run_ant_search(
         analysis_data = analyzer_iter(d, threshold=1e-10)
 
         trails = np.array(d["x_out"])  # [n t 2]
-        endpoints = trails[:, -1, :]   # [n 2]
+        endpoints = trails[:, -1, :]  # [n 2]
 
         trail_plot = maze_map.plot_trails(trails)
         endpoint_plot = maze_map.plot_endpoints(endpoints)
@@ -772,8 +772,8 @@ def run_ant_search(
             "step": i,
         }
         log = {k: v for k, v in log.items()
-               if (k not in {"x", "x'"} and 
-                   not k.endswith("_feat") and 
+               if (k not in {"x", "x'"} and
+                   not k.endswith("_feat") and
                    not k.endswith("_out"))}
         if wandb_run:
             wandb.log(log)
@@ -833,7 +833,7 @@ def sweep(conf: str, run_fn: Callable):
     with open(conf, "r") as conf_file:
         config = yaml.load(conf_file, Loader=yaml.FullLoader)
     wandb.init(project="dpp", config=config)
-    run_fn(wandb.config)    
+    run_fn(wandb.config)
 
 
 def local_searches():
@@ -859,9 +859,9 @@ def local_searches():
 
 
 if __name__ == "__main__":
-    sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
+    # sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
 
-    # local_searches()
+    local_searches()
 
     # ts = util.timestamp()
     # run_ant_search(
