@@ -123,6 +123,7 @@ def plot_v_subplots(data: List[dict], keys: List[str]):
         #     ax.set_ylabel("sparsity")
 
     plt.tight_layout()
+    plt.close()
     return fig
 
 
