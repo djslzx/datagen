@@ -1,0 +1,31 @@
+program: dpp.py
+method: grid
+parameters:
+  mode:
+    value: search
+  domain:
+    value: ant
+  featurizer:
+    value: Trail
+  random_seed:
+    value: 0
+  popn_size:
+    value: 20
+  n_epochs:
+    value: 2
+  sim_steps:
+    value: 2
+  fit_policy:
+    values: [ single, all ]
+  accept_policy:
+    values: [ energy, moment ]
+  distance_metric:
+    value: euclidean
+  archive_beta:
+    value: 0
+  archive_size:
+    value: 10
+  program_depth:
+    value: 2
+  length_cap:
+    value: 10000
