@@ -6,26 +6,26 @@ parameters:
   domain:
     value: ant
   featurizer:
-    value: End
+    value: Trail
   random_seed:
     value: 0
   popn_size:
-    value: 100
+    value: 20
   n_epochs:
     value: 100
   sim_steps:
-    value: 1000
+    value: 100
   fit_policy:
-    values: [ single, all, first ]
+    values: [ single, all ]
   accept_policy:
-    values: [ energy, moment, all ]
+    values: [ energy, moment ]
   distance_metric:
     value: euclidean
   archive_beta:
     value: 0
   archive_size:
-    value: 100
+    value: 10
   program_depth:
-    value: 4
+    value: 2
   length_cap:
     value: 10000
