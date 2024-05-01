@@ -225,7 +225,7 @@ class Language:
         """
         Extract features from a collection of programs.
         """
-        outputs, features = self.eval_features(trees, n_samples, batch_size, load_bar)
+        outputs, features = self.evaluate_features(trees, n_samples, batch_size, load_bar)
         return features
 
     def evaluate_features(
