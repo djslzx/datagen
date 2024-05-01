@@ -6,7 +6,7 @@ parameters:
   domain:
     value: ant
   featurizer:
-    value: Trail
+    values: [ end ]
   random_seed:
     value: 0
   popn_size:
@@ -29,3 +29,5 @@ parameters:
     value: 2
   length_cap:
     value: 10000
+  include_orientation:
+    values: [ false ]

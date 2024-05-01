@@ -60,7 +60,7 @@ class FixedDepthAnt(Language):
             maze: Maze,
             steps: int,
             featurizer: Featurizer,
-            high_state_dim=9,   # state space dimensions in symbolic program (rangefinders)
+            include_orientation: bool,
             low_state_dim=111,  # state space dim for primitive policies
             primitives_dir="/home/djl328/prob-repl/src/lang/primitives/ant",
             camera="fixed",
@@ -69,7 +69,6 @@ class FixedDepthAnt(Language):
             seed=0,
     ):
         assert program_depth > 1
-        assert high_state_dim > 0
         assert low_state_dim > 0
         assert steps > 0
         assert camera in {"fixed", "follow"}, f"Camera setting must be either 'fixed' or 'follow'"
@@ -82,6 +81,7 @@ class FixedDepthAnt(Language):
         self.video_dir = video_dir
         self.camera_mode = camera
         self.seed = seed
+        self.include_orientation = include_orientation
 
         super().__init__(
             parser_grammar=FixedDepthAnt.grammar,
@@ -97,7 +97,10 @@ class FixedDepthAnt(Language):
             for direction in ["up", "down", "left", "right"]
         ]
 
-        self.high_state_dim = high_state_dim
+        self.high_state_dim = 4  # rangefinders, cardinal directions
+        if include_orientation:
+            self.high_state_dim += 5  # orientation variables
+
         self.low_state_dim = low_state_dim
         self.action_dim = len(self.primitives)
 
@@ -193,10 +196,6 @@ class FixedDepthAnt(Language):
         return self.make_program(params[0])
 
     def fit(self, corpus: List[Tree], alpha):
-        # assert self.distribution.rv_kind == "single" or len(corpus) > self.n_params, \
-        #     f"To use KDE on multiple samples, the number of samples must exceed the dimensionality" \
-        #     f"of the data, but data dim = {self.n_params} and corpus len = {len(corpus)}"
-
         all_params = []
         for tree in corpus:
             c, s = self._extract_params(tree)
@@ -229,8 +228,12 @@ class FixedDepthAnt(Language):
 
             # construct high-level observations for symbolic program
             orientation = obs['observation'][:5]
-            dists = self.maze.cardinal_wall_distances(x, y)
-            high_obs, _ = ein.pack([orientation, dists], "*")
+            rf_dists = self.maze.cardinal_wall_distances(x, y)
+
+            if self.include_orientation:
+                high_obs, _ = ein.pack([orientation, rf_dists], "*")
+            else:
+                high_obs = rf_dists
 
             # get low-level observations for policy
             low_obs = obs['observation']

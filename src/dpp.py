@@ -668,23 +668,13 @@ def run_ant_search_from_conf(conf):
         "archive_size",
         "program_depth",
         "length_cap",
+        "include_orientation",
     }
     assert all(k in conf for k in expected_keys), \
-        f"Expected keys {expected_keys}, got {set(conf.keys())}"
+        f"Missing expected keys {expected_keys - set(conf.keys())}"
 
     run_ant_search(
-        featurizer=conf.featurizer,
-        random_seed=conf.random_seed,
-        popn_size=conf.popn_size,
-        n_epochs=conf.n_epochs,
-        sim_steps=conf.sim_steps,
-        fit_policy=conf.fit_policy,
-        accept_policy=conf.accept_policy,
-        distance_metric=conf.distance_metric,
-        archive_beta=conf.archive_beta,
-        archive_size=conf.archive_size,
-        program_depth=conf.program_depth,
-        length_cap=conf.length_cap,
+        **{k: conf[k] for k in expected_keys},
         run_id=wandb.run.id,
         wandb_run=True,
     )
@@ -703,32 +693,35 @@ def run_ant_search(
         archive_size: int,
         program_depth: int,
         length_cap: int,
+        include_orientation: bool,
         run_id: str,
         wandb_run=True,
 ):
-    # assert fit_policy != "all" or popn_size >= 46, f"Must have popn size > param dimension if fitting to all"
-
     np.random.seed(random_seed)
 
     maze_map = maze.Maze.from_saved("lehman-ecj-11-hard")
 
-    if featurizer == "Trail":
+    if featurizer == "trail":
         ft = ant.TrailFeaturizer(stride=1)
-    elif featurizer == "End":
+    elif featurizer == "end":
         ft = ant.EndFeaturizer()
-    elif featurizer == "Heatmap":
+    elif featurizer == "heatmap":
         ft = ant.HeatMapFeaturizer(maze)
     else:
         raise ValueError(f"Invalid featurizer type for ant domain: {featurizer}")
 
     lang = ant.FixedDepthAnt(
         maze=maze_map,
-        high_state_dim=9,
+        include_orientation=include_orientation,
         low_state_dim=111,
         program_depth=program_depth,
         steps=sim_steps,
         featurizer=ft,
     )
+
+    assert fit_policy != "all" or popn_size >= lang.n_params, \
+        f"Must have popn size > param dimension if fitting to all, " \
+        f"but got popn={popn_size}, dim={lang.n_params}"
 
     # make starting set of programs
     x_init_params = np.random.multivariate_normal(
