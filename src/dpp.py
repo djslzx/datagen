@@ -532,7 +532,7 @@ def run_maze_search(
         fit_policies: List[str],
         accept_policies: List[str],
         archive_size: int,
-        archive_beta: float,
+        archive_beta: List[float],
         spread=1,
 ):
     # lang = point.RealPoint(lim=lim, std=1)
@@ -560,69 +560,72 @@ def run_maze_search(
     x_init = [point_lang.make_point(a, b) for a, b in coords]
     for fit_policy in fit_policies:
         for accept_policy in accept_policies:
-            title = f"fit={fit_policy},accept={accept_policy}"
-            local_dir = f"{save_dir}/{title}"
-            util.mkdir(local_dir)
+            for beta in archive_beta:
+                title = (f"fit={fit_policy},"
+                         f"accept={accept_policy},"
+                         f"beta={beta}")
+                local_dir = f"{save_dir}/{title}"
+                util.mkdir(local_dir)
 
-            maze_lang = point.RealMaze(str_mask, std=1)
-            generator = mcmc_lang_rr(
-                lang=maze_lang,
-                x_init=x_init,
-                popn_size=popn_size,
-                n_epochs=n_epochs,
-                fit_policy=fit_policy,
-                accept_policy=accept_policy,
-                distance_metric="euclidean",
-                archive_beta=archive_beta,
-                archive_size=archive_size,
-                debug=True,
-            )
-            data = list(tqdm(generator, total=n_epochs))
+                maze_lang = point.RealMaze(str_mask, std=1)
+                generator = mcmc_lang_rr(
+                    lang=maze_lang,
+                    x_init=x_init,
+                    popn_size=popn_size,
+                    n_epochs=n_epochs,
+                    fit_policy=fit_policy,
+                    accept_policy=accept_policy,
+                    distance_metric="euclidean",
+                    archive_beta=beta,
+                    archive_size=archive_size,
+                    debug=True,
+                )
+                data = list(tqdm(generator, total=n_epochs))
 
-            # plots
-            data = [analyzer_iter(d, threshold=1e-10) for d in data]
-            plot_keys = sorted({
-                k for k in data[0].keys()
-                if (k not in {"t", "x", "x'", "archive"} and
-                    not k.endswith("_feat") and
-                    not k.endswith("_out"))
-            })
-            fig = util.plot_v_subplots(data, keys=plot_keys)
-            fig.savefig(f"{local_dir}/plot.png")
-            plt.cla()
+                # plots
+                data = [analyzer_iter(d, threshold=1e-10) for d in data]
+                plot_keys = sorted({
+                    k for k in data[0].keys()
+                    if (k not in {"t", "x", "x'", "archive"} and
+                        not k.endswith("_feat") and
+                        not k.endswith("_out"))
+                })
+                fig = util.plot_v_subplots(data, keys=plot_keys)
+                fig.savefig(f"{local_dir}/plot.png")
+                plt.cla()
 
-            # animate embeddings
-            init_feat = maze_lang.extract_features(x_init)
-            frames = [(0, init_feat, [0] * len(init_feat))]
-            for d in data:
-                t = d["t"] + 1
-                popn_embeddings = d["x_feat"]
+                # animate embeddings
+                init_feat = maze_lang.extract_features(x_init)
+                frames = [(0, init_feat, [0] * len(init_feat))]
+                for d in data:
+                    t = d["t"] + 1
+                    popn_embeddings = d["x_feat"]
 
-                if archive_beta == 0:
-                    frames.append((
-                        t,
-                        popn_embeddings,
-                        [0] * len(popn_embeddings),
-                    ))
-                else:
-                    archive_embeddings = [
-                        maze_lang.eval(maze_lang.parse(s))
-                        for s in d["archive"]
-                    ]
-                    frames.append((
-                        t,
-                        np.concatenate([popn_embeddings, archive_embeddings], axis=0),
-                        [0] * len(popn_embeddings) + [1] * len(archive_embeddings),
-                    ))
+                    if archive_beta == 0:
+                        frames.append((
+                            t,
+                            popn_embeddings,
+                            [0] * len(popn_embeddings),
+                        ))
+                    else:
+                        archive_embeddings = [
+                            maze_lang.eval(maze_lang.parse(s))
+                            for s in d["archive"]
+                        ]
+                        frames.append((
+                            t,
+                            np.concatenate([popn_embeddings, archive_embeddings], axis=0),
+                            [0] * len(popn_embeddings) + [1] * len(archive_embeddings),
+                        ))
 
-            anim = util.animate_points(
-                frames,
-                title=title,
-                xlim=maze_lang.xlim,
-                ylim=maze_lang.ylim,
-                background=maze_lang.background,
-            )
-            anim.save(f"{local_dir}/embed.mp4")
+                anim = util.animate_points(
+                    frames,
+                    title=title,
+                    xlim=maze_lang.xlim,
+                    ylim=maze_lang.ylim,
+                    background=maze_lang.background,
+                )
+                anim.save(f"{local_dir}/embed.mp4")
 
 
 def run_lsys_search(config):
@@ -884,12 +887,12 @@ def local_searches():
     save_dir = f"out/dpp-points/{ts}"
     util.try_mkdir(save_dir)
     run_maze_search(
-        popn_size=10,
+        popn_size=50,
         save_dir=save_dir,
         n_epochs=100,
-        fit_policies=["single", "all", "none", "first"],
+        fit_policies=["single", "all", "first"],
         accept_policies=["energy", "moment", "all"],
-        archive_beta=1,
+        archive_beta=[0, 1, 5],
         archive_size=10,
     )
     # run_point_search(
