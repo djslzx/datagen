@@ -171,6 +171,7 @@ def mcmc_lang_rr(
             if np.log(u) < log_accept:
                 x[i] = s
                 x_feat[i] = s_feat
+                x_out[i] = s_out
 
             # track log probabilities
             sum_log_f += log_f
