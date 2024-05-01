@@ -1,3 +1,4 @@
+import pdb
 import os
 import sys
 from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union, Generator, Any, Callable
@@ -94,7 +95,7 @@ def mcmc_lang_rr(
     assert distance_metric in {"cosine", "dot", "euclidean"}
 
     x = x_init.copy()
-    x_feat = lang.extract_features(x)
+    x_out, x_feat = lang.evaluate_features(x)
     archive = VectorArchive.from_vecs(
         n=archive_size,
         vecs=x_feat,
@@ -107,6 +108,8 @@ def mcmc_lang_rr(
     for t in range(n_epochs):
         samples = []
         samples_feat = []
+        samples_out = []
+
         sum_log_f = 0
         sum_log_q = 0
         sum_log_accept = 0
@@ -122,13 +125,17 @@ def mcmc_lang_rr(
 
             # sample and featurize
             s = lang.samples(n_samples=1, length_cap=length_cap)[0]
-            s_feat = lang.extract_features([s])[0]
+            s_out, s_feat = lang.evaluate_features([s])
+            (s_out,) = s_out
+            (s_feat,) = s_feat
+
             up_feat = x_feat.copy()
             up_feat[i] = s_feat
 
             # save samples
             samples.append(s)
             samples_feat.append(s_feat)
+            samples_out.append(s_out)
 
             # compute log f(x')/f(x)
             if accept_policy == "dpp":
@@ -174,6 +181,8 @@ def mcmc_lang_rr(
             "t": t,
             "x": [lang.to_str(p) for p in x],
             "x'": [lang.to_str(p) for p in samples],
+            "x_out": x_out.copy(),
+            "x'_out": samples_out.copy(),
             "x_feat": x_feat.copy(),
             "x'_feat": samples_feat.copy(),
             "archive": archive.metadata(),
@@ -680,6 +689,7 @@ def run_ant_search_from_conf(conf):
         wandb_run=True,
     )
 
+
 def run_ant_search(
         featurizer: str,
         random_seed: int,
@@ -696,7 +706,7 @@ def run_ant_search(
         run_id: str,
         wandb_run=True,
 ):
-    assert fit_policy != "all" or popn_size >= 46, f"Must have popn size > param dimension if fitting to all"
+    # assert fit_policy != "all" or popn_size >= 46, f"Must have popn size > param dimension if fitting to all"
 
     np.random.seed(random_seed)
 
@@ -753,16 +763,24 @@ def run_ant_search(
     for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
         np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
         analysis_data = analyzer_iter(d, threshold=1e-10)
-        coords = d["x_feat"]
-        trail_img = maze_map.trail_img(coords)
+
+        trails = np.array(d["x_out"])  # [n t 2]
+        endpoints = trails[:, -1, :]   # [n 2]
+
+        trail_plot = maze_map.plot_trails(trails)
+        endpoint_plot = maze_map.plot_endpoints(endpoints)
+
         log = {
             **d,
             **analysis_data,
-            "trail": trail_img,
+            "trail": trail_plot,
+            "endpoints": endpoint_plot,
             "step": i,
         }
         log = {k: v for k, v in log.items()
-               if k not in {"x", "x'"} and not k.endswith("_feat")}
+               if (k not in {"x", "x'"} and 
+                   not k.endswith("_feat") and 
+                   not k.endswith("_out"))}
         if wandb_run:
             wandb.log(log)
 
@@ -855,15 +873,15 @@ if __name__ == "__main__":
     # run_ant_search(
     #     featurizer="End",
     #     random_seed=0,
-    #     popn_size=50,
+    #     popn_size=20,
     #     n_epochs=2,
-    #     sim_steps=10,
+    #     sim_steps=2,
     #     fit_policy="single",
     #     accept_policy="energy",
     #     distance_metric="euclidean",
     #     archive_beta=0.,
     #     archive_size=10,
-    #     program_depth=4,
+    #     program_depth=2,
     #     length_cap=1000,
     #     run_id=f"test-{ts}",
     #     wandb_run=False,

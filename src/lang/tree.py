@@ -223,7 +223,20 @@ class Language:
 
     def extract_features(self, trees: Collection[Tree], n_samples=1, batch_size=4, load_bar=False) -> np.ndarray:
         """
-        Take samples from programs in S, then batch them and feed them through the feature extractor for L.
+        Extract features from a collection of programs.
+        """
+        outputs, features = self.eval_features(trees, n_samples, batch_size, load_bar)
+        return features
+
+    def evaluate_features(
+            self, 
+            trees: Collection[Tree], 
+            n_samples=1, 
+            batch_size=4, 
+            load_bar=False
+    ) -> Tuple[Any, np.ndarray]:
+        """
+        Extract program outputs and features from a collection of programs.
         """
 
         def evaluate_trees():
@@ -231,25 +244,35 @@ class Language:
                 for _ in range(n_samples):
                     yield self.eval(x)
 
-        ys = []
+        outputs = []
+        features = []
         n_batches = ceil(len(trees) * n_samples / batch_size)
         batches = util.batched(evaluate_trees(), batch_size=batch_size)
         if load_bar:
             batches = tqdm(batches, total=n_batches)
         for batch in batches:
-            y = self.featurizer.apply(batch)
-            if y.ndim == 1:
-                y = y.reshape(1, -1)
-            ys.extend(y)
-        out = np.array(ys)
+            batch = np.array(batch)
 
-        # output shape: (|S| * n_samples, features)
-        assert out.ndim == 2, f"Feature extraction should yield a single vector per tree"
-        assert out.shape[0] == (len(trees) * n_samples), \
-            f"Expected to get {len(trees)} * {n_samples} = {len(trees) * n_samples} feature vectors, but got out:{out.shape}"
+            fv = self.featurizer.apply(batch)
 
-        out = rearrange(out, "(s samples) features -> s (samples features)", s=len(trees), samples=n_samples)
-        return out
+            # add a batch dimension if we're missing one
+            if fv.ndim == 1:
+                fv = fv[None, :]
+            features.extend(fv)
+
+            if batch.ndim == 1:
+                batch = batch[None, :]
+            outputs.extend(batch)
+
+        outputs = np.array(outputs)
+        features = np.array(features)
+        assert features.ndim == 2, f"Feature extraction should yield a single vector per tree"
+        assert features.shape[0] == (len(trees) * n_samples), \
+            f"Expected to get {len(trees)} * {n_samples} = {len(trees) * n_samples} feature vectors, but got out:{features.shape}"
+
+        features = rearrange(features, "(s samples) features -> s (samples features)", 
+                             s=len(trees), samples=n_samples)
+        return outputs, features
 
     def eval(self, t: Tree, env: Dict[str, Any] = None) -> Any:
         """Executes a tree in the language"""
