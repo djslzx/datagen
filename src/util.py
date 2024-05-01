@@ -69,13 +69,14 @@ def combine_images_square(images: np.ndarray) -> np.ndarray:
 
 
 def animate_points(
-        points: Iterable[Tuple[int, np.ndarray]],
+        frames: List[Tuple[int, np.ndarray, np.ndarray]],
         title: str,
         background: Optional[np.ndarray] = None,
         xlim: Optional[Tuple[float, float]] = None,
         ylim: Optional[Tuple[float, float]] = None,
         delay=200
 ):
+    colors = np.array(["r", "g", "b", "y", "o", "b", "w"])
     fig, ax = plt.subplots()
     scatter = ax.scatter([], [])
     if xlim is not None:
@@ -88,13 +89,13 @@ def animate_points(
         ax.imshow(background, extent=xlim + ylim, alpha=0.5)
 
     def update(frame):
-        # check that points are in 2d
-        i, coords = frame
-        assert coords.shape[1] == 2, f"points.shape: {coords.shape}"
+        t, coords, groupings = frame
+        assert coords.shape[1] == 2, f"Expected 2D points, got {coords.shape}"
 
-        ax.set_title(f"{title}, frame: {i}")
+        ax.set_title(f"{title}, frame: {t}")
         ax.title.set_fontsize(8)
         scatter.set_offsets(coords)
+        scatter.set_color(colors[groupings])
 
         if xlim is None:
             ax.set_xlim(min(p[0] for p in coords), max(p[0] for p in coords))
@@ -103,7 +104,7 @@ def animate_points(
 
         return scatter,
 
-    anim = FuncAnimation(fig, update, frames=points, blit=False, interval=delay)
+    anim = FuncAnimation(fig, update, frames=frames, blit=False, interval=delay)
     plt.close()
     return anim
 

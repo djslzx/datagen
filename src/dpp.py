@@ -593,38 +593,36 @@ def run_maze_search(
 
             # animate embeddings
             init_feat = maze_lang.extract_features(x_init)
-            embeddings = [(0, init_feat)]
-            embeddings += [(d["t"] + 1, d["x_feat"]) for d in data]
-            anim = util.animate_points(
-                embeddings,
-                title=title,
-                xlim=maze_lang.xlim,
-                ylim=maze_lang.ylim,
-                background=maze_lang.background,
-            )
-            anim.save(f"{local_dir}/popn.mp4")
+            frames = [(0, init_feat, [0] * len(init_feat))]
+            for d in data:
+                t = d["t"] + 1
+                popn_embeddings = d["x_feat"]
 
-            # animate archive embeddings
-            archive_embeddings = [
-                (
-                    d["t"],
-                    np.array([
-                        maze_lang.eval(
-                            maze_lang.parse(s)
-                        )
+                if archive_beta == 0:
+                    frames.append((
+                        t,
+                        popn_embeddings,
+                        [0] * len(popn_embeddings),
+                    ))
+                else:
+                    archive_embeddings = [
+                        maze_lang.eval(maze_lang.parse(s))
                         for s in d["archive"]
-                    ])
-                )
-                for d in data
-            ]
+                    ]
+                    frames.append((
+                        t,
+                        np.concatenate([popn_embeddings, archive_embeddings], axis=0),
+                        [0] * len(popn_embeddings) + [1] * len(archive_embeddings),
+                    ))
+
             anim = util.animate_points(
-                archive_embeddings,
+                frames,
                 title=title,
                 xlim=maze_lang.xlim,
                 ylim=maze_lang.ylim,
                 background=maze_lang.background,
             )
-            anim.save(f"{local_dir}/archive.mp4")
+            anim.save(f"{local_dir}/embed.mp4")
 
 
 def run_lsys_search(config):
