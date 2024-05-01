@@ -103,7 +103,9 @@ def animate_points(
 
         return scatter,
 
-    return FuncAnimation(fig, update, frames=points, blit=False, interval=delay)
+    anim = FuncAnimation(fig, update, frames=points, blit=False, interval=delay)
+    plt.close()
+    return anim
 
 
 def plot_v_subplots(data: List[dict], keys: List[str]):
