@@ -6,6 +6,7 @@ import math
 from typing import List, Optional, Union, Tuple
 import numpy as np
 import shapely as shp
+import einops as ein
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
@@ -177,11 +178,11 @@ class Maze:
         ymin, ymax = ymax, ymin
         return (xmin, xmax), (ymin, ymax)
 
-    def scatter(self, coords: np.ndarray) -> wandb.Image:
+    def plot_endpoints(self, coords: np.ndarray) -> wandb.Image:
         assert coords.ndim == 2, f"Expected vector of 2D points, got {coords.shape}"
 
         fig, ax = plt.subplots()
-        plt.scatter(coords[:, 0], coords[:, 1], s=2)
+        plt.scatter(coords[:, 0], coords[:, 1])
 
         # add maze bitmap
         plot_shapes(ax, [self.walls])
@@ -192,16 +193,20 @@ class Maze:
         ax.set_ylim(ylim)
         plt.tight_layout()
 
-        return wandb.Image(fig)
+        img = wandb.Image(fig)
+        plt.close()
+        return img
 
-    def trails(self, coords: np.ndarray) -> wandb.Image:
-        assert coords.ndim == 3, f"Expected vector of 2D trails, got {coords.shape}"
-
-        # time colorscale
-        t = np.arange(len(coords))
+    def plot_trails(self, trails: np.ndarray) -> wandb.Image:
+        assert trails.ndim == 3, f"Expected vector of 2D trails, got {trails.shape}"
+        assert trails.shape[-1] == 2, f"Expected trail of 2D points, got {trails.shape}"
+        b, t, _ = trails.shape
+        
+        trails = ein.rearrange(trails, "b t xy -> (b t) xy")
+        colors = np.repeat(np.arange(b), t)
 
         fig, ax = plt.subplots()
-        plt.scatter(coords[:, 0], coords[:, 1], s=2, c=t, cmap='viridis')
+        plt.scatter(trails[:, 0], trails[:, 1], s=2, c=colors)
 
         # add maze bitmap
         plot_shapes(ax, [self.walls])
@@ -212,10 +217,11 @@ class Maze:
         ax.set_ylim(ylim)
 
         # plot setup
-        plt.colorbar()
         plt.tight_layout()
 
-        return wandb.Image(fig)
+        img = wandb.Image(fig)
+        plt.close()
+        return img
 
 
 def make_square(x: float, y: float, s: float) -> shp.Polygon:
