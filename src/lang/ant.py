@@ -10,11 +10,9 @@ import torch.nn as nn
 import gymnasium as gym
 from gymnasium.utils.save_video import save_video
 from tqdm import tqdm
-import wandb
 
-from lang.tree import Language, Tree, Grammar, ParseError, Featurizer
+from lang.tree import Language, Tree, Featurizer
 from lang.maze import Maze
-from spinup.algos.pytorch.sac.core import SquashedGaussianMLPActor
 import util
 
 if torch.cuda.is_available():
