@@ -20,7 +20,7 @@ import util
 
 
 class VectorArchive:
-    def __init__(self, n: int, d: int):
+    def __init__(self, n: int, d: int, debug=False):
         assert n > 0
         assert d > 0
 
@@ -30,14 +30,19 @@ class VectorArchive:
         self._tags = np.empty(n, dtype=object)
         self.n_entries = 0
         self.step = 0
+        self.debug = debug
+        self.log = {
+            "added": 0,
+            "replaced": 0,
+        }
 
     @staticmethod
-    def from_vecs(n: int, vecs: np.ndarray, tags: List[Any]) -> "VectorArchive":
+    def from_vecs(n: int, vecs: np.ndarray, tags: List[Any], debug=False) -> "VectorArchive":
         assert vecs.ndim == 2, f"Expected 2D vector, but got {vecs.shape}"
         m, d = vecs.shape
         assert m == len(tags)
 
-        archive = VectorArchive(n, d)
+        archive = VectorArchive(n, d, debug=debug)
         for vec, tag in zip(vecs[:, None], tags):
             archive.add(vec, tag)
         return archive
@@ -48,6 +53,9 @@ class VectorArchive:
         assert vec.shape[0] == 1
         assert vec.shape[1] == self.dim
 
+        if self.debug:
+            self.log["added"] += 1
+
         if self.n_entries < self.capacity:
             # append
             self._vecs[self.n_entries] = vec
@@ -56,9 +64,14 @@ class VectorArchive:
         else:
             # probabilistically replace
             m = np.random.randint(0, self.step)
-            if m < self.capacity:
+            replace = m < self.capacity
+            if replace:
                 self._vecs[m] = vec
                 self._tags[m] = tag
+
+            if self.debug and replace:
+                self.log["replaced"] += 1
+
         self.step += 1
 
     def data(self) -> np.ndarray:
@@ -80,6 +93,7 @@ def mcmc_lang_rr(
         archive_beta: float,
         length_cap=50,
         gamma=1,
+        debug=False
 ) -> Iterator[dict]:
     """
     MCMC with target distribution f(x) and proposal distribution q(x'|x),
@@ -99,7 +113,8 @@ def mcmc_lang_rr(
     archive = VectorArchive.from_vecs(
         n=archive_size,
         vecs=x_feat,
-        tags=[lang.to_str(tree) for tree in x]
+        tags=[lang.to_str(tree) for tree in x],
+        debug=debug,
     )
 
     if fit_policy == "first":
@@ -186,11 +201,13 @@ def mcmc_lang_rr(
             "x'_out": samples_out.copy(),
             "x_feat": x_feat.copy(),
             "x'_feat": samples_feat.copy(),
-            "archive": archive.metadata(),
+            "archive": archive.metadata().copy(),
             "log f(x')/f(x)": sum_log_f / popn_size,
             "log q(x|x')/q(x'|x)": sum_log_q / popn_size,
             "log A(x',x)": sum_log_accept / popn_size,
         }
+
+    print(archive.log, file=sys.stderr)
 
 
 def uniform_nonzero() -> float:
@@ -462,7 +479,7 @@ def run_point_search(
 
             # plots
             data = [analyzer_iter(d, threshold=1e-10) for d in data]
-            plot_keys = list(sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat", "archive"}))
+            plot_keys = sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat", "archive"})
             fig = util.plot_v_subplots(data, keys=plot_keys)
             fig.savefig(f"{local_dir}/plot.png")
             plt.cla()
@@ -558,17 +575,23 @@ def run_maze_search(
                 distance_metric="euclidean",
                 archive_beta=archive_beta,
                 archive_size=archive_size,
+                debug=True,
             )
             data = list(tqdm(generator, total=n_epochs))
 
             # plots
             data = [analyzer_iter(d, threshold=1e-10) for d in data]
-            plot_keys = list(sorted(data[0].keys() - {"x", "x'", "t", "x_feat", "x'_feat", "archive"}))
+            plot_keys = sorted({
+                k for k in data[0].keys()
+                if (k not in {"t", "x", "x'", "archive"} and
+                    not k.endswith("_feat") and
+                    not k.endswith("_out"))
+            })
             fig = util.plot_v_subplots(data, keys=plot_keys)
             fig.savefig(f"{local_dir}/plot.png")
             plt.cla()
 
-            # animation
+            # animate embeddings
             init_feat = maze_lang.extract_features(x_init)
             embeddings = [(0, init_feat)]
             embeddings += [(d["t"] + 1, d["x_feat"]) for d in data]
@@ -579,7 +602,29 @@ def run_maze_search(
                 ylim=maze_lang.ylim,
                 background=maze_lang.background,
             )
-            anim.save(f"{local_dir}/embed.mp4")
+            anim.save(f"{local_dir}/popn.mp4")
+
+            # animate archive embeddings
+            archive_embeddings = [
+                (
+                    d["t"],
+                    np.array([
+                        maze_lang.eval(
+                            maze_lang.parse(s)
+                        )
+                        for s in d["archive"]
+                    ])
+                )
+                for d in data
+            ]
+            anim = util.animate_points(
+                archive_embeddings,
+                title=title,
+                xlim=maze_lang.xlim,
+                ylim=maze_lang.ylim,
+                background=maze_lang.background,
+            )
+            anim.save(f"{local_dir}/archive.mp4")
 
 
 def run_lsys_search(config):
@@ -841,13 +886,13 @@ def local_searches():
     save_dir = f"out/dpp-points/{ts}"
     util.try_mkdir(save_dir)
     run_maze_search(
-        popn_size=100,
+        popn_size=10,
         save_dir=save_dir,
         n_epochs=100,
         fit_policies=["single", "all", "none", "first"],
         accept_policies=["energy", "moment", "all"],
         archive_beta=1,
-        archive_size=100,
+        archive_size=10,
     )
     # run_point_search(
     #     popn_size=100,
