@@ -1,6 +1,6 @@
 from __future__ import annotations
 import pdb
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Iterable
 import numpy as np
 import einops as ein
 from scipy.special import softmax
@@ -16,7 +16,6 @@ from lang.tree import Language, Tree, Grammar, ParseError, Featurizer
 from lang.maze import Maze
 from spinup.algos.pytorch.sac.core import SquashedGaussianMLPActor
 import util
-
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -115,8 +114,8 @@ class FixedDepthAnt(Language):
         self.steps = steps
         self.maze = maze
         self.gym_env = gym.make(
-            "AntMaze_UMaze-v4", 
-            maze_map=maze.str_map, 
+            "AntMaze_UMaze-v4",
+            maze_map=maze.str_map,
             render_mode="rgb_array_list",
             camera_name="free" if self.camera_mode == "fixed" else None,
             use_contact_forces=True,  # required to match ICLR'22 paper
@@ -215,7 +214,7 @@ class FixedDepthAnt(Language):
 
         # extract parameters from program
         conds, stmts = self._extract_params(t)
-        
+
         # run sim loop
         obs, info = self.gym_env.reset(seed=self.seed)
 
@@ -237,7 +236,7 @@ class FixedDepthAnt(Language):
 
             # get low-level observations for policy
             low_obs = obs['observation']
-        
+
             action = self.act_from_params(conds, stmts, high_obs=high_obs, low_obs=low_obs)
             obs, _, terminated, truncated, info = self.gym_env.step(action)
 
@@ -250,7 +249,7 @@ class FixedDepthAnt(Language):
                 self.video_dir,
                 fps=self.gym_env.metadata["render_fps"],
                 step_starting_index=0,
-                episode_index = 0,
+                episode_index=0,
             )
         # self.gym_env.close()  # don't close for now b/c we want to eval multiple times per language
         return np.array(outputs)
@@ -264,7 +263,7 @@ class FixedDepthAnt(Language):
         return action.cpu().numpy()
 
     def act_from_params(
-            self, 
+            self,
             conds: np.ndarray,
             stmts: np.ndarray,
             high_obs: np.ndarray,
@@ -289,11 +288,11 @@ class FixedDepthAnt(Language):
 
         # action = weighted sum of primitives
         action = action_weights @ primitive_actions
-        
+
         return action
 
     def fold_eval_E(
-            self, 
+            self,
             conds: np.ndarray,
             stmts: np.ndarray,
             state: np.ndarray,
@@ -321,10 +320,10 @@ class TrailFeaturizer(Featurizer):
     """
     Take the full trail as features, using stride to cut if desired
     """
-    
+
     def __init__(self, stride: int = 1):
         self.stride = stride
-        
+
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
@@ -338,7 +337,7 @@ class TrailFeaturizer(Featurizer):
 class EndFeaturizer(Featurizer):
     def __init__(self):
         pass
-    
+
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
@@ -357,8 +356,8 @@ class HeatMapFeaturizer(Featurizer):
         self.height = maze.height
         self.scaling = maze.scaling
         self.xy_to_rc = maze.xy_to_rc
-        
-    def apply(self, batch: List[np,ndarray]) -> np.ndarray:
+
+    def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
         assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
@@ -369,11 +368,11 @@ class HeatMapFeaturizer(Featurizer):
         for i, coords in enumerate(batch):
             for x, y in coords:
                 r, c = self.xy_to_rc(x, y)
-                heatmap[i, r, c] += 1
+                heatmaps[i, r, c] += 1
 
-        heatmap /= ein.reduce(heatmap, "b h w -> b () ()", "sum") # normalize
-        heatmap = ein.rearrange(heatmap, "b h w -> b (h w)") # flatten
-        return heatmap
+        heatmaps /= ein.reduce(heatmaps, "b h w -> b () ()", "sum")  # normalize
+        heatmaps = ein.rearrange(heatmaps, "b h w -> b (h w)")  # flatten
+        return heatmaps
 
 
 class MultivariateGaussianSampler:
