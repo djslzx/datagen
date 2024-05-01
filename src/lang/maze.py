@@ -167,7 +167,7 @@ class Maze:
         c = math.floor((x + self.x_center) / self.scaling)
         return r, c
 
-    def rc_to_xy(self, r: int, c: int) -> Tuple[float, float]:
+    def rc_to_xy(self, r: float, c: float) -> Tuple[float, float]:
         x = (c + 0.5) * self.scaling - self.x_center
         y = -((r + 0.5) * self.scaling - self.y_center)
         return x, y
@@ -201,7 +201,7 @@ class Maze:
         assert trails.ndim == 3, f"Expected vector of 2D trails, got {trails.shape}"
         assert trails.shape[-1] == 2, f"Expected trail of 2D points, got {trails.shape}"
         b, t, _ = trails.shape
-        
+
         trails = ein.rearrange(trails, "b t xy -> (b t) xy")
         colors = np.repeat(np.arange(b), t)
 
