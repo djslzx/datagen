@@ -313,7 +313,7 @@ if __name__ == "__main__":
     featurizer = HeatMapFeaturizer(maze)
     lang = FixedDepthAnt(
         env=environment,
-        program_depth=20,
+        program_depth=4,
         steps=1000,
         featurizer=featurizer,
     )

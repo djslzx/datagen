@@ -537,23 +537,58 @@ def run_maze_search(
 ):
     # lang = point.RealPoint(lim=lim, std=1)
     str_mask = [
-        "####################",
-        "#                  #",
-        "####   ######      #",
-        "#  ## ##           #",
-        "#   ###            #",
-        "###   #  ##        #",
-        "# ##  ##  ###      #",
-        "#  ## ###   ##     #",
-        "#     # ###  ##    #",
-        "#     #   ##  ##   #",
-        "#     #    ##  #####",
-        "#     #     ##  ####",
-        "#                  #",
-        "#          ##      #",
-        "#         ##       #",
-        "#        ##        #",
-        "####################",
+        # "##########",
+        # "#        #",
+        # "# ###### #",
+        # "# #      #",
+        # "# #    # #",
+        # "# # #### #",
+        # "# #    # #",
+        # "# ###  # #",
+        # "#   #  # #",
+        # "#  ##  # #",
+        # "##########",
+        "#####################################",
+        "# #       #       #     #         #g#",
+        "# # ##### # ### ##### ### ### ### # #",
+        "#       #   # #     #     # # #   # #",
+        "##### # ##### ##### ### # # # ##### #",
+        "#   # #       #     # # # # #     # #",
+        "# # ####### # # ##### ### # ##### # #",
+        "# #       # # #   #     #     #   # #",
+        "# ####### ### ### # ### ##### # ### #",
+        "#     #   # #   # #   #     # #     #",
+        "# ### ### # ### # ##### # # # #######",
+        "#   #   # # #   #   #   # # #   #   #",
+        "####### # # # ##### # ### # ### ### #",
+        "#     # #     #   # #   # #   #     #",
+        "# ### # ##### ### # ### ### ####### #",
+        "# #   #     #     #   # # #       # #",
+        "# # ##### # ### ##### # # ####### # #",
+        "# #     # # # # #     #       # #   #",
+        "# ##### # # # ### ##### ##### # #####",
+        "# #   # # #     #     # #   #       #",
+        "# # ### ### ### ##### ### # ##### # #",
+        "#r#         #     #       #       # #",
+        "#####################################",
+
+        # "####################",
+        # "#                  #",
+        # "####   ######      #",
+        # "#  ## ##           #",
+        # "#   ###            #",
+        # "###   #  ##        #",
+        # "# ##  ##  ###      #",
+        # "#  ## ###   ##     #",
+        # "#     # ###  ##    #",
+        # "#     #   ##  ##   #",
+        # "#     #    ##  #####",
+        # "#     #     ##  ####",
+        # "#                  #",
+        # "#          ##      #",
+        # "#         ##       #",
+        # "#        ##        #",
+        # "####################",
     ]
     point_lang = point.RealPoint()
     coords = (np.random.uniform(size=(popn_size, 2)) * spread) + 1
@@ -757,10 +792,14 @@ def run_ant_search(
     else:
         raise ValueError(f"Invalid featurizer type for ant domain: {featurizer}")
 
+    env = ant.AntMaze2D(
+        maze_map=maze_map,
+        step_length=0.5,
+    )
+
     lang = ant.FixedDepthAnt(
-        maze=maze_map,
+        env=env,
         include_orientation=include_orientation,
-        low_state_dim=111,
         program_depth=program_depth,
         steps=sim_steps,
         featurizer=ft,
@@ -792,12 +831,13 @@ def run_ant_search(
     )
 
     # make run directory
-    save_dir = f"../out/dpp/ant/{run_id}/"
+    save_dir = f"../out/dpp-ant/{run_id}/"
     try:
         util.mkdir(save_dir)
     except FileExistsError:
         pass
     util.mkdir(f"{save_dir}/data/")
+    util.mkdir(f"{save_dir}/plots/")
 
     # process data
     for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
@@ -805,26 +845,25 @@ def run_ant_search(
         analysis_data = analyzer_iter(d, threshold=1e-10)
 
         trails = np.array(d["x_out"])  # [n t 2]
-        endpoints = trails[:, -1, :]  # [n 2]
-
         trail_fig = maze_map.plot_trails(trails)
+        plt.savefig(f"{save_dir}/plots/trail-{i}.png")
+
+        endpoints = trails[:, -1, :]  # [n 2]
         endpoint_fig = maze_map.plot_endpoints(endpoints)
+        plt.savefig(f"{save_dir}/plots/end-{i}.png")
 
-        trail_plot = wandb.Image(trail_fig)
-        endpoint_plot = wandb.Image(endpoint_fig)
-
-        log = {
-            **d,
-            **analysis_data,
-            "trail": trail_plot,
-            "endpoints": endpoint_plot,
-            "step": i,
-        }
-        log = {k: v for k, v in log.items()
-               if (k not in {"x", "x'"} and
-                   not k.endswith("_feat") and
-                   not k.endswith("_out"))}
         if wandb_run:
+            log = {
+                **d,
+                **analysis_data,
+                "trail": wandb.Image(trail_fig),
+                "endpoints": wandb.Image(endpoint_fig),
+                "step": i,
+            }
+            log = {k: v for k, v in log.items()
+                   if (k not in {"x", "x'"} and
+                       not k.endswith("_feat") and
+                       not k.endswith("_out"))}
             wandb.log(log)
 
 
@@ -909,23 +948,23 @@ def local_searches():
 
 if __name__ == "__main__":
     # sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
+    # local_searches()
 
-    local_searches()
-
-    # ts = util.timestamp()
-    # run_ant_search(
-    #     featurizer="End",
-    #     random_seed=0,
-    #     popn_size=20,
-    #     n_epochs=2,
-    #     sim_steps=2,
-    #     fit_policy="single",
-    #     accept_policy="energy",
-    #     distance_metric="euclidean",
-    #     archive_beta=0.,
-    #     archive_size=10,
-    #     program_depth=2,
-    #     length_cap=1000,
-    #     run_id=f"test-{ts}",
-    #     wandb_run=False,
-    # )
+    ts = util.timestamp()
+    run_ant_search(
+        featurizer="end",
+        random_seed=0,
+        popn_size=10,
+        n_epochs=10,
+        sim_steps=100,
+        fit_policy="single",
+        accept_policy="energy",
+        distance_metric="euclidean",
+        archive_beta=0.,
+        archive_size=10,
+        program_depth=2,
+        length_cap=1000,
+        run_id=f"test-{ts}",
+        wandb_run=False,
+        include_orientation=False,
+    )
