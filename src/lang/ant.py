@@ -5,20 +5,13 @@ import numpy as np
 import einops as ein
 from scipy.special import softmax
 from scipy import stats
-import torch
-import torch.nn as nn
-import gymnasium as gym
-from gymnasium.utils.save_video import save_video
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 from lang.tree import Language, Tree, Featurizer
 from lang.maze import Maze
+from lang.ant_env import Environment, AntMaze2D
 import util
-
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
 
 
 class FixedDepthAnt(Language):
@@ -54,31 +47,18 @@ class FixedDepthAnt(Language):
     def __init__(
             self,
             program_depth: int,
-            maze: Maze,
             steps: int,
+            env: Environment,
             featurizer: Featurizer,
-            include_orientation: bool,
-            low_state_dim=111,  # state space dim for primitive policies
-            primitives_dir="/home/djl328/prob-repl/src/lang/primitives/ant",
-            camera="fixed",
-            save_video=False,
-            video_dir="videos",
-            seed=0,
+            include_orientation=False,
     ):
         assert program_depth > 1
-        assert low_state_dim > 0
         assert steps > 0
-        assert camera in {"fixed", "follow"}, f"Camera setting must be either 'fixed' or 'follow'"
-        assert maze.scaling == 4, \
-            f"gymnasium AntMaze assumes scale of 4, but got maze with scale={maze.scaling}"
 
+        self.env = env
+        self.steps = steps
         self.n_conds = program_depth - 1
         self.n_stmts = program_depth
-        self.save_video = save_video
-        self.video_dir = video_dir
-        self.camera_mode = camera
-        self.seed = seed
-        self.include_orientation = include_orientation
 
         super().__init__(
             parser_grammar=FixedDepthAnt.grammar,
@@ -88,51 +68,20 @@ class FixedDepthAnt(Language):
             featurizer=featurizer,
         )
 
-        # load primitives
-        self.primitives = [
-            torch.load(f"{primitives_dir}/{direction}.pt").pi.to(device)
-            for direction in ["up", "down", "left", "right"]
-        ]
-
+        self.action_dim = 4
         self.high_state_dim = 4  # rangefinders, cardinal directions
         if include_orientation:
-            self.high_state_dim += 5  # orientation variables
-
-        self.low_state_dim = low_state_dim
-        self.action_dim = len(self.primitives)
+            self.high_state_dim += 5
 
         self.n_cond_params = self.n_conds * (self.high_state_dim + 1)
         self.n_stmt_params = self.n_stmts * self.action_dim
         self.n_params = self.n_cond_params + self.n_stmt_params
-
         self.cond_shape = (self.n_conds, self.high_state_dim + 1)
         self.stmt_shape = (self.n_stmts, self.action_dim)
 
-        # mujoco env
-        self.steps = steps
-        self.maze = maze
-        self.gym_env = gym.make(
-            "AntMaze_UMaze-v4",
-            maze_map=maze.str_map,
-            render_mode="rgb_array_list",
-            camera_name="free" if self.camera_mode == "fixed" else None,
-            use_contact_forces=True,  # required to match ICLR'22 paper
-        )
-
         # initial sampling distribution: assume uniform weights
-        null_data = np.zeros(self.n_cond_params + self.n_stmt_params)
+        null_data = np.zeros(self.n_params)
         self.distribution = MultivariateGaussianSampler(null_data)
-
-        # camera settings
-        if self.save_video and self.camera_mode == "fixed":
-            ant_env = self.gym_env.unwrapped.ant_env
-            ant_env.mujoco_renderer.default_cam_config = {
-                "trackbodyid": 0,
-                "elevation": -60,
-                "lookat": np.array([0, 0.0, 0.0]),
-                "distance": ant_env.model.stat.extent * 1.5,
-                "azimuth": 0,
-            }
 
     def _parse_leaf(self, t: Tree) -> float:
         if t.value == "pos":
@@ -207,87 +156,26 @@ class FixedDepthAnt(Language):
         params, _ = ein.pack([c, s], "*")
         return self.distribution.logpdf(params)
 
-    def eval(self, t: Tree, env: Dict[str, Any] = None) -> Iterable[np.ndarray]:
+    def eval(self, t: Tree, env: Dict[str, Any] = None) -> np.ndarray:
         assert t.value == "root"
 
-        # extract parameters from program
         conds, stmts = self._extract_params(t)
-
-        # run sim loop
-        obs, info = self.gym_env.reset(seed=self.seed)
-
-        # output ant trail
+        obs = self.env.reset()
         outputs = []
-
-        for step in tqdm(range(self.steps), desc="Evaluating ant"):
-            x, y = obs['achieved_goal']
+        for _ in tqdm(range(self.steps), desc="Evaluating ant"):
+            x, y = obs.state
             outputs.append([x, y])
 
-            # construct high-level observations for symbolic program
-            orientation = obs['observation'][:5]
-            rf_dists = self.maze.cardinal_wall_distances(x, y)
+            assert obs.observation.shape == (self.high_state_dim,), \
+                f"Expected high obs dim {self.high_state_dim}, got {obs.observation.shape}"
 
-            if self.include_orientation:
-                high_obs, _ = ein.pack([orientation, rf_dists], "*")
-            else:
-                high_obs = rf_dists
+            action_weights = self.fold_eval_E(conds, stmts, obs.observation)
+            obs = self.env.step(action_weights)
 
-            # get low-level observations for policy
-            low_obs = obs['observation']
-
-            action = self.act_from_params(conds, stmts, high_obs=high_obs, low_obs=low_obs)
-            obs, _, terminated, truncated, info = self.gym_env.step(action)
-
-            if terminated or truncated:
+            if obs.ended:
                 break
 
-        if self.save_video:
-            save_video(
-                self.gym_env.render(),
-                self.video_dir,
-                fps=self.gym_env.metadata["render_fps"],
-                step_starting_index=0,
-                episode_index=0,
-            )
-        # self.gym_env.close()  # don't close for now b/c we want to eval multiple times per language
         return np.array(outputs)
-
-    @staticmethod
-    def get_action(model: nn.Module, x: np.ndarray) -> np.ndarray:
-        assert x.ndim == 2, f"Model expects 2D array x, got {x.shape}"
-        with torch.no_grad():
-            x = torch.as_tensor(x, dtype=torch.float32).to(device)
-            action, _ = model(x, deterministic=True)
-        return action.cpu().numpy()
-
-    def act_from_params(
-            self,
-            conds: np.ndarray,
-            stmts: np.ndarray,
-            high_obs: np.ndarray,
-            low_obs: np.ndarray,
-    ) -> np.ndarray:
-        assert high_obs.ndim == 1, f"Expected 1D high-level obs array, got {high_obs.shape}"
-        assert low_obs.ndim == 1, f"Expected 1D low-level obs array, got {low_obs.shape}"
-        assert high_obs.shape[0] == self.high_state_dim, \
-            f"Expected high obs dim {self.high_state_dim}, got {high_obs.shape}"
-        assert low_obs.shape[0] == self.low_state_dim, \
-            f"Expected low obs dim {self.low_state_dim}, got {low_obs.shape}"
-
-        # simulate program to get weights over primitive policies
-        action_weights = self.fold_eval_E(conds, stmts, high_obs)
-
-        # compile primitives
-        primitive_actions = []
-        for pi in self.primitives:
-            pi_action = self.get_action(pi, low_obs[None, :])
-            primitive_actions.append(pi_action)
-        primitive_actions = ein.rearrange(primitive_actions, "n 1 d -> (n 1) d")
-
-        # action = weighted sum of primitives
-        action = action_weights @ primitive_actions
-
-        return action
 
     def fold_eval_E(
             self,
@@ -409,34 +297,36 @@ class MultivariateGaussianSampler:
 
 
 if __name__ == "__main__":
-    np.random.seed(0)
-
-    ts = util.timestamp()
-    video_dir = f"videos/{ts}"
-    util.try_mkdir(video_dir)
+    # np.random.seed(0)
+    # ts = util.timestamp()
+    # video_dir = f"videos/{ts}"
+    # util.try_mkdir(video_dir)
 
     maze = Maze.from_saved(
         "lehman-ecj-11-hard"
         # "cross"
     )
+    environment = AntMaze2D(
+        maze_map=maze,
+        step_length=0.5,
+    )
     featurizer = HeatMapFeaturizer(maze)
     lang = FixedDepthAnt(
-        maze=maze,
-        program_depth=6,
+        env=environment,
+        program_depth=20,
         steps=1000,
         featurizer=featurizer,
-        save_video=True,
-        video_dir=video_dir,
-        camera="follow",
     )
-    params = np.random.rand(lang.n_params) * 2 - 1
-    p = lang.make_program(params)
-    s = lang.to_str(p)
+    trees = []
+    for _ in range(10):
+        params = np.random.rand(lang.n_params) * 2 - 1
+        tree = lang.make_program(params)
+        trees.append(tree)
 
-    tree = lang.parse(s)
-    print(tree, lang.to_str(tree), sep='\n')
-    print(lang._extract_params(tree))
-    coords = lang.eval(tree)
-    feat_vec = featurizer.apply([coords])
-    print(feat_vec)
-    print(maze.trail_img(coords))
+    trails = []
+    for tree in trees:
+        trail = lang.eval(tree)
+        trails.append(trail)
+
+    maze.plot_trails(np.array(trails))
+    plt.show()
