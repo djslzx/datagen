@@ -64,6 +64,7 @@ class FixedDepthAnt(Language):
             save_video=False,
             video_dir="videos",
             seed=0,
+            freeze_leaves=False,
     ):
         assert program_depth > 1
         assert low_state_dim > 0
@@ -71,14 +72,15 @@ class FixedDepthAnt(Language):
         assert camera in {"fixed", "follow"}, f"Camera setting must be either 'fixed' or 'follow'"
         assert maze.scaling == 4, \
             f"gymnasium AntMaze assumes scale of 4, but got maze with scale={maze.scaling}"
+        assert not freeze_leaves or program_depth == 4, f"Freezing leaves only enabled for programs of depth 4"
 
-        self.n_conds = program_depth - 1
-        self.n_stmts = program_depth
+        # settings
         self.save_video = save_video
         self.video_dir = video_dir
         self.camera_mode = camera
         self.seed = seed
         self.include_orientation = include_orientation
+        self.freeze_leaves = freeze_leaves
 
         super().__init__(
             parser_grammar=FixedDepthAnt.grammar,
@@ -94,25 +96,32 @@ class FixedDepthAnt(Language):
             for direction in ["up", "down", "left", "right"]
         ]
 
+        # state dimensions
         self.high_state_dim = 4  # rangefinders, cardinal directions
         if include_orientation:
             self.high_state_dim += 5  # orientation variables
-
         self.low_state_dim = low_state_dim
         self.action_dim = len(self.primitives)
 
+        # parameter counts and shapes
+        self.n_conds = program_depth - 1
+        self.n_stmts = program_depth
         self.n_cond_params = self.n_conds * (self.high_state_dim + 1)
         self.n_stmt_params = self.n_stmts * self.action_dim
         self.n_params = self.n_cond_params + self.n_stmt_params
-
         self.cond_shape = (self.n_conds, self.high_state_dim + 1)
         self.stmt_shape = (self.n_stmts, self.action_dim)
+
+        if freeze_leaves:
+            assert self.stmt_shape == (4, 4), \
+                f"Expected frozen leaves of size 4x4, got {self.stmt.shape}"
+        self.frozen_stmts = np.eye(4, 4)
 
         # mujoco env
         self.steps = steps
         self.maze = maze
         self.gym_env = gym.make(
-            "AntMaze_UMaze-v4",
+            "AntMaze_UMaze-v4", 
             maze_map=maze.str_map,
             render_mode="rgb_array_list",
             camera_name="free" if self.camera_mode == "fixed" else None,
@@ -181,6 +190,10 @@ class FixedDepthAnt(Language):
         assert params.shape[0] == self.n_params, f"Expected {self.n_params}, got {params.shape}"
 
         conds, stmts = self.unflatten_params(params)
+
+        if self.freeze_leaves:
+            stmts = self.frozen_stmts
+
         conds_str = " ".join(self._array_to_str(cond) for cond in conds)
         stmts_str = " ".join(self._array_to_str(stmt) for stmt in stmts)
         return self.parse(f"""
