@@ -132,6 +132,16 @@ class Maze:
         self.x_center = self.width * self.scaling / 2.
         self.y_center = self.height * self.scaling / 2.
 
+    def start_states_xy(self) -> np.ndarray:
+        """Returns the set of possible start positions"""
+        starts = []
+        for r in range(self.height):
+            for c in range(self.width):
+                if self.str_map[r][c] == "r":
+                    x, y = self.rc_to_xy(r, c)
+                    starts.append(np.array([x, y]))
+        return np.array(starts)
+
     @staticmethod
     def from_saved(name: str, scaling=4.) -> "Maze":
         if name not in SAVED_MAZES:
@@ -178,11 +188,11 @@ class Maze:
         ymin, ymax = ymax, ymin
         return (xmin, xmax), (ymin, ymax)
 
-    def plot_endpoints(self, coords: np.ndarray) -> wandb.Image:
+    def plot_endpoints(self, coords: np.ndarray) -> plt.Figure:
         assert coords.ndim == 2, f"Expected vector of 2D points, got {coords.shape}"
 
         fig, ax = plt.subplots()
-        plt.scatter(coords[:, 0], coords[:, 1])
+        ax.scatter(coords[:, 0], coords[:, 1])
 
         # add maze bitmap
         plot_shapes(ax, [self.walls])
@@ -193,20 +203,16 @@ class Maze:
         ax.set_ylim(ylim)
         plt.tight_layout()
 
-        img = wandb.Image(fig)
-        plt.close()
-        return img
+        return fig
 
-    def plot_trails(self, trails: np.ndarray) -> wandb.Image:
+    def plot_trails(self, trails: np.ndarray) -> plt.Figure:
         assert trails.ndim == 3, f"Expected vector of 2D trails, got {trails.shape}"
         assert trails.shape[-1] == 2, f"Expected trail of 2D points, got {trails.shape}"
         b, t, _ = trails.shape
-
-        trails = ein.rearrange(trails, "b t xy -> (b t) xy")
-        colors = np.repeat(np.arange(b), t)
-
         fig, ax = plt.subplots()
-        plt.scatter(trails[:, 0], trails[:, 1], s=2, c=colors)
+
+        for trail in trails:
+            ax.plot(trail[:, 0], trail[:, 1])
 
         # add maze bitmap
         plot_shapes(ax, [self.walls])
@@ -215,13 +221,9 @@ class Maze:
         xlim, ylim = self.limits()
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
-
-        # plot setup
         plt.tight_layout()
 
-        img = wandb.Image(fig)
-        plt.close()
-        return img
+        return fig
 
 
 def make_square(x: float, y: float, s: float) -> shp.Polygon:

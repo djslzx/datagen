@@ -812,8 +812,11 @@ def run_ant_search(
         trails = np.array(d["x_out"])  # [n t 2]
         endpoints = trails[:, -1, :]  # [n 2]
 
-        trail_plot = maze_map.plot_trails(trails)
-        endpoint_plot = maze_map.plot_endpoints(endpoints)
+        trail_fig = maze_map.plot_trails(trails)
+        endpoint_fig = maze_map.plot_endpoints(endpoints)
+
+        trail_plot = wandb.Image(trail_fig)
+        endpoint_plot = wandb.Image(endpoint_fig)
 
         log = {
             **d,
