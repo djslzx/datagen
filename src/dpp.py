@@ -703,6 +703,7 @@ def run_lsys_search(config):
 
 def run_ant_search_from_conf(conf):
     expected_keys = {
+        "maze_name",
         "featurizer",
         "random_seed",
         "popn_size",
@@ -716,6 +717,7 @@ def run_ant_search_from_conf(conf):
         "program_depth",
         "length_cap",
         "include_orientation",
+        "freeze_leaves",
     }
     assert all(k in conf for k in expected_keys), \
         f"Missing expected keys {expected_keys - set(conf.keys())}"
@@ -728,6 +730,7 @@ def run_ant_search_from_conf(conf):
 
 
 def run_ant_search(
+        maze_name: str,
         featurizer: str,
         random_seed: int,
         popn_size: int,
@@ -741,12 +744,13 @@ def run_ant_search(
         program_depth: int,
         length_cap: int,
         include_orientation: bool,
+        freeze_leaves: bool,
         run_id: str,
         wandb_run=True,
 ):
     np.random.seed(random_seed)
 
-    maze_map = maze.Maze.from_saved("lehman-ecj-11-hard")
+    maze_map = maze.Maze.from_saved(maze_name) # "lehman-ecj-11-hard"
 
     if featurizer == "trail":
         ft = ant.TrailFeaturizer(stride=1)
@@ -760,6 +764,7 @@ def run_ant_search(
     lang = ant.FixedDepthAnt(
         maze=maze_map,
         include_orientation=include_orientation,
+        freeze_leaves=freeze_leaves,
         low_state_dim=111,
         program_depth=program_depth,
         steps=sim_steps,
@@ -905,9 +910,9 @@ def local_searches():
 
 
 if __name__ == "__main__":
-    # sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
+    sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
 
-    local_searches()
+    # local_searches()
 
     # ts = util.timestamp()
     # run_ant_search(
