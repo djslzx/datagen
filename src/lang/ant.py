@@ -73,6 +73,9 @@ class FixedDepthAnt(Language):
         if include_orientation:
             self.high_state_dim += 5
 
+        # parameter counts and shapes
+        self.n_conds = program_depth - 1
+        self.n_stmts = program_depth
         self.n_cond_params = self.n_conds * (self.high_state_dim + 1)
         self.n_stmt_params = self.n_stmts * self.action_dim
         self.n_params = self.n_cond_params + self.n_stmt_params
@@ -130,6 +133,10 @@ class FixedDepthAnt(Language):
         assert params.shape[0] == self.n_params, f"Expected {self.n_params}, got {params.shape}"
 
         conds, stmts = self.unflatten_params(params)
+
+        if self.freeze_leaves:
+            stmts = self.frozen_stmts
+
         conds_str = " ".join(self._array_to_str(cond) for cond in conds)
         stmts_str = " ".join(self._array_to_str(stmt) for stmt in stmts)
         return self.parse(f"""

@@ -738,6 +738,7 @@ def run_lsys_search(config):
 
 def run_ant_search_from_conf(conf):
     expected_keys = {
+        "maze_name",
         "featurizer",
         "random_seed",
         "popn_size",
@@ -763,6 +764,7 @@ def run_ant_search_from_conf(conf):
 
 
 def run_ant_search(
+        maze_name: str,
         featurizer: str,
         random_seed: int,
         popn_size: int,
@@ -781,7 +783,7 @@ def run_ant_search(
 ):
     np.random.seed(random_seed)
 
-    maze_map = maze.Maze.from_saved("lehman-ecj-11-hard")
+    maze_map = maze.Maze.from_saved(maze_name) # "lehman-ecj-11-hard"
 
     if featurizer == "trail":
         ft = ant.TrailFeaturizer(stride=1)
@@ -947,24 +949,23 @@ def local_searches():
 
 
 if __name__ == "__main__":
-    # sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
-    # local_searches()
+    sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
 
-    ts = util.timestamp()
-    run_ant_search(
-        featurizer="end",
-        random_seed=0,
-        popn_size=10,
-        n_epochs=10,
-        sim_steps=100,
-        fit_policy="single",
-        accept_policy="energy",
-        distance_metric="euclidean",
-        archive_beta=0.,
-        archive_size=10,
-        program_depth=2,
-        length_cap=1000,
-        run_id=f"test-{ts}",
-        wandb_run=False,
-        include_orientation=False,
-    )
+    # ts = util.timestamp()
+    # run_ant_search(
+    #     featurizer="end",
+    #     random_seed=0,
+    #     popn_size=10,
+    #     n_epochs=10,
+    #     sim_steps=100,
+    #     fit_policy="single",
+    #     accept_policy="energy",
+    #     distance_metric="euclidean",
+    #     archive_beta=0.,
+    #     archive_size=10,
+    #     program_depth=2,
+    #     length_cap=1000,
+    #     run_id=f"test-{ts}",
+    #     wandb_run=False,
+    #     include_orientation=False,
+    # )
