@@ -109,7 +109,7 @@ def mcmc_lang_rr(
     assert distance_metric in {"cosine", "dot", "euclidean"}
 
     x = x_init.copy()
-    x_out, x_feat = lang.evaluate_features(x)
+    x_out, x_feat = lang.evaluate_features(x, load_bar=debug)
     archive = VectorArchive.from_vecs(
         n=archive_size,
         vecs=x_feat,
@@ -129,7 +129,11 @@ def mcmc_lang_rr(
         sum_log_q = 0
         sum_log_accept = 0
 
-        for i in range(popn_size):
+        round_robin_range = range(popn_size)
+        if debug:
+            round_robin_range = tqdm(round_robin_range, desc="Round robin-ing")
+
+        for i in round_robin_range:
             if fit_policy == "all":
                 lang.fit(x, alpha=1.0)
             elif fit_policy == "single":
@@ -752,6 +756,7 @@ def run_ant_search_from_conf(conf):
         "program_depth",
         "length_cap",
         "include_orientation",
+        "step_length",
     }
     assert all(k in conf for k in expected_keys), \
         f"Missing expected keys {expected_keys - set(conf.keys())}"
@@ -779,11 +784,13 @@ def run_ant_search(
         length_cap: int,
         include_orientation: bool,
         run_id: str,
+        step_length=0.1,
         wandb_run=True,
+        debug=False,
 ):
     np.random.seed(random_seed)
 
-    maze_map = maze.Maze.from_saved(maze_name) # "lehman-ecj-11-hard"
+    maze_map = maze.Maze.from_saved(maze_name)
 
     if featurizer == "trail":
         ft = ant.TrailFeaturizer(stride=1)
@@ -796,7 +803,7 @@ def run_ant_search(
 
     env = ant.AntMaze2D(
         maze_map=maze_map,
-        step_length=0.5,
+        step_length=step_length,
     )
 
     lang = ant.FixedDepthAnt(
@@ -830,6 +837,7 @@ def run_ant_search(
         archive_size=archive_size,
         archive_beta=archive_beta,
         length_cap=length_cap,
+        debug=debug,
     )
 
     # make run directory
@@ -953,11 +961,12 @@ if __name__ == "__main__":
 
     # ts = util.timestamp()
     # run_ant_search(
+    #     maze_name="users-guide",  # "lehman-ecj-11-hard",
     #     featurizer="end",
     #     random_seed=0,
     #     popn_size=10,
-    #     n_epochs=10,
-    #     sim_steps=100,
+    #     n_epochs=100,
+    #     sim_steps=1000,
     #     fit_policy="single",
     #     accept_policy="energy",
     #     distance_metric="euclidean",
@@ -968,4 +977,5 @@ if __name__ == "__main__":
     #     run_id=f"test-{ts}",
     #     wandb_run=False,
     #     include_orientation=False,
+    #     debug=True,
     # )
