@@ -4,7 +4,8 @@ import numpy as np
 from collections import namedtuple
 import matplotlib.pyplot as plt
 import shapely as shp
-import maze
+
+import lang.maze as maze
 
 Observation = namedtuple(
     typename="Observation",
@@ -33,6 +34,7 @@ class AntMaze2D(Environment):
         self.maze_map = maze_map
         self.starts = maze_map.start_states_xy()
         self.pos = AntMaze2D.reset_position(self.starts)
+        self.step_length = step_length
         self.d_step = np.array([
             [0., 1.],  # up
             [0., -1.],  # down
@@ -44,27 +46,34 @@ class AntMaze2D(Environment):
     def reset_position(starts: np.ndarray) -> np.ndarray:
         return starts[np.random.randint(len(starts)), :]
 
-    def observe(self):
+    def observe(self, ended: bool):
         return Observation(
             observation=self.maze_map.cardinal_wall_distances(*self.pos),
             state=self.pos,
-            ended=False,
+            ended=ended,
         )
 
     def reset(self) -> Observation:
         self.pos = self.reset_position(self.starts)
-        return self.observe()
+        return self.observe(ended=False)
 
     def step(self, action_weights: np.ndarray) -> Observation:
         assert action_weights.shape == (4,), f"Expected action vector shape (4,), got {action_weights.shape}"
         d_pos = action_weights @ self.d_step
         new_pos = self.pos + d_pos
 
-        # only step if it doesn't make us go into a maze wall
-        if not shp.Point(*new_pos).within(self.maze_map.walls):
+        # exit early if we walk into a wall
+        if shp.Point(*new_pos).within(self.maze_map.walls):
+            return self.observe(ended=True)
+        else:
             self.pos = new_pos
+            return self.observe(ended=False)
 
-        return self.observe()
+        # # add some noise to the step
+        # rand_weights = np.random.rand(4) * self.step_length / 3
+        # rand_step = rand_weights @ self.d_step
+        # if not shp.Point(*(self.pos + rand_step)).within(self.maze_map.walls):
+        #     self.pos += rand_step
 
     def viz(self):
         fig, ax = plt.subplots()

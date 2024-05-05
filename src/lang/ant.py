@@ -3,8 +3,8 @@ import pdb
 from typing import List, Dict, Any, Tuple, Iterable
 import numpy as np
 import einops as ein
-from scipy.special import softmax
 from scipy import stats
+from scipy.special import expit
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
@@ -133,10 +133,6 @@ class FixedDepthAnt(Language):
         assert params.shape[0] == self.n_params, f"Expected {self.n_params}, got {params.shape}"
 
         conds, stmts = self.unflatten_params(params)
-
-        if self.freeze_leaves:
-            stmts = self.frozen_stmts
-
         conds_str = " ".join(self._array_to_str(cond) for cond in conds)
         stmts_str = " ".join(self._array_to_str(stmt) for stmt in stmts)
         return self.parse(f"""
@@ -169,7 +165,7 @@ class FixedDepthAnt(Language):
         conds, stmts = self._extract_params(t)
         obs = self.env.reset()
         outputs = []
-        for _ in tqdm(range(self.steps), desc="Evaluating ant"):
+        for _ in range(self.steps):
             x, y = obs.state
             outputs.append([x, y])
 
@@ -182,7 +178,14 @@ class FixedDepthAnt(Language):
             if obs.ended:
                 break
 
-        return np.array(outputs)
+        outputs = np.array(outputs)
+
+        if len(outputs) < self.steps:
+            # repeat last position
+            padding = ein.repeat(outputs[-1], "d -> n d", n=self.steps - len(outputs))
+            outputs = np.concatenate([outputs, padding], axis=0)
+
+        return outputs
 
     def fold_eval_E(
             self,
@@ -193,7 +196,7 @@ class FixedDepthAnt(Language):
         """Evaluate E by folding, no recursion"""
         e = stmts[-1]
         for b, c in zip(conds[::-1], stmts[:-1][::-1]):
-            w = softmax(b[-1] + np.dot(b[:-1], state))
+            w = expit(b[-1] + np.dot(b[:-1], state))
             e = w * c + (1 - w) * e
         return e
 
@@ -320,15 +323,17 @@ if __name__ == "__main__":
     featurizer = HeatMapFeaturizer(maze)
     lang = FixedDepthAnt(
         env=environment,
-        program_depth=4,
+        program_depth=6,
         steps=1000,
         featurizer=featurizer,
     )
-    trees = []
-    for _ in range(10):
-        params = np.random.rand(lang.n_params) * 2 - 1
-        tree = lang.make_program(params)
-        trees.append(tree)
+    trees = lang.samples(n_samples=10, length_cap=10_000)
+    # trees.append(
+    #     lang.parse("""
+    #         (root (conds [1 0 0 0 -2])
+    #               (stmts [1 0 0 0]
+    #                      [0 1 0 0]))
+    #     """))
 
     trails = []
     for tree in trees:
