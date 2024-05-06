@@ -172,7 +172,7 @@ class FixedDepthAnt(Language):
             assert obs.observation.shape == (self.high_state_dim,), \
                 f"Expected high obs dim {self.high_state_dim}, got {obs.observation.shape}"
 
-            action_weights = self.fold_eval_E(conds, stmts, obs.observation)
+            action_weights, stmt_weights = self.fold_eval_E(conds, stmts, obs.observation)
             obs = self.env.step(action_weights)
 
             if obs.ended:
@@ -187,18 +187,36 @@ class FixedDepthAnt(Language):
 
         return outputs
 
+    @staticmethod
     def fold_eval_E(
-            self,
             conds: np.ndarray,
             stmts: np.ndarray,
             state: np.ndarray,
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Evaluate E by folding, no recursion"""
         e = stmts[-1]
-        for b, c in zip(conds[::-1], stmts[:-1][::-1]):
+        weights = np.zeros(len(stmts))
+        weights[0] = 1.0
+        for i, (b, c) in enumerate(zip(conds[::-1], stmts[:-1][::-1]), 1):
             w = expit(b[-1] + np.dot(b[:-1], state))
             e = w * c + (1 - w) * e
-        return e
+            weights *= 1 - w
+            weights[i] = w
+        return e, weights[::-1]
+
+    @staticmethod
+    def arr_eval_E(
+            conds: np.ndarray,
+            stmts: np.ndarray,
+            state: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        cond_weights = expit(conds[:, -1] + conds[:, :-1] @ state)
+        stmt_weights = np.ones(len(stmts))
+        for i, c in enumerate(cond_weights, 1):
+            stmt_weights[-(i + 1)] = c
+            stmt_weights[-i:] *= 1 - c
+        policy = np.dot(stmt_weights, stmts)
+        return policy, stmt_weights
 
     @property
     def str_semantics(self) -> Dict:
@@ -210,6 +228,30 @@ class FixedDepthAnt(Language):
             "pos": lambda n: f"{n}",
             "neg": lambda n: f"-{n}",
         }
+
+
+def test_eval_E():
+    cases = [
+        ([[0, 0]], [[1], [2]], [1],
+         [0.5 * 1 + 0.5 * 2], [0.5, 0.5]),
+        ([[0, 0], [0, 0], [0, 0]], [[1], [2], [3], [4]], [1],
+         [0.5 * 1 + 0.25 * 2 + 0.125 * 3 + 0.125 * 4], [0.5, 0.25, 0.125, 0.125]),
+        ([[0, 100], [0, 100], [0, 100]], [[1], [2], [3], [4]], [1],
+         [1 * 1], [1, 0, 0, 0]),
+    ]
+    for conds, stmts, state, policy, weights in cases:
+        inputs = (
+            np.array(conds),
+            np.array(stmts),
+            np.array(state),
+        )
+        arr_policy, arr_weights = FixedDepthAnt.arr_eval_E(*inputs)
+        assert np.array_equal(arr_policy, policy), f"Expected {policy}, got {arr_policy}"
+        assert np.array_equal(arr_weights, weights), f"Expected {weights}, got {arr_weights}"
+
+        fold_policy, fold_weights = FixedDepthAnt.fold_eval_E(*inputs)
+        assert np.array_equal(fold_policy, policy), f"Expected {policy}, got {fold_policy}"
+        assert np.array_equal(fold_weights, weights), f"Expected {weights}, got {fold_weights}"
 
 
 class TrailFeaturizer(Featurizer):
