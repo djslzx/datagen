@@ -13,6 +13,14 @@ from lang.ant_env import AntMaze2D
 from lang.mujoco_ant_env import MujocoAntMaze
 
 
+def save_trails(maze: Maze, trails: List[np.ndarray], save_dir: str, name="trail"):
+    trails = np.array(trails)
+    np.save(f"{save_dir}/{name}.npy", trails, allow_pickle=True)
+    maze.plot_trails(trails)
+    plt.savefig(f"{save_dir}/{name}.png")
+    plt.close()
+
+
 def mujoco_ant_test():
     ts = util.timestamp()
     save_dir = f"../../out/mujoco_tests/{ts}"
@@ -44,6 +52,10 @@ def mujoco_ant_test():
     )
 
     trees = mujoco_ant.samples(n_samples=2, length_cap=10_000)
+    
+    with open(f"{save_dir}/programs.txt", "w") as f:
+        for tree in trees:
+            f.write(mujoco_ant.to_str(tree) + "\n")
 
     mujoco_trails = []
     simple_trails = []
@@ -55,34 +67,55 @@ def mujoco_ant_test():
         simple_trail = simple_ant.eval(tree, env={'load_bar': True})
         simple_trails.append(simple_trail)
 
-    mujoco_trails = np.array(mujoco_trails)
-    maze.plot_trails(mujoco_trails)
-    plt.savefig("mujoco_trails.png")
-    plt.close()
-    np.save(f"{save_dir}/mujoco_trails.npy", mujoco_trails, allow_pickle=True)
-
-    simple_trails = np.array(simple_trails)
-    maze.plot_trails(simple_trails)
-    plt.savefig("simple_trails.png")
-    plt.close()
-    np.save(f"{save_dir}/simple_trails.npy", simple_trails, allow_pickle=True)
+    save_trails(maze, mujoco_trails, save_dir, "mujoco_trails")
+    save_trails(maze, simple_trails, save_dir, "simple_trails")
 
 
 def mujoco_straight_line_test():
     """
     See how straight of a line each primitive policy walks
     """
+    # simple ant policies
     ants = {
-        "north": """(root (conds [1 0 0 0 -2])
+        "up":    """(root (conds [0 0 0 0 1])
                           (stmts [1 0 0 0]
-                                 [0 1 0 0]))""",
-        "south": """""",
-        "east": """""",
-        "west": """""",
+                                 [0 0 0 0]))""",
+        "down":  """(root (conds [0 0 0 0 1])
+                          (stmts [0 -1 0 0]
+                                 [0 0 0 0]))""",
+        "left":  """(root (conds [0 0 0 0 1])
+                          (stmts [0 0 -1 0]
+                                 [0 0 0 0]))""",
+        "right": """(root (conds [0 0 0 0 1])
+                          (stmts [0 0 0 1]
+                                 [0 0 0 0]))""",
     }
-    raise NotImplementedError
+    
+    # setup
+    ts = util.timestamp()
+    save_dir = f"../../out/mujoco_line_tests/{ts}"
+    util.try_mkdir(save_dir)
+
+    maze = Maze.from_saved("lehman-ecj-11-hard")
+    featurizer = EndFeaturizer()
+    env = MujocoAntMaze(
+        maze_map=maze,
+        camera_mode="fixed",
+        include_orientation=False,
+    )
+    lang = FixedDepthAnt(
+        env=env,
+        program_depth=2,
+        steps=1000,
+        featurizer=featurizer,
+    )
+
+    for name, ant in ants.items():
+        p = lang.parse(ant)
+        trail = lang.eval(p, env={'load_bar': True})[None, :]
+        save_trails(maze, trail, save_dir, f"{name}_trail")
 
 
 if __name__ == "__main__":
-    mujoco_ant_test()
-
+    # mujoco_ant_test()
+    mujoco_straight_line_test()
