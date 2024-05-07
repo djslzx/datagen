@@ -35,10 +35,11 @@ class MujocoAntMaze(Environment):
             camera_name="free" if camera_mode == "fixed" else None,
             use_contact_forces=True,  # required to match ICLR'22 paper
         )
-        self.video_dir = video_dir
         self.maze_map = maze_map
         self.seed = seed
         self.include_orientation = include_orientation
+        self.video_dir = video_dir
+        self.rendered_videos = 0
 
         # load primitives
         self.primitives = [
@@ -108,5 +109,6 @@ class MujocoAntMaze(Environment):
             self.video_dir,
             fps=self.env.metadata["render_fps"],
             step_starting_index=0,
-            episode_index=0,
+            episode_index=self.rendered_videos,
         )
+        self.rendered_videos += 1
