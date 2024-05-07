@@ -168,7 +168,7 @@ class FixedDepthAnt(Language):
 
         steps = range(self.steps)
         if env is not None and "load_bar" in env:
-            steps = tqdm(steps)
+            steps = tqdm(steps, desc="Evaluating program")
         for _ in steps:
             x, y = obs.state
             outputs.append([x, y])
