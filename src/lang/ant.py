@@ -171,12 +171,11 @@ class FixedDepthAnt(Language):
             steps = tqdm(steps, desc="Evaluating program")
         for _ in steps:
             x, y = obs.state
-            outputs.append([x, y])
-
             assert obs.observation.shape == (self.high_state_dim,), \
                 f"Expected high obs dim {self.high_state_dim}, got {obs.observation.shape}"
 
             action_weights, stmt_weights = self.fold_eval_E(conds, stmts, obs.observation)
+            outputs.append([x, y, *stmt_weights])
             obs = self.env.step(action_weights)
 
             if obs.ended:
@@ -273,7 +272,7 @@ class TrailFeaturizer(Featurizer):
         assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
 
         # stride through t dim, then flatten
-        return ein.rearrange(batch[:, ::self.stride, :], "b t xy -> b (t xy)")
+        return ein.rearrange(batch[:, ::self.stride, :2], "b t d -> b (t d)")
 
 
 class EndFeaturizer(Featurizer):
@@ -285,7 +284,7 @@ class EndFeaturizer(Featurizer):
             batch = np.stack(batch)
         assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
         assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
-        return batch[:, -1, :]
+        return batch[:, -1, :2]
 
 
 class HeatMapFeaturizer(Featurizer):
@@ -307,7 +306,7 @@ class HeatMapFeaturizer(Featurizer):
 
         batch_size = batch.shape[0]
         heatmaps = np.zeros((batch_size, self.width, self.height))  # treat i,j as equal to x,y
-        for i, coords in enumerate(batch):
+        for i, coords in enumerate(batch[:, :, :2]):
             for x, y in coords:
                 r, c = self.xy_to_rc(x, y)
                 heatmaps[i, r, c] += 1
@@ -315,6 +314,21 @@ class HeatMapFeaturizer(Featurizer):
         heatmaps /= ein.reduce(heatmaps, "b h w -> b () ()", "sum")  # normalize
         heatmaps = ein.rearrange(heatmaps, "b h w -> b (h w)")  # flatten
         return heatmaps
+
+
+class ProgramWeightFeaturizer(Featurizer):
+    """Characterize programs by how much weight they place on statement nodes"""
+
+    def __init__(self):
+        pass
+
+    def apply(self, batch: Any) -> np.ndarray:
+        if isinstance(batch, list):
+            batch = np.stack(batch)
+        assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
+        assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
+
+        return ein.rearrange(batch[:, :, 2:], "b n d -> b (n d)")
 
 
 class MultivariateGaussianSampler:
@@ -375,7 +389,10 @@ def simple_ant_test():
 
     trails = []
     for tree in trees:
-        trail = lang.eval(tree)
+        output = lang.eval(tree)
+        trail = output[:, :2]
+        weights = output[:, 2:]
+        print(np.round(weights, 2))
         trails.append(trail)
 
     maze.plot_trails(np.array(trails))

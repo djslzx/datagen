@@ -69,12 +69,6 @@ class AntMaze2D(Environment):
             self.pos = new_pos
             return self.observe(ended=False)
 
-        # # add some noise to the step
-        # rand_weights = np.random.rand(4) * self.step_length / 3
-        # rand_step = rand_weights @ self.d_step
-        # if not shp.Point(*(self.pos + rand_step)).within(self.maze_map.walls):
-        #     self.pos += rand_step
-
     def viz(self):
         fig, ax = plt.subplots()
         maze.plot_shapes(ax, [self.maze_map.walls, shp.Point(*self.pos)])
