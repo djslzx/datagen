@@ -165,7 +165,11 @@ class FixedDepthAnt(Language):
         conds, stmts = self._extract_params(t)
         obs = self.env.reset()
         outputs = []
-        for _ in range(self.steps):
+
+        steps = range(self.steps)
+        if env is not None and "load_bar" in env:
+            steps = tqdm(steps, desc="Evaluating program")
+        for _ in steps:
             x, y = obs.state
             outputs.append([x, y])
 
@@ -348,16 +352,8 @@ class MultivariateGaussianSampler:
         return self.rv.logpdf(x).item()
 
 
-if __name__ == "__main__":
-    # np.random.seed(0)
-    # ts = util.timestamp()
-    # video_dir = f"videos/{ts}"
-    # util.try_mkdir(video_dir)
-
-    maze = Maze.from_saved(
-        "lehman-ecj-11-hard"
-        # "cross"
-    )
+def simple_ant_test():
+    maze = Maze.from_saved("lehman-ecj-11-hard")
     environment = AntMaze2D(
         maze_map=maze,
         step_length=0.5,
@@ -383,4 +379,14 @@ if __name__ == "__main__":
         trails.append(trail)
 
     maze.plot_trails(np.array(trails))
-    plt.show()
+    plt.savefig("trails.png")
+    plt.close()
+
+
+if __name__ == "__main__":
+    # np.random.seed(0)
+    # ts = util.timestamp()
+    # video_dir = f"videos/{ts}"
+    # util.try_mkdir(video_dir)
+
+    simple_ant_test()
