@@ -21,11 +21,16 @@ def save_trails(maze: Maze, trails: List[np.ndarray], save_dir: str, name="trail
     plt.close()
 
 
-def mujoco_ant_test():
+def setup_save_dir(parent_dir: str) -> str:
     ts = util.timestamp()
-    save_dir = f"../../out/mujoco_tests/{ts}"
-    util.try_mkdir(save_dir)
+    save_dir = f"{parent_dir}/{ts}"
+    util.try_mkdir(parent_dir)    
+    util.try_mkdir(save_dir)    
+    return save_dir
 
+
+def mujoco_ant_test():
+    save_dir = setup_save_dir("../../out/mujoco_tests")
     maze = Maze.from_saved("lehman-ecj-11-hard")
     featurizer = EndFeaturizer()
     mujoco_env = MujocoAntMaze(
@@ -60,15 +65,50 @@ def mujoco_ant_test():
     mujoco_trails = []
     simple_trails = []
     for tree in trees:
-        mujoco_trail = mujoco_ant.eval(tree, env={'load_bar': True})
+        mujoco_trail = mujoco_ant.eval(tree, env={'load_bar': True})[:, :2]
         mujoco_env.render_video()
         mujoco_trails.append(mujoco_trail)
 
-        simple_trail = simple_ant.eval(tree, env={'load_bar': True})
+        simple_trail = simple_ant.eval(tree, env={'load_bar': True})[:, :2]
         simple_trails.append(simple_trail)
 
     save_trails(maze, mujoco_trails, save_dir, "mujoco_trails")
     save_trails(maze, simple_trails, save_dir, "simple_trails")
+
+
+def mujoco_walking_test():
+    save_dir = setup_save_dir("../../out/mujoco_walking_test")
+    maze = Maze.from_saved("empty-20x20")
+    env = MujocoAntMaze(
+        maze_map=maze,
+        camera_mode="fixed",
+        include_orientation=False,
+    )
+    route = [
+        # ([1, 0, 0, 0], 50),
+        # ([0, 0, 1, 0], 50),
+        # ([0, 1, 0, 0], 50),
+        # ([0, 0, 0, 1], 50),
+        ([1, 0, 0, 0], 100),
+        ([0, 0, 1, 0], 100),
+        ([1, 0, 0, 0], 100),
+        ([0, 0, 1, 0], 100),
+        ([1, 0, 0, 0], 100),
+        ([0, 0, 1, 0], 100),
+    ]
+    obs = env.reset()
+    trail = [obs.state]
+    for weights, n_steps in route:
+        for i in tqdm(range(n_steps), f"route piece {weights, n_steps}"):
+            obs = env.step(weights)
+            trail.append(obs.state)
+            if obs.ended:
+                break
+        if obs.ended:
+            break
+
+    trail = np.array(trail)[None, :]
+    save_trails(maze, trail, save_dir, "route")
 
 
 def mujoco_straight_line_test():
@@ -90,12 +130,8 @@ def mujoco_straight_line_test():
                           (stmts [0 0 0 1]
                                  [0 0 0 0]))""",
     }
-    
-    # setup
-    ts = util.timestamp()
-    save_dir = f"../../out/mujoco_line_tests/{ts}"
-    util.try_mkdir(save_dir)
 
+    save_dir = setup_save_dir("../../out/mujoco_line_tests")
     maze = Maze.from_saved("lehman-ecj-11-hard")
     featurizer = EndFeaturizer()
     env = MujocoAntMaze(
@@ -112,10 +148,11 @@ def mujoco_straight_line_test():
 
     for name, ant in ants.items():
         p = lang.parse(ant)
-        trail = lang.eval(p, env={'load_bar': True})[None, :]
+        trail = lang.eval(p, env={'load_bar': True})[None, :, :2]
         save_trails(maze, trail, save_dir, f"{name}_trail")
 
 
 if __name__ == "__main__":
     # mujoco_ant_test()
-    mujoco_straight_line_test()
+    # mujoco_straight_line_test()
+    mujoco_walking_test()

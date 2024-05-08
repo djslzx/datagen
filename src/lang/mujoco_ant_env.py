@@ -88,7 +88,8 @@ class MujocoAntMaze(Environment):
         return action.cpu().numpy()
 
     def step(self, action_weights: np.ndarray) -> Observation:
-        assert self.low_obs is not None, "Must initialize environment using reset() before running step()"
+        assert self.low_obs is not None, \
+            "Must initialize environment using reset() before running step()"
 
         # compile primitives
         primitive_actions = []
