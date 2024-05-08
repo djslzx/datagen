@@ -44,10 +44,12 @@ def measure(k, n):
 
     return np.array(x), np.array(y)
 
-m1, m2 = measure(3, 100)
+# m1, m2 = measure(3, 100)
+m1 = np.array([3, 7])
+m2 = np.array([2, 3])
 
 values = np.vstack([m1, m2])
-kernel = stats.gaussian_kde(values)
+kernel = stats.gaussian_kde(values, bw_method=1)
 samples = kernel.resample(100)
 
 margin=10

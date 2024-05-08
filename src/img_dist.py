@@ -203,16 +203,16 @@ def measure_dataset_dist(
     plt.show()
     mds_pics(lsys.featurizer, path=target_path, title=title)
     plt.show()
-    tsne_pics(lsys.featurizer, perplexity_range=[2, 8], path=target_path, n_runs=1, title=title)
+    # tsne_pics(lsys.featurizer, perplexity_range=[2, 8], path=target_path, n_runs=1, title=title)
 
 
 if __name__ == "__main__":
     plt.style.use('dark_background')
     out_dir = f"../out/distance-check/images"
     featurizers = {
+        "resnet": feat.ResnetFeaturizer(),
         "ViT": feat.ViTBase(),
         # "dinov2": feat.ViTDINOv2(),
-        # "resnet": feat.ResnetFeaturizer(),
     }
     for name, featurizer in featurizers.items():
         # natural images (animals)
