@@ -102,6 +102,18 @@ SAVED_MAZES = {
         "#r#         #     #       #       # #",
         "#####################################",
     ]),
+    "unbounded-10x10": bmp_from_str([
+        "          ",
+        "          ",
+        "          ",
+        "          ",
+        "    r     ",
+        "          ",
+        "          ",
+        "          ",
+        "          ",
+        "          ",
+    ]),
     "empty-10x10": bmp_from_str([
         "###########",
         "#         #",
@@ -143,10 +155,6 @@ SAVED_MAZES = {
 }
 
 
-class WallCollisionError(Exception):
-    pass
-
-
 class Maze:
 
     def __init__(
@@ -166,6 +174,8 @@ class Maze:
         self.width = walls.shape[1]
         self.walls = polygon_from_bitmap(walls, scaling=scaling)
         self.str_map = maze_map
+
+        self.max_dist = (self.height + self.width) * self.scaling
 
         self.x_center = self.width * self.scaling / 2.
         self.y_center = self.height * self.scaling / 2.
@@ -190,7 +200,7 @@ class Maze:
         else:
             return Maze(maze_map=SAVED_MAZES[name], scaling=scaling)
 
-    def cardinal_rangefinder_lines(self, p: shp.Point) -> List[shp.LineString]:
+    def cardinal_rangefinders(self, p: shp.Point) -> List[shp.LineString]:
         h = self.height * self.scaling
         w = self.width * self.scaling
         return [
@@ -200,15 +210,35 @@ class Maze:
             shp.LineString([(p.x, p.y), (p.x + w, p.y)]),
         ]
 
-    def cardinal_wall_distances(self, x: float, y: float) -> np.ndarray:
+    def cardinal_distances(self, x: float, y: float) -> np.ndarray:
         p = shp.Point(x, y)
-        # if not p.within(self.walls):
-        #     raise WallCollisionError(
-        #         f"Point {p.x, p.y} is within the walls of the maze with distance {p.distance(self.walls)}"
-        #     )
-        rfs = self.cardinal_rangefinder_lines(p)
-        dists = intersection_distances(p, self.walls, rfs)
-        return np.array(dists)
+        return self.rangefinder_dists(p, self.cardinal_rangefinders(p))
+
+    def relative_rangefinders(self, p: shp.Point, angle: float) -> List[shp.LineString]:
+        h = self.height * self.scaling
+        w = self.width * self.scaling
+        r = h + w
+        dx = r * np.cos(angle)
+        dy = r * np.sin(angle)
+        return [
+            shp.LineString([(p.x, p.y), (p.x + dx, p.y + dy)]),
+            shp.LineString([(p.x, p.y), (p.x - dx, p.y - dy)]),
+            shp.LineString([(p.x, p.y), (p.x + dx, p.y - dy)]),
+            shp.LineString([(p.x, p.y), (p.x - dx, p.y + dy)]),
+        ]
+
+    def relative_distances(self, x: float, y: float, angle: float) -> np.ndarray:
+        p = shp.Point(x, y)
+        return self.rangefinder_dists(p, self.relative_rangefinders(p, angle))
+
+    def rangefinder_dists(
+            self,
+            p: shp.Point,
+            rfs: List[shp.LineString]
+    ) -> np.ndarray:
+        return np.array(
+            intersection_distances(p, self.walls, rfs, max_dist=self.max_dist)
+        )
 
     def xy_to_rc(self, x: float, y: float) -> Tuple[int, int]:
         r = math.floor((self.y_center - y) / self.scaling)
@@ -297,31 +327,25 @@ def intersection_distances(
         p: shp.Point,
         maze: shp.Polygon,
         rangefinders: List[shp.LineString],
-        inf_dist=np.inf,
+        max_dist: float,
 ) -> List[float]:
     dists = []
     for rf in rangefinders:
-        overlaps = rf.intersection(maze)
-        closest_point = first_point(overlaps)
-        if closest_point is None:
-            print("WARNING: no overlaps found; ensure that maze has boundaries to avoid this warning.",
-                  file=sys.stderr)
-            dists.append(inf_dist)
+        xs = rf.intersection(maze)
+        if xs.is_empty:
+            d = max_dist
+        elif (xs.geom_type == "Point" or
+              xs.geom_type == "LineString"):
+            d = p.distance(xs)
+            # plot_shapes(plt.gca(), [xs])
+        elif (xs.geom_type == "MultiLineString" or
+              xs.geom_type == "GeometryCollection"):
+            d = p.distance(xs.geoms[0])
+            # plot_shapes(plt.gca(), [xs.geoms[0]])
         else:
-            dist = p.distance(closest_point)
-            dists.append(dist)
+            raise ValueError(f"Unexpected geom type {xs.geom_type}")
+        dists.append(d)
     return dists
-
-
-def first_point(overlaps) -> Optional[shp.Point]:
-    if overlaps is None:
-        return None
-    if isinstance(overlaps, shp.LineString):
-        if len(overlaps.coords) > 0:
-            return shp.Point(overlaps.coords[0])
-        else:
-            return None
-    return shp.Point(overlaps.geoms[0].coords[0])
 
 
 def plot_shapes(ax, shapes: shp.geometry, **kwargs):
@@ -348,23 +372,32 @@ def plot_polygon(ax, poly, **kwargs):
 
 
 def demo_maze_rangefinders():
+    # maze = Maze.from_saved("unbounded-10x10", scaling=4.)
     maze = Maze.from_saved("lehman-ecj-11-hard", scaling=4.)
     # hull = maze.walls.convex_hull
-    # non_walls = hull.difference(maze.walls)
-    # ant = non_walls.representative_point()
-    # ant = shp.Point(0.8669061676890559, -3.7016983612545915)
-    ant = shp.Point(-34.077333476682725, -22.972487448294483)
-    # ant = shp.Point(-31.836598332945606, -30.043303065771358)
+    # interior = hull.difference(maze.walls)
+    # p = interior.representative_point()
 
-    fig, ax = plt.subplots()
-    plot_shapes(ax, [maze.walls, ant])
-    xlim, ylim = maze.limits()
-    print(f"xlim={xlim}, ylim={ylim}")
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-    plt.show()
-    plt.close()
-    print(maze.cardinal_wall_distances(ant.x, ant.y))
+    for _ in range(10):
+        x, y = np.random.rand(2) * 60 - 30
+        p = shp.Point(x, y)
+
+        fig, ax = plt.subplots()
+
+        rfs = maze.cardinal_rangefinders(p)
+        dists = maze.rangefinder_dists(p, rfs)
+
+        # set title to dists with 2 decimal places
+        title = "[" + ",".join([f"{d:.2f}" for d in dists]) + "]"
+        ax.set_title(title)
+
+        plot_shapes(ax, [maze.walls, p])
+        xlim, ylim = maze.limits()
+        print(f"xlim={xlim}, ylim={ylim}")
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        plt.show()
+        plt.close()
 
 
 if __name__ == "__main__":

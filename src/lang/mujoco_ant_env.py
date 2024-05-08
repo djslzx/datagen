@@ -68,7 +68,7 @@ class MujocoAntMaze(Environment):
     def observe(self, obs: dict, ended: bool) -> Observation:
         self.low_obs = obs["observation"][None, :]
         x, y = obs["achieved_goal"]
-        rf_dists = self.maze_map.cardinal_wall_distances(x, y)
+        rf_dists = self.maze_map.cardinal_distances(x, y)
         if self.include_orientation:
             orientation = obs["observation"][:5]
             high_obs, _ = ein.pack([rf_dists, orientation], "*")

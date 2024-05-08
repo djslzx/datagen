@@ -371,7 +371,6 @@ def simple_ant_test():
     environment = AntMaze2D(
         maze_map=maze,
         step_length=0.5,
-        avoid_collision=True,
     )
     featurizer = HeatMapFeaturizer(maze)
     lang = FixedDepthAnt(
@@ -380,7 +379,7 @@ def simple_ant_test():
         steps=1000,
         featurizer=featurizer,
     )
-    trees = lang.samples(n_samples=100, length_cap=10_000)
+    trees = lang.samples(n_samples=50, length_cap=10_000)
     # trees.append(
     #     lang.parse("""
     #         (root (conds [1 0 0 0 -2])
@@ -398,6 +397,7 @@ def simple_ant_test():
 
     maze.plot_trails(np.array(trails))
     plt.savefig("trails.png")
+    plt.show()
     plt.close()
 
 
