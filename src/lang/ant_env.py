@@ -29,6 +29,7 @@ class AntMaze2D(Environment):
     def __init__(
             self,
             maze_map: maze.Maze,
+            avoid_collision=False,
             step_length: float = 0.1,
     ):
         self.maze_map = maze_map
@@ -41,6 +42,9 @@ class AntMaze2D(Environment):
             [-1., 0.],  # left
             [1., 0.],  # right
         ]) * step_length
+        self.avoid_collision = avoid_collision
+        self.collision_distance = 0.5
+        self.dilated_walls = maze_map.walls.buffer(self.collision_distance)
 
     @staticmethod
     def reset_position(starts: np.ndarray) -> np.ndarray:
@@ -59,8 +63,26 @@ class AntMaze2D(Environment):
 
     def step(self, action_weights: np.ndarray) -> Observation:
         assert action_weights.shape == (4,), f"Expected action vector shape (4,), got {action_weights.shape}"
+
         d_pos = action_weights @ self.d_step
+
+        # # add some noise to the step
+        # rand_weights = np.random.rand(4) * self.step_length / 3
+        # rand_step = rand_weights @ self.d_step
+        # d_pos += rand_step
+
         new_pos = self.pos + d_pos
+
+        # add repulsive force away from the wall
+        p_new = shp.Point(*new_pos)
+        if self.avoid_collision:
+            # find intersection between {line between old and new pos} and dilated walls,
+            #  project onto buffered maze walls
+            p_old = shp.Point(*self.pos)
+            step_line = shp.LineString([p_old, p_new])
+            p_intersect = maze.first_point(step_line.intersection(self.dilated_walls))
+            if p_intersect is not None:
+                new_pos = np.array([p_intersect.x, p_intersect.y])
 
         # exit early if we walk into a wall
         if shp.Point(*new_pos).within(self.maze_map.walls):
