@@ -78,10 +78,12 @@ class AntMaze(Environment):
 
     def reset(self) -> Observation:
         self.pos = self.reset_position(self.starts)
+        self.time_step = 0
         return self.observe(ended=False)
 
     def step(self, action_weights: np.ndarray) -> Observation:
-        assert action_weights.shape == (4,), f"Expected action vector shape (4,), got {action_weights.shape}"
+        assert action_weights.shape == (4,), \
+            f"Expected action vector shape (4,), got {action_weights.shape}"
 
         d_pos = action_weights @ self.d_step
 
@@ -95,11 +97,11 @@ class AntMaze(Environment):
         # exit early if we walk into a wall
         if shp.Point(*new_pos).within(self.maze_map.walls):
             obs = self.observe(ended=True)
-            self.time_step += 1
         else:
             self.pos = new_pos
             obs = self.observe(ended=False)
-            self.time_step += 1
+
+        self.time_step += 1
         return obs
 
     def viz(self):
@@ -107,6 +109,65 @@ class AntMaze(Environment):
         maze.plot_shapes(ax, [self.maze_map.walls, shp.Point(*self.pos)])
         plt.show()
         plt.close()
+
+
+class OrientedAntMaze(Environment):
+    def __init__(
+            self,
+            maze_map: maze.Maze,
+            step_length: float = 0.1,
+    ):
+        self.maze_map = maze_map
+        self.starts = maze_map.start_states_xy()
+        self.step_length = step_length
+        self.pos = super().reset_position(self.starts)
+        self.theta = 0.0
+        self.time_step = 0
+
+    @property
+    def observation_dim(self) -> int:
+        return 9  # 4 cardinal rf + 4 ordinal rf + 1 time
+
+    def observe(self, ended: bool) -> Observation:
+        p = shp.Point(*self.pos)
+        rfs = self.maze_map.cardinal_rangefinders(p) + self.maze_map.ordinal_rangefinders(p)
+        rfs = self.maze_map.to_oriented(rfs, p, self.theta)
+        rf_dists = self.maze_map.rangefinder_dists(p, rfs)
+        obs = np.append(rf_dists, self.time_step)
+        return Observation(
+            observation=obs,
+            state=[*self.pos, self.theta],
+            ended=ended,
+        )
+
+    def reset(self) -> Observation:
+        self.pos = super().reset_position(self.starts)
+        self.theta = 0.0
+        self.time_step = 0
+        return self.observe(ended=False)
+
+    def step(self, action_weights: np.ndarray) -> Observation:
+        assert action_weights.shape == (4,), \
+            f"Expected action vector shape (4,), got {action_weights.shape}"
+
+        up, down, left, right = action_weights
+        self.theta += + left - right
+        step_length = up - down
+
+        dx = step_length * np.cos(self.theta)
+        dy = step_length * np.sin(self.theta)
+
+        new_pos = self.pos + np.array([dx, dy])
+
+        # if we walk into a wall, die
+        if shp.Point(*new_pos).within(self.maze_map.walls):
+            obs = self.observe(ended=True)
+        else:
+            self.pos = new_pos
+            obs = self.observe(ended=False)
+
+        self.time_step += 1
+        return obs
 
 
 if __name__ == "__main__":

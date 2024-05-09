@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 from lang.tree import Language, Tree, Featurizer
 from lang.maze import Maze
-from lang.ant_env import Environment, AntMaze
+from lang.ant_env import Environment, AntMaze, OrientedAntMaze
 import util
 
 
@@ -168,7 +168,7 @@ class FixedDepthAnt(Language):
         if env is not None and "load_bar" in env:
             steps = tqdm(steps, desc="Evaluating program")
         for _ in steps:
-            x, y = obs.state
+            x, y = obs.state[:2]
             assert obs.observation.shape == (self.high_state_dim,), \
                 f"Expected high obs dim {self.high_state_dim}, got {obs.observation.shape}"
 

@@ -225,7 +225,7 @@ class Maze:
             shp.LineString([(p.x, p.y), (p.x + w, p.y - h)]),  # bottom right
         ]
 
-    def to_relative(self, rfs: List[shp.LineString], p: shp.Point, theta: float) -> List[shp.LineString]:
+    def to_oriented(self, rfs: List[shp.LineString], p: shp.Point, theta: float) -> List[shp.LineString]:
         """Rotate and translate rangefinders to be relative to point p with angle theta."""
         return [
             aff.rotate(rf, theta, use_radians=True, origin=p)
@@ -392,7 +392,7 @@ def demo_maze_rangefinders():
         # make fig have 1:1 aspect ratio
         ax.set_aspect("equal")
 
-        rfs = maze.to_relative(maze.cardinal_rangefinders(p) + maze.ordinal_rangefinders(p), p, angle)
+        rfs = maze.to_oriented(maze.cardinal_rangefinders(p) + maze.ordinal_rangefinders(p), p, angle)
         # rfs = maze.cardinal_rangefinders(p) + maze.ordinal_rangefinders(p)
         dists = maze.rangefinder_dists(p, rfs)
 
