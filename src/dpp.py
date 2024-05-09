@@ -16,6 +16,7 @@ import einops as ein
 
 from lang.tree import Language, Tree
 from lang import lindenmayer, point, arc, ant, maze
+from lang.mujoco_ant_env import MujocoAntMaze
 import util
 
 
@@ -744,6 +745,7 @@ def run_ant_search_from_conf(conf):
     expected_keys = {
         "maze_name",
         "featurizer",
+        "environment",
         "random_seed",
         "popn_size",
         "n_epochs",
@@ -756,6 +758,7 @@ def run_ant_search_from_conf(conf):
         "program_depth",
         "length_cap",
         "include_orientation",
+        "avoid_collision",
         "step_length",
     }
     assert all(k in conf for k in expected_keys), \
@@ -771,6 +774,7 @@ def run_ant_search_from_conf(conf):
 def run_ant_search(
         maze_name: str,
         featurizer: str,
+        environment: str,
         random_seed: int,
         popn_size: int,
         n_epochs: int,
@@ -784,6 +788,7 @@ def run_ant_search(
         length_cap: int,
         include_orientation: bool,
         run_id: str,
+        avoid_collision=False,
         step_length=0.1,
         wandb_run=True,
         debug=False,
@@ -799,12 +804,22 @@ def run_ant_search(
     elif featurizer == "heatmap":
         ft = ant.HeatMapFeaturizer(maze)
     else:
-        raise ValueError(f"Invalid featurizer type for ant domain: {featurizer}")
+        raise ValueError(f"Invalid ant featurizer '{featurizer}'")
 
-    env = ant.AntMaze(
-        maze_map=maze_map,
-        step_length=step_length,
-    )
+    if environment == "2D":
+        env = ant.AntMaze2D(
+            maze_map=maze_map,
+            step_length=step_length,
+            avoid_collision=avoid_collision,
+        )
+    elif environment == "mujoco":
+        env = MujocoAntMaze(
+            maze_map=maze_map,
+            camera_mode="fixed",
+            include_orientation=False,
+        )
+    else:
+        raise ValueError(f"Invalid environment '{environment}'")
 
     lang = ant.FixedDepthAnt(
         env=env,
@@ -854,11 +869,11 @@ def run_ant_search(
         np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
         analysis_data = analyzer_iter(d, threshold=1e-10)
 
-        trails = np.array(d["x_out"])  # [n t 2]
+        trails = np.array(d["x_out"])[:, :, :2]  # [n t 2]
         trail_fig = maze_map.plot_trails(trails)
         plt.savefig(f"{save_dir}/plots/trail-{i}.png")
 
-        endpoints = trails[:, -1, :]  # [n 2]
+        endpoints = trails[:, -1, :2]  # [n 2]
         endpoint_fig = maze_map.plot_endpoints(endpoints)
         plt.savefig(f"{save_dir}/plots/end-{i}.png")
 
@@ -957,7 +972,7 @@ def local_searches():
 
 
 if __name__ == "__main__":
-    sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
+    sweep("./configs/mcmc-ant-test.yaml", run_ant_search_from_conf)
 
     # ts = util.timestamp()
     # run_ant_search(
