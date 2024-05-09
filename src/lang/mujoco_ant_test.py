@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import util
 from lang.maze import Maze
 from lang.ant import FixedDepthAnt, EndFeaturizer
-from lang.ant_env import AntMaze2D
+from lang.ant_env import AntMaze
 from lang.mujoco_ant_env import MujocoAntMaze
 
 
@@ -45,7 +45,7 @@ def mujoco_ant_test():
         featurizer=featurizer,
     )
 
-    simple_env = AntMaze2D(
+    simple_env = AntMaze(
         maze_map=maze,
         step_length=0.05,
     )

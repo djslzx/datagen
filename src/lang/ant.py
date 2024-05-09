@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 from lang.tree import Language, Tree, Featurizer
 from lang.maze import Maze
-from lang.ant_env import Environment, AntMaze2D
+from lang.ant_env import Environment, AntMaze
 import util
 
 
@@ -47,10 +47,10 @@ class FixedDepthAnt(Language):
     def __init__(
             self,
             program_depth: int,
+            observation_dim: int,
             steps: int,
             env: Environment,
             featurizer: Featurizer,
-            include_orientation=False,
     ):
         assert program_depth > 1
         assert steps > 0
@@ -69,9 +69,7 @@ class FixedDepthAnt(Language):
         )
 
         self.action_dim = 4
-        self.high_state_dim = 4  # rangefinders, cardinal directions
-        if include_orientation:
-            self.high_state_dim += 5
+        self.high_state_dim = observation_dim  # rangefinders, time
 
         # parameter counts and shapes
         self.n_conds = program_depth - 1
@@ -370,19 +368,19 @@ class MultivariateGaussianSampler:
 
 def simple_ant_test():
     maze = Maze.from_saved("lehman-ecj-11-hard")
-    environment = AntMaze2D(
+    environment = AntMaze(
         maze_map=maze,
         step_length=0.5,
-        avoid_collision=True,
     )
     featurizer = HeatMapFeaturizer(maze)
     lang = FixedDepthAnt(
         env=environment,
         program_depth=6,
+        observation_dim=environment.observation_dim,
         steps=1000,
         featurizer=featurizer,
     )
-    trees = lang.samples(n_samples=100, length_cap=10_000)
+    trees = lang.samples(n_samples=50, length_cap=10_000)
     # trees.append(
     #     lang.parse("""
     #         (root (conds [1 0 0 0 -2])
@@ -400,6 +398,7 @@ def simple_ant_test():
 
     maze.plot_trails(np.array(trails))
     plt.savefig("trails.png")
+    plt.show()
     plt.close()
 
 
