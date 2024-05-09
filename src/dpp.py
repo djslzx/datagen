@@ -107,7 +107,7 @@ def mcmc_lang_rr(
 
     assert fit_policy in {"all", "single", "none", "first"}
     assert accept_policy in {"dpp", "energy", "moment", "all"}
-    assert distance_metric in {"cosine", "dot", "euclidean"}
+    assert distance_metric in {"cosine", "euclidean"}
 
     x = x_init.copy()
     x_out, x_feat = lang.evaluate_features(x, load_bar=debug)
@@ -129,6 +129,7 @@ def mcmc_lang_rr(
         sum_log_f = 0
         sum_log_q = 0
         sum_log_accept = 0
+        sum_energy = 0
 
         round_robin_range = range(popn_size)
         if debug:
@@ -157,11 +158,16 @@ def mcmc_lang_rr(
             samples_feat.append(s_feat)
             samples_out.append(s_out)
 
+            # compute energy for logging purposes
+            energy = fast_energy_update(x_feat, up_feat, i)
+            sum_energy += energy
+
             # compute log f(x')/f(x)
             if accept_policy == "dpp":
                 log_f = dpp_rbf_update(x_feat, up_feat, gamma)
             elif accept_policy == "energy":
-                log_f = fast_energy_update(x_feat, up_feat, i)
+                # log_f = fast_energy_update(x_feat, up_feat, i)
+                log_f = energy
             elif accept_policy == "moment":
                 log_f = slow_fom_update(x_feat, up_feat)
             elif accept_policy == "all":
@@ -207,6 +213,7 @@ def mcmc_lang_rr(
             "x_feat": x_feat.copy(),
             "x'_feat": samples_feat.copy(),
             "archive": archive.metadata().copy(),
+            "mean energy": sum_energy / popn_size,
             "log f(x')/f(x)": sum_log_f / popn_size,
             "log q(x|x')/q(x'|x)": sum_log_q / popn_size,
             "log A(x',x)": sum_log_accept / popn_size,
@@ -758,7 +765,6 @@ def run_ant_search_from_conf(conf):
         "program_depth",
         "length_cap",
         "include_orientation",
-        "avoid_collision",
         "step_length",
     }
     assert all(k in conf for k in expected_keys), \
@@ -788,7 +794,6 @@ def run_ant_search(
         length_cap: int,
         include_orientation: bool,
         run_id: str,
-        avoid_collision=False,
         step_length=0.1,
         wandb_run=True,
         debug=False,
@@ -810,7 +815,6 @@ def run_ant_search(
         env = ant.AntMaze2D(
             maze_map=maze_map,
             step_length=step_length,
-            avoid_collision=avoid_collision,
         )
     elif environment == "mujoco":
         env = MujocoAntMaze(
@@ -823,7 +827,6 @@ def run_ant_search(
 
     lang = ant.FixedDepthAnt(
         env=env,
-        include_orientation=include_orientation,
         program_depth=program_depth,
         steps=sim_steps,
         featurizer=ft,
@@ -877,19 +880,21 @@ def run_ant_search(
         endpoint_fig = maze_map.plot_endpoints(endpoints)
         plt.savefig(f"{save_dir}/plots/end-{i}.png")
 
+        log = {
+            **d,
+            **analysis_data,
+            "trail": wandb.Image(trail_fig),
+            "endpoints": wandb.Image(endpoint_fig),
+            "step": i,
+        }
+        log = {k: v for k, v in log.items()
+               if (k not in {"x", "x'"} and
+                   not k.endswith("_feat") and
+                   not k.endswith("_out"))}
         if wandb_run:
-            log = {
-                **d,
-                **analysis_data,
-                "trail": wandb.Image(trail_fig),
-                "endpoints": wandb.Image(endpoint_fig),
-                "step": i,
-            }
-            log = {k: v for k, v in log.items()
-                   if (k not in {"x", "x'"} and
-                       not k.endswith("_feat") and
-                       not k.endswith("_out"))}
             wandb.log(log)
+        else:
+            print(log)
 
 
 def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
@@ -972,25 +977,26 @@ def local_searches():
 
 
 if __name__ == "__main__":
-    sweep("./configs/mcmc-ant-test.yaml", run_ant_search_from_conf)
+    # sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
 
-    # ts = util.timestamp()
-    # run_ant_search(
-    #     maze_name="users-guide",  # "lehman-ecj-11-hard",
-    #     featurizer="end",
-    #     random_seed=0,
-    #     popn_size=10,
-    #     n_epochs=100,
-    #     sim_steps=1000,
-    #     fit_policy="single",
-    #     accept_policy="energy",
-    #     distance_metric="euclidean",
-    #     archive_beta=0.,
-    #     archive_size=10,
-    #     program_depth=2,
-    #     length_cap=1000,
-    #     run_id=f"test-{ts}",
-    #     wandb_run=False,
-    #     include_orientation=False,
-    #     debug=True,
-    # )
+    ts = util.timestamp()
+    run_ant_search(
+        maze_name="big-symm",
+        # "users-guide",  # "lehman-ecj-11-hard",
+        featurizer="end",
+        random_seed=0,
+        popn_size=10,
+        n_epochs=10,
+        sim_steps=1000,
+        fit_policy="single",
+        accept_policy="energy",
+        distance_metric="euclidean",
+        archive_beta=0.,
+        archive_size=10,
+        program_depth=2,
+        length_cap=1000,
+        run_id=f"test-{ts}",
+        wandb_run=False,
+        include_orientation=False,
+        debug=True,
+    )

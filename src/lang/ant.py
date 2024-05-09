@@ -47,7 +47,6 @@ class FixedDepthAnt(Language):
     def __init__(
             self,
             program_depth: int,
-            observation_dim: int,
             steps: int,
             env: Environment,
             featurizer: Featurizer,
@@ -69,7 +68,7 @@ class FixedDepthAnt(Language):
         )
 
         self.action_dim = 4
-        self.high_state_dim = observation_dim  # rangefinders, time
+        self.high_state_dim = env.observation_dim  # rangefinders, time
 
         # parameter counts and shapes
         self.n_conds = program_depth - 1
@@ -372,11 +371,14 @@ def simple_ant_test():
         maze_map=maze,
         step_length=0.5,
     )
+    # environment = OrientedAntMaze(
+    #     maze_map=maze,
+    #     step_length=0.5,
+    # )
     featurizer = HeatMapFeaturizer(maze)
     lang = FixedDepthAnt(
         env=environment,
         program_depth=6,
-        observation_dim=environment.observation_dim,
         steps=1000,
         featurizer=featurizer,
     )
