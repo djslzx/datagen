@@ -47,10 +47,10 @@ class FixedDepthAnt(Language):
     def __init__(
             self,
             program_depth: int,
+            observation_dim: int,
             steps: int,
             env: Environment,
             featurizer: Featurizer,
-            include_orientation=False,
     ):
         assert program_depth > 1
         assert steps > 0
@@ -69,9 +69,7 @@ class FixedDepthAnt(Language):
         )
 
         self.action_dim = 4
-        self.high_state_dim = 4  # rangefinders, cardinal directions
-        if include_orientation:
-            self.high_state_dim += 5
+        self.high_state_dim = observation_dim  # rangefinders, time
 
         # parameter counts and shapes
         self.n_conds = program_depth - 1
@@ -376,6 +374,7 @@ def simple_ant_test():
     lang = FixedDepthAnt(
         env=environment,
         program_depth=6,
+        observation_dim=environment.observation_dim,
         steps=1000,
         featurizer=featurizer,
     )

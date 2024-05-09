@@ -4,6 +4,7 @@ import numpy as np
 from collections import namedtuple
 import matplotlib.pyplot as plt
 import shapely as shp
+import einops as ein
 
 import lang.maze as maze
 
@@ -19,22 +20,35 @@ Observation = namedtuple(
 
 class Environment:
     def reset(self) -> Observation:
+        """Reset state to an initial state"""
         raise NotImplementedError
 
     def step(self, action_weights: np.ndarray) -> Observation:
+        """Take a step in the environment using policy defined by `action_weights`"""
         raise NotImplementedError
+
+    def observe(self, ended: bool) -> Observation:
+        """Return the externally visible current state"""
+        raise NotImplementedError
+
+    @staticmethod
+    def reset_position(starts: np.ndarray) -> np.ndarray:
+        return starts[np.random.randint(len(starts)), :]
+
+    @property
+    def observation_dim(self) -> int:
+        raise NotImplementedError(f"Environment {self.__class__.__name__} must implement `observation_dim`")
 
 
 class AntMaze2D(Environment):
     def __init__(
             self,
             maze_map: maze.Maze,
-            avoid_collision=False,
             step_length: float = 0.1,
     ):
         self.maze_map = maze_map
         self.starts = maze_map.start_states_xy()
-        self.pos = AntMaze2D.reset_position(self.starts)
+        self.pos = super().reset_position(self.starts)
         self.step_length = step_length
         self.d_step = np.array([
             [0., 1.],  # up
@@ -42,17 +56,22 @@ class AntMaze2D(Environment):
             [-1., 0.],  # left
             [1., 0.],  # right
         ]) * step_length
-        self.avoid_collision = avoid_collision
         self.collision_distance = 0.5
-        self.dilated_walls = maze_map.walls.buffer(self.collision_distance)
+        self.dilated_walls = maze_map.walls.buffer(self.collision_distance).exterior
+        self.time_step = 0
 
-    @staticmethod
-    def reset_position(starts: np.ndarray) -> np.ndarray:
-        return starts[np.random.randint(len(starts)), :]
+    @property
+    def observation_dim(self) -> int:
+        return 9  # 8 rangefinders, 1 time dimension
 
-    def observe(self, ended: bool):
+    def observe(self, ended: bool) -> Observation:
+        p = shp.Point(*self.pos)
+        rfs = self.maze_map.cardinal_rangefinders(p) + self.maze_map.ordinal_rangefinders(p)
+        rf_dists = self.maze_map.rangefinder_dists(p, rfs)
+        obs = np.append(rf_dists, self.time_step)
+
         return Observation(
-            observation=self.maze_map.cardinal_wall_distances(*self.pos),
+            observation=obs,
             state=self.pos,
             ended=ended,
         )
@@ -73,23 +92,15 @@ class AntMaze2D(Environment):
 
         new_pos = self.pos + d_pos
 
-        # add repulsive force away from the wall
-        p_new = shp.Point(*new_pos)
-        if self.avoid_collision:
-            # find intersection between {line between old and new pos} and dilated walls,
-            #  project onto buffered maze walls
-            p_old = shp.Point(*self.pos)
-            step_line = shp.LineString([p_old, p_new])
-            p_intersect = maze.first_point(step_line.intersection(self.dilated_walls))
-            if p_intersect is not None:
-                new_pos = np.array([p_intersect.x, p_intersect.y])
-
         # exit early if we walk into a wall
         if shp.Point(*new_pos).within(self.maze_map.walls):
-            return self.observe(ended=True)
+            obs = self.observe(ended=True)
+            self.time_step += 1
         else:
             self.pos = new_pos
-            return self.observe(ended=False)
+            obs = self.observe(ended=False)
+            self.time_step += 1
+        return obs
 
     def viz(self):
         fig, ax = plt.subplots()

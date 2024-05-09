@@ -6,6 +6,7 @@ import math
 from typing import List, Optional, Union, Tuple
 import numpy as np
 import shapely as shp
+import shapely.affinity as aff
 import einops as ein
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
@@ -172,6 +173,9 @@ class Maze:
         self.scaling = scaling
         self.height = walls.shape[0]
         self.width = walls.shape[1]
+        self.scaled_height = self.height * self.scaling
+        self.scaled_width = self.width * self.scaling
+
         self.walls = polygon_from_bitmap(walls, scaling=scaling)
         self.str_map = maze_map
 
@@ -201,41 +205,34 @@ class Maze:
             return Maze(maze_map=SAVED_MAZES[name], scaling=scaling)
 
     def cardinal_rangefinders(self, p: shp.Point) -> List[shp.LineString]:
-        h = self.height * self.scaling
-        w = self.width * self.scaling
+        """Construct rangefinders in N, E, S, W directions"""
+        r = self.scaled_height + self.scaled_width
         return [
-            shp.LineString([(p.x, p.y), (p.x, p.y + h)]),
-            shp.LineString([(p.x, p.y), (p.x, p.y - h)]),
-            shp.LineString([(p.x, p.y), (p.x - w, p.y)]),
-            shp.LineString([(p.x, p.y), (p.x + w, p.y)]),
+            shp.LineString([(p.x, p.y), (p.x, p.y + r)]),  # up
+            shp.LineString([(p.x, p.y), (p.x - r, p.y)]),  # left
+            shp.LineString([(p.x, p.y), (p.x, p.y - r)]),  # down
+            shp.LineString([(p.x, p.y), (p.x + r, p.y)]),  # right
         ]
 
-    def cardinal_distances(self, x: float, y: float) -> np.ndarray:
-        p = shp.Point(x, y)
-        return self.rangefinder_dists(p, self.cardinal_rangefinders(p))
-
-    def relative_rangefinders(self, p: shp.Point, angle: float) -> List[shp.LineString]:
-        h = self.height * self.scaling
-        w = self.width * self.scaling
-        r = h + w
-        dx = r * np.cos(angle)
-        dy = r * np.sin(angle)
+    def ordinal_rangefinders(self, p: shp.Point) -> List[shp.LineString]:
+        """Construct rangefinders in NE, NW, SW, SE directions"""
+        h = self.scaled_height
+        w = self.scaled_width
         return [
-            shp.LineString([(p.x, p.y), (p.x + dx, p.y + dy)]),
-            shp.LineString([(p.x, p.y), (p.x - dx, p.y - dy)]),
-            shp.LineString([(p.x, p.y), (p.x + dx, p.y - dy)]),
-            shp.LineString([(p.x, p.y), (p.x - dx, p.y + dy)]),
+            shp.LineString([(p.x, p.y), (p.x + w, p.y + h)]),  # top right
+            shp.LineString([(p.x, p.y), (p.x - w, p.y + h)]),  # top left
+            shp.LineString([(p.x, p.y), (p.x - w, p.y - h)]),  # bottom left
+            shp.LineString([(p.x, p.y), (p.x + w, p.y - h)]),  # bottom right
         ]
 
-    def relative_distances(self, x: float, y: float, angle: float) -> np.ndarray:
-        p = shp.Point(x, y)
-        return self.rangefinder_dists(p, self.relative_rangefinders(p, angle))
+    def to_relative(self, rfs: List[shp.LineString], p: shp.Point, theta: float) -> List[shp.LineString]:
+        """Rotate and translate rangefinders to be relative to point p with angle theta."""
+        return [
+            aff.rotate(rf, theta, use_radians=True, origin=p)
+            for rf in rfs
+        ]
 
-    def rangefinder_dists(
-            self,
-            p: shp.Point,
-            rfs: List[shp.LineString]
-    ) -> np.ndarray:
+    def rangefinder_dists(self, p: shp.Point, rfs: List[shp.LineString]) -> np.ndarray:
         return np.array(
             intersection_distances(p, self.walls, rfs, max_dist=self.max_dist)
         )
@@ -378,20 +375,32 @@ def demo_maze_rangefinders():
     # interior = hull.difference(maze.walls)
     # p = interior.representative_point()
 
-    for _ in range(10):
+    for _ in range(5):
+        # choose a random point
         x, y = np.random.rand(2) * 60 - 30
         p = shp.Point(x, y)
 
-        fig, ax = plt.subplots()
+        # choose a random orientation
+        angle = np.random.rand() * 2 * np.pi
 
-        rfs = maze.cardinal_rangefinders(p)
+        # make oriented ant
+        ant = shp.Polygon([(0, 1), (-1, -1), (1, -1)])
+        ant = aff.rotate(ant, angle, use_radians=True)
+        ant = aff.translate(ant, x, y)
+
+        fig, ax = plt.subplots()
+        # make fig have 1:1 aspect ratio
+        ax.set_aspect("equal")
+
+        rfs = maze.to_relative(maze.cardinal_rangefinders(p) + maze.ordinal_rangefinders(p), p, angle)
+        # rfs = maze.cardinal_rangefinders(p) + maze.ordinal_rangefinders(p)
         dists = maze.rangefinder_dists(p, rfs)
 
         # set title to dists with 2 decimal places
-        title = "[" + ",".join([f"{d:.2f}" for d in dists]) + "]"
+        title = "[" + ",".join([f"{d:.0f}" for d in dists]) + "]"
         ax.set_title(title)
 
-        plot_shapes(ax, [maze.walls, p])
+        plot_shapes(ax, [maze.walls, ant, *rfs])
         xlim, ylim = maze.limits()
         print(f"xlim={xlim}, ylim={ylim}")
         ax.set_xlim(xlim)
