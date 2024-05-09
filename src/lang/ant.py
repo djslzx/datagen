@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 from lang.tree import Language, Tree, Featurizer
 from lang.maze import Maze
-from lang.ant_env import Environment, AntMaze2D
+from lang.ant_env import Environment, AntMaze
 import util
 
 
@@ -366,7 +366,7 @@ class MultivariateGaussianSampler:
 
 def simple_ant_test():
     maze = Maze.from_saved("lehman-ecj-11-hard")
-    environment = AntMaze2D(
+    environment = AntMaze(
         maze_map=maze,
         step_length=0.5,
     )

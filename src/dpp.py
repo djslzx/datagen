@@ -801,7 +801,7 @@ def run_ant_search(
     else:
         raise ValueError(f"Invalid featurizer type for ant domain: {featurizer}")
 
-    env = ant.AntMaze2D(
+    env = ant.AntMaze(
         maze_map=maze_map,
         step_length=step_length,
     )

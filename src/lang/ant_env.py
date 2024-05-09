@@ -40,7 +40,7 @@ class Environment:
         raise NotImplementedError(f"Environment {self.__class__.__name__} must implement `observation_dim`")
 
 
-class AntMaze2D(Environment):
+class AntMaze(Environment):
     def __init__(
             self,
             maze_map: maze.Maze,
@@ -111,7 +111,7 @@ class AntMaze2D(Environment):
 
 if __name__ == "__main__":
     maze_map = maze.Maze.from_saved("cross")
-    env = AntMaze2D(
+    env = AntMaze(
         maze_map=maze_map,
         step_length=1,
     )
