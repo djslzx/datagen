@@ -268,11 +268,12 @@ class TrailFeaturizer(Featurizer):
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
+        batch = batch[:, :, :2]
         assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
         assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
 
         # stride through t dim, then flatten
-        return ein.rearrange(batch[:, ::self.stride, :2], "b t d -> b (t d)")
+        return ein.rearrange(batch[:, ::self.stride, :], "b t d -> b (t d)")
 
 
 class EndFeaturizer(Featurizer):
@@ -282,9 +283,10 @@ class EndFeaturizer(Featurizer):
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
+        batch = batch[:, :, :2]
         assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
         assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
-        return batch[:, -1, :2]
+        return batch[:, -1, :]
 
 
 class HeatMapFeaturizer(Featurizer):
@@ -301,12 +303,13 @@ class HeatMapFeaturizer(Featurizer):
     def apply(self, batch: List[np.ndarray]) -> np.ndarray:
         if isinstance(batch, list):
             batch = np.stack(batch)
+        batch = batch[:, :, :2]
         assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
         assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
 
         batch_size = batch.shape[0]
         heatmaps = np.zeros((batch_size, self.width, self.height))  # treat i,j as equal to x,y
-        for i, coords in enumerate(batch[:, :, :2]):
+        for i, coords in enumerate(batch):
             for x, y in coords:
                 r, c = self.xy_to_rc(x, y)
                 heatmaps[i, r, c] += 1
@@ -326,7 +329,6 @@ class ProgramWeightFeaturizer(Featurizer):
         if isinstance(batch, list):
             batch = np.stack(batch)
         assert batch.ndim == 3, f"Expected 3D batch, got {batch.shape}"
-        assert batch.shape[-1] == 2, f"Expected 2D points, got {batch.shape}"
 
         return ein.rearrange(batch[:, :, 2:], "b n d -> b (n d)")
 
