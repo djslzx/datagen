@@ -92,7 +92,6 @@ def mcmc_lang_rr(
         archive_size: int,
         archive_beta: float,
         length_cap=50,
-        gamma=1,
         debug=False
 ) -> Iterator[dict]:
     """
@@ -105,7 +104,7 @@ def mcmc_lang_rr(
     """
 
     assert fit_policy in {"all", "single", "none", "first"}
-    assert accept_policy in {"dpp", "energy", "moment", "all"}
+    assert accept_policy in {"energy", "moment", "all"}
     assert distance_metric in {"cosine", "euclidean"}
 
     x = x_init.copy()
@@ -128,7 +127,8 @@ def mcmc_lang_rr(
         sum_log_f = 0
         sum_log_q = 0
         sum_log_accept = 0
-        sum_log_energy = 0
+        sum_log_euclid_energy = 0
+        sum_log_cosine_energy = 0
 
         round_robin_range = range(popn_size)
         if debug:
@@ -158,17 +158,26 @@ def mcmc_lang_rr(
             samples_out.append(s_out)
 
             # compute energy for logging purposes
-            log_energy = fast_energy_update(x_feat, up_feat, i)
-            sum_log_energy += log_energy
+            log_euclid_energy = fast_energy_update_euclid(x_feat, up_feat, i)
+            sum_log_euclid_energy += log_euclid_energy
+            log_cosine_energy = fast_energy_update_cosine(x_feat, up_feat, i)
+            sum_log_cosine_energy += log_cosine_energy
 
             # compute log f(x')/f(x)
-            if accept_policy == "dpp":
-                log_f = dpp_rbf_update(x_feat, up_feat, gamma)
-            elif accept_policy == "energy":
-                # log_f = fast_energy_update(x_feat, up_feat, i)
-                log_f = log_energy
+            if accept_policy == "energy":
+                if distance_metric == "euclidean":
+                    log_f = log_euclid_energy
+                elif distance_metric == "cosine":
+                    log_f = log_cosine_energy
+                else:
+                    raise ValueError(f"Unknown distance metric {distance_metric}")
             elif accept_policy == "moment":
-                log_f = slow_fom_update(x_feat, up_feat)
+                if distance_metric == "euclidean":
+                    log_f = slow_moment_update_euclid(x_feat, up_feat)
+                elif distance_metric == "cosine":
+                    log_f = slow_moment_update_cosine(x_feat, up_feat)
+                else:
+                    raise ValueError(f"Unknown distance metric {distance_metric}")
             elif accept_policy == "all":
                 log_f = np.inf
             else:
@@ -212,7 +221,8 @@ def mcmc_lang_rr(
             "x_feat": x_feat.copy(),
             "x'_feat": samples_feat.copy(),
             "archive": archive.metadata().copy(),
-            "mean log energy": sum_log_energy / popn_size,
+            "mean log euclidean energy": sum_log_euclid_energy / popn_size,
+            "mean log cosine energy": sum_log_cosine_energy / popn_size,
             "log f(x')/f(x)": sum_log_f / popn_size,
             "log q(x|x')/q(x'|x)": sum_log_q / popn_size,
             "log A(x',x)": sum_log_accept / popn_size,
@@ -252,19 +262,42 @@ def knn_dist_sum(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.nda
     return dists
 
 
-def slow_energy_update(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
+def slow_energy_update_euclid(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
     log_p_up = -np.sum(np.exp(-np.linalg.norm(up_feat[:, None] - up_feat[None], axis=-1)))
     log_p_x = -np.sum(np.exp(-np.linalg.norm(x_feat[:, None] - x_feat[None], axis=-1)))
     return log_p_up - log_p_x
 
 
-def fast_energy_update(x_feat: np.ndarray, up_feat: np.ndarray, k: int) -> float:
+def fast_energy_update_euclid(x_feat: np.ndarray, up_feat: np.ndarray, k: int) -> float:
     # log f(x') - log f(x) =
-    #     sum_{i != k} exp -d(x_i', x_k') - exp -d(x_i, x_k)
-    #   + sum_{j != k} exp -d(x_k', x_j') - exp -d(x_k, x_j)
-    # = 2 * sum_{i != k} exp -d(x_i', x_k') - exp -d(x_i, x_k) by symmetry
+    #   2 * sum_i { -exp -d(x_i', x_k') + exp -d(x_i, x_k) }
     return 2 * np.sum(-np.exp(-np.linalg.norm(up_feat - up_feat[k], axis=-1))
                       + np.exp(-np.linalg.norm(x_feat - x_feat[k], axis=-1)))
+
+
+def cos_distances(x: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Compute cosine distances between v and rows of x"""
+    return x @ v / np.linalg.norm(x, axis=-1) / np.linalg.norm(v)
+
+
+def test_cos_distances():
+    def slow_cos_dist(a, b):
+        return np.dot(a, b) / np.linalg.norm(a) / np.linalg.norm(b)
+
+    for _ in range(100):
+        xs = np.random.rand(10, 5)
+        y = xs[np.random.randint(len(xs))]
+        slow_dists = np.array([slow_cos_dist(x, y) for x in xs])
+        fast_dists = cos_distances(xs, y)
+
+        assert np.allclose(slow_dists, fast_dists), \
+            f"Expected {slow_dists}, got {fast_dists}"
+
+
+def fast_energy_update_cosine(x_feat: np.ndarray, up_feat: np.ndarray, k: int) -> float:
+    # log f(x') - log f(x) = 2 * sum_i { -exp -d(x_i', x_k') + exp -d(x_i, x_k) }
+    return 2 * np.sum(-np.exp(cos_distances(up_feat, up_feat[k]))
+                      + np.exp(cos_distances(x_feat, x_feat[k])))
 
 
 def archive_correction_update(x_feat: np.ndarray, up_feat: np.ndarray, archive_feat: np.ndarray, k: int) -> float:
@@ -282,11 +315,18 @@ def dpp_rbf_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> flo
     return logdet(L_up) - logdet(L_x)
 
 
-def slow_fom_update(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
+def slow_moment_update_euclid(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
     # update using first order moment:
     # log f(x) = sum_i d(x_i, mean(x))
     return np.sum(np.linalg.norm(up_feat - np.mean(up_feat, axis=0), axis=-1)) \
         - np.sum(np.linalg.norm(x_feat - np.mean(x_feat, axis=0), axis=-1))
+
+
+def slow_moment_update_cosine(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
+    # update using first order moment:
+    # log f(x) = sum_i d(x_i, mean(x))
+    return np.sum(cos_distances(up_feat, np.mean(up_feat, axis=0))) \
+        - np.sum(cos_distances(x_feat, np.mean(x_feat, axis=0)))
 
 
 def analyzer_iter(d: dict, threshold: float) -> dict:
@@ -542,6 +582,7 @@ def run_maze_search(
         n_epochs: int,
         fit_policies: List[str],
         accept_policies: List[str],
+        distance_metrics: List[str],
         archive_size: int,
         archive_beta: List[float],
         spread=1,
@@ -606,72 +647,74 @@ def run_maze_search(
     x_init = [point_lang.make_point(a, b) for a, b in coords]
     for fit_policy in fit_policies:
         for accept_policy in accept_policies:
-            for beta in archive_beta:
-                title = (f"fit={fit_policy},"
-                         f"accept={accept_policy},"
-                         f"beta={beta}")
-                local_dir = f"{save_dir}/{title}"
-                util.mkdir(local_dir)
+            for distance_metric in distance_metrics:
+                for beta in archive_beta:
+                    title = (f"fit={fit_policy},"
+                             f"accept={accept_policy},"
+                             f"distance={distance_metric},"
+                             f"beta={beta}")
+                    local_dir = f"{save_dir}/{title}"
+                    util.mkdir(local_dir)
 
-                maze_lang = point.RealMaze(str_mask, std=1)
-                generator = mcmc_lang_rr(
-                    lang=maze_lang,
-                    x_init=x_init,
-                    popn_size=popn_size,
-                    n_epochs=n_epochs,
-                    fit_policy=fit_policy,
-                    accept_policy=accept_policy,
-                    distance_metric="euclidean",
-                    archive_beta=beta,
-                    archive_size=archive_size,
-                    debug=True,
-                )
-                data = list(tqdm(generator, total=n_epochs))
+                    maze_lang = point.RealMaze(str_mask, std=1)
+                    generator = mcmc_lang_rr(
+                        lang=maze_lang,
+                        x_init=x_init,
+                        popn_size=popn_size,
+                        n_epochs=n_epochs,
+                        fit_policy=fit_policy,
+                        accept_policy=accept_policy,
+                        distance_metric=distance_metric,
+                        archive_beta=beta,
+                        archive_size=archive_size,
+                        debug=False,
+                    )
+                    data = list(tqdm(generator, total=n_epochs))
 
-                # plots
-                data = [analyzer_iter(d, threshold=1e-10) for d in data]
-                plot_keys = sorted({
-                    k for k in data[0].keys()
-                    if (k not in {"t", "x", "x'", "archive"} and
-                        not k.endswith("_feat") and
-                        not k.endswith("_out"))
-                })
-                fig = util.plot_v_subplots(data, keys=plot_keys)
-                fig.savefig(f"{local_dir}/plot.png")
-                plt.cla()
+                    # plots
+                    data = [analyzer_iter(d, threshold=1e-10) for d in data]
+                    plot_keys = sorted({
+                        k for k in data[0].keys()
+                        if (k not in {"t", "x", "x'", "archive"} and
+                            not k.endswith("_feat") and
+                            not k.endswith("_out"))
+                    })
+                    fig = util.plot_v_subplots(data, keys=plot_keys)
+                    fig.savefig(f"{local_dir}/plot.png")
+                    plt.cla()
 
-                # animate embeddings
-                init_feat = maze_lang.extract_features(x_init)
-                frames = [(0, init_feat, [0] * len(init_feat))]
-                for d in data:
-                    t = d["t"] + 1
-                    popn_embeddings = d["x_feat"]
+                    # animate embeddings
+                    init_feat = maze_lang.extract_features(x_init)
+                    frames = [(0, init_feat, [0] * len(init_feat))]
+                    for d in data:
+                        t = d["t"] + 1
+                        popn_embeddings = d["x_feat"]
 
-                    if archive_beta == 0:
-                        frames.append((
-                            t,
-                            popn_embeddings,
-                            [0] * len(popn_embeddings),
-                        ))
-                    else:
-                        archive_embeddings = [
-                            maze_lang.eval(maze_lang.parse(s))
-                            for s in d["archive"]
-                        ]
-                        frames.append((
-                            t,
-                            np.concatenate([popn_embeddings, archive_embeddings], axis=0),
-                            [0] * len(popn_embeddings) + [1] * len(archive_embeddings),
-                        ))
+                        if archive_beta == 0:
+                            frames.append((
+                                t,
+                                popn_embeddings,
+                                [0] * len(popn_embeddings),
+                            ))
+                        else:
+                            archive_embeddings = [
+                                maze_lang.eval(maze_lang.parse(s))
+                                for s in d["archive"]
+                            ]
+                            frames.append((
+                                t,
+                                np.concatenate([popn_embeddings, archive_embeddings], axis=0),
+                                [0] * len(popn_embeddings) + [1] * len(archive_embeddings),
+                            ))
 
-                anim = util.animate_points(
-                    frames,
-                    title=title,
-                    xlim=maze_lang.xlim,
-                    ylim=maze_lang.ylim,
-                    background=maze_lang.background,
-                )
-                anim.save(f"{local_dir}/embed.mp4")
+                    anim = util.animate_points(
+                        frames,
+                        title=title,
+                        xlim=maze_lang.xlim,
+                        ylim=maze_lang.ylim,
+                        background=maze_lang.background,
+                    )
+                    anim.save(f"{local_dir}/embed.mp4")
 
 
 def run_lsys_search(config):
@@ -963,9 +1006,9 @@ def sweep(conf: str, run_fn: Callable):
     run_fn(wandb.config)
 
 
-def local_searches():
+def preset_local_search():
     ts = util.timestamp()
-    save_dir = f"out/dpp-points/{ts}"
+    save_dir = f"../out/dpp-points/{ts}"
     util.try_mkdir(save_dir)
     run_maze_search(
         popn_size=50,
@@ -973,6 +1016,7 @@ def local_searches():
         n_epochs=100,
         fit_policies=["single", "all", "first"],
         accept_policies=["energy", "moment", "all"],
+        distance_metrics=["cosine", "euclidean"],
         archive_beta=[0, 1, 5],
         archive_size=10,
     )
@@ -983,30 +1027,28 @@ def local_searches():
     #     fit_policies=["single", "all", "none", "first"],
     #     accept_policies=["energy", "moment", "all"],
     # )
+    # run_ant_search(
+    #     maze_name="empty-10x10",
+    #     # "users-guide",  # "lehman-ecj-11-hard",
+    #     featurizer="end",
+    #     environment="2d-oriented",
+    #     random_seed=0,
+    #     popn_size=10,
+    #     n_epochs=10,
+    #     sim_steps=1000,
+    #     fit_policy="single",
+    #     accept_policy="energy",
+    #     distance_metric="cosine",
+    #     archive_beta=0.,
+    #     archive_size=10,
+    #     program_depth=2,
+    #     length_cap=1000,
+    #     run_id=f"test-{ts}",
+    #     wandb_run=False,
+    #     debug=True,
+    # )
 
 
 if __name__ == "__main__":
     # sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
-
-    ts = util.timestamp()
-    run_ant_search(
-        maze_name="empty-10x10",
-        # "users-guide",  # "lehman-ecj-11-hard",
-        featurizer="end",
-        environment="2d-oriented",
-        random_seed=0,
-        popn_size=10,
-        n_epochs=10,
-        sim_steps=1000,
-        fit_policy="single",
-        accept_policy="energy",
-        distance_metric="euclidean",
-        archive_beta=0.,
-        archive_size=10,
-        program_depth=2,
-        length_cap=1000,
-        run_id=f"test-{ts}",
-        wandb_run=False,
-        include_orientation=False,
-        debug=True,
-    )
+    preset_local_search()
