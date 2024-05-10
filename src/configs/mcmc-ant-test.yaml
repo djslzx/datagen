@@ -6,28 +6,35 @@ parameters:
   domain:
     value: ant
   featurizer:
-    value: trail
+    value: end
+  environment:
+    values: [ 2d-unoriented, 2d-oriented ]
+  maze_name:
+    values: [ users-guide, lehman-ecj-11-hard ]
   random_seed:
     value: 0
   popn_size:
-    value: 20
+    value: 50
+    # value: 150
   n_epochs:
     value: 2
+    # value: 100
   sim_steps:
-    value: 2
+    value: 10
+    # value: 1000
   fit_policy:
     values: [ single, all ]
   accept_policy:
     values: [ energy, moment ]
   distance_metric:
-    value: euclidean
+    values: [ euclidean, cosine ]
   archive_beta:
-    value: 0
+    values: [ 0, 1, 5 ]
   archive_size:
     value: 10
   program_depth:
-    value: 2
+    values: [ 4 ]
   length_cap:
     value: 10000
-  include_orientation:
-    values: [ false ]
+  step_length:
+    value: 1
