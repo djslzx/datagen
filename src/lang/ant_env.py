@@ -85,7 +85,10 @@ class AntMaze(Environment):
         assert action_weights.shape == (4,), \
             f"Expected action vector shape (4,), got {action_weights.shape}"
 
-        d_pos = action_weights @ self.d_step
+        exp_weights = np.exp(action_weights)
+        squashed_weights = exp_weights / exp_weights.sum()
+
+        d_pos = squashed_weights @ self.d_step
 
         # # add some noise to the step
         # rand_weights = np.random.rand(4) * self.step_length / 3
@@ -150,9 +153,12 @@ class OrientedAntMaze(Environment):
         assert action_weights.shape == (4,), \
             f"Expected action vector shape (4,), got {action_weights.shape}"
 
-        up, down, left, right = action_weights
-        self.theta += + left - right
-        step_length = up - down
+        exp_weights = np.exp(action_weights)
+        squashed_weights = exp_weights / exp_weights.sum()
+
+        up, down, left, right = squashed_weights
+        self.theta += left - right
+        step_length = (up - down) * self.step_length
 
         dx = step_length * np.cos(self.theta)
         dy = step_length * np.sin(self.theta)
