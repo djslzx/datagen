@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 from lang.tree import Language, Tree, Featurizer
 from lang.maze import Maze
-from lang.ant_env import Environment, AntMaze, OrientedAntMaze
+import lang.ant_env as ant_env
 import util
 
 
@@ -48,7 +48,7 @@ class FixedDepthAnt(Language):
             self,
             program_depth: int,
             steps: int,
-            env: Environment,
+            env: ant_env.Environment,
             featurizer: Featurizer,
     ):
         assert program_depth > 1
@@ -367,11 +367,11 @@ class MultivariateGaussianSampler:
 
 def simple_ant_test():
     maze = Maze.from_saved("lehman-ecj-11-hard")
-    environment = AntMaze(
+    environment = ant_env.AntMaze(
         maze_map=maze,
         step_length=0.5,
     )
-    # environment = OrientedAntMaze(
+    # environment = ant_env.OrientedAntMaze(
     #     maze_map=maze,
     #     step_length=0.5,
     # )

@@ -16,7 +16,6 @@ import einops as ein
 
 from lang.tree import Language, Tree
 from lang import lindenmayer, point, arc, ant, maze
-from lang.mujoco_ant_env import MujocoAntMaze
 import util
 
 
@@ -129,7 +128,7 @@ def mcmc_lang_rr(
         sum_log_f = 0
         sum_log_q = 0
         sum_log_accept = 0
-        sum_energy = 0
+        sum_log_energy = 0
 
         round_robin_range = range(popn_size)
         if debug:
@@ -159,15 +158,15 @@ def mcmc_lang_rr(
             samples_out.append(s_out)
 
             # compute energy for logging purposes
-            energy = fast_energy_update(x_feat, up_feat, i)
-            sum_energy += energy
+            log_energy = fast_energy_update(x_feat, up_feat, i)
+            sum_log_energy += log_energy
 
             # compute log f(x')/f(x)
             if accept_policy == "dpp":
                 log_f = dpp_rbf_update(x_feat, up_feat, gamma)
             elif accept_policy == "energy":
                 # log_f = fast_energy_update(x_feat, up_feat, i)
-                log_f = energy
+                log_f = log_energy
             elif accept_policy == "moment":
                 log_f = slow_fom_update(x_feat, up_feat)
             elif accept_policy == "all":
@@ -213,7 +212,7 @@ def mcmc_lang_rr(
             "x_feat": x_feat.copy(),
             "x'_feat": samples_feat.copy(),
             "archive": archive.metadata().copy(),
-            "mean energy": sum_energy / popn_size,
+            "mean log energy": sum_log_energy / popn_size,
             "log f(x')/f(x)": sum_log_f / popn_size,
             "log q(x|x')/q(x'|x)": sum_log_q / popn_size,
             "log A(x',x)": sum_log_accept / popn_size,
@@ -792,14 +791,12 @@ def run_ant_search(
         archive_size: int,
         program_depth: int,
         length_cap: int,
-        include_orientation: bool,
         run_id: str,
         step_length=0.1,
         wandb_run=True,
         debug=False,
 ):
     np.random.seed(random_seed)
-
     maze_map = maze.Maze.from_saved(maze_name)
 
     if featurizer == "trail":
@@ -811,12 +808,20 @@ def run_ant_search(
     else:
         raise ValueError(f"Invalid ant featurizer '{featurizer}'")
 
-    if environment == "2D":
-        env = ant.AntMaze2D(
+    if environment == "2d-unoriented":
+        from lang.ant_env import AntMaze
+        env = AntMaze(
+            maze_map=maze_map,
+            step_length=step_length,
+        )
+    elif environment == "2d-oriented":
+        from lang.ant_env import OrientedAntMaze
+        env = OrientedAntMaze(
             maze_map=maze_map,
             step_length=step_length,
         )
     elif environment == "mujoco":
+        from lang.mujoco_ant_env import MujocoAntMaze
         env = MujocoAntMaze(
             maze_map=maze_map,
             camera_mode="fixed",
@@ -875,17 +880,23 @@ def run_ant_search(
         trails = np.array(d["x_out"])[:, :, :2]  # [n t 2]
         trail_fig = maze_map.plot_trails(trails)
         plt.savefig(f"{save_dir}/plots/trail-{i}.png")
+        if not wandb_run:
+            plt.show()
+        plt.close()
 
         endpoints = trails[:, -1, :2]  # [n 2]
         endpoint_fig = maze_map.plot_endpoints(endpoints)
         plt.savefig(f"{save_dir}/plots/end-{i}.png")
+        if not wandb_run:
+            plt.show()
+        plt.close()
 
         log = {
             **d,
             **analysis_data,
+            "step": i,
             "trail": wandb.Image(trail_fig),
             "endpoints": wandb.Image(endpoint_fig),
-            "step": i,
         }
         log = {k: v for k, v in log.items()
                if (k not in {"x", "x'"} and
@@ -893,8 +904,6 @@ def run_ant_search(
                    not k.endswith("_out"))}
         if wandb_run:
             wandb.log(log)
-        else:
-            print(log)
 
 
 def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
@@ -981,9 +990,10 @@ if __name__ == "__main__":
 
     ts = util.timestamp()
     run_ant_search(
-        maze_name="big-symm",
+        maze_name="empty-10x10",
         # "users-guide",  # "lehman-ecj-11-hard",
         featurizer="end",
+        environment="2d-oriented",
         random_seed=0,
         popn_size=10,
         n_epochs=10,
