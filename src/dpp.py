@@ -780,14 +780,36 @@ def run_lsys_search(config):
     util.mkdir(f"{save_dir}/data/")
     util.mkdir(f"{save_dir}/images/")
 
-    wandb_process_data_epochs(
-        lang=lang,
-        generator=generator,
-        popn_size=popn_size,
-        n_epochs=n_epochs,
-        save=True,
-        save_dir=save_dir
-    )
+    srp = SparseRandomProjection(n_components=2)
+    srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
+
+    prev_feat = None
+    for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
+        np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
+        analysis_data = analyzer_iter(d, threshold=1e-10)
+        coords = reduce_dim(d["x_feat"], srp)
+        coord_image = util.scatterplot_image(coords, figsize=3)
+
+        if prev_feat is None:
+            prev_feat = d["x_feat"]
+
+        bw = log_best_and_worst(5, lang, d["x"], d["x_feat"], prev_feat)
+        log = {
+            **d,
+            **analysis_data,
+            **bw,
+            "step": i,
+            "renders": render_program_batch_as_wandb_image(lang, d["x"]),
+            "archive": render_program_batch_as_wandb_image(lang, d["archive"]),
+            "scatter": wandb.Image(coord_image),
+        }
+        log = {k: v for k, v in log.items()
+               if (k not in {"x", "x'"} and
+                   not k.endswith("_feat") and
+                   not k.endswith("_out"))}
+        wandb.log(log)
+
+        prev_feat = d["x_feat"]
 
 
 def run_ant_search_from_conf(conf):
@@ -806,7 +828,6 @@ def run_ant_search_from_conf(conf):
         "archive_size",
         "program_depth",
         "length_cap",
-        "include_orientation",
         "step_length",
     }
     assert all(k in conf for k in expected_keys), \
@@ -961,44 +982,6 @@ def reduce_dim(x: np.ndarray, srp: SparseRandomProjection) -> np.ndarray:
     return coords
 
 
-def wandb_process_data_epochs(
-        lang: Language,
-        generator: Iterator[dict],
-        popn_size: int,
-        n_epochs: int,
-        save: bool,
-        save_dir: str,
-):
-    srp = SparseRandomProjection(n_components=2)
-    srp.fit(np.random.rand(popn_size, lang.featurizer.n_features))
-
-    prev_feat = None
-    for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
-        if save:
-            np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
-        analysis_data = analyzer_iter(d, threshold=1e-10)
-        coords = reduce_dim(d["x_feat"], srp)
-        coord_image = util.scatterplot_image(coords, figsize=3)
-        if prev_feat is None:
-            prev_feat = d["x_feat"]
-        bw = log_best_and_worst(5, lang, d["x"], d["x_feat"], prev_feat)
-        log = {
-            **d,
-            **analysis_data,
-            **bw,
-            "step": i,
-            "renders": render_program_batch_as_wandb_image(lang, d["x"]),
-            "archive": render_program_batch_as_wandb_image(lang, d["archive"]),
-            "scatter": wandb.Image(coord_image),
-        }
-        rm_keys = {"x", "x'"}
-        log = {k: v for k, v in log.items()
-               if k not in rm_keys and not k.endswith("_feat")}
-        wandb.log(log)
-
-        prev_feat = d["x_feat"]
-
-
 def sweep(conf: str, run_fn: Callable):
     with open(conf, "r") as conf_file:
         config = yaml.load(conf_file, Loader=yaml.FullLoader)
@@ -1050,5 +1033,6 @@ def preset_local_search():
 
 
 if __name__ == "__main__":
-    # sweep("./configs/mcmc-ant.yaml", run_ant_search_from_conf)
-    preset_local_search()
+    sweep("./configs/mcmc-ant-test.yaml", run_ant_search_from_conf)
+    # sweep("./configs/mcmc-lsystem.yaml", run_lsys_search)
+    # preset_local_search()
