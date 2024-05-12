@@ -7,4 +7,4 @@ export MUJOCO_GL=osmesa
 export PYOPENGL_PLATFORM=osmesa
 source $PROJECT_DIR/venv/bin/activate
 cd $PROJECT_DIR/src
-wandb agent djsl/dpp-lsys/0fx5hy5b
+wandb agent djsl/dpp-lsys/y2f9n8qr
