@@ -249,7 +249,7 @@ class Language:
         n_batches = ceil(len(trees) * n_samples / batch_size)
         batches = util.batched(evaluate_trees(), batch_size=batch_size)
         if load_bar:
-            batches = tqdm(batches, total=n_batches, desc=f"Evaluating {len(trees)} trees")
+            batches = tqdm(batches, total=n_batches, desc=f"Evaluating trees")
         for batch in batches:
             batch = np.array(batch)
 
