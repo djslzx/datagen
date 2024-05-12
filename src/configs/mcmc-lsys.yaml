@@ -26,7 +26,7 @@ parameters:
   featurizer:
     parameters:
       kind:
-        values: [ ViT, resnet ]
+        values: [ resnet ]
       disable_last_layer:
         value: true
       softmax_outputs:
@@ -52,21 +52,20 @@ parameters:
       random_seed:
         value: 0
       popn_size:
-        value: 20
-        # value: 1000
+        value: 1000
       n_epochs:
-        value: 2
-        # value: 100
+        value: 50
       fit_policy:
-        values: [ single, all, first ]
+        values: [ single, all ]
       accept_policy:
-        values: [ energy, moment, all ]
+        values: [ energy, moment ]
       archive_beta:
-        values: [ 0., 1., 5. ]
+        values: [ 0, 1 ]
       archive_size:
-        value: 2
-        # value: 100
+        value: 50
       length_cap:
         value: 200
       keep_original:
+        value: true
+      debug:
         value: true

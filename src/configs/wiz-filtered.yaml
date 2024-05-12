@@ -1,0 +1,35 @@
+program: finetune/main.py
+method: grid
+metric:
+  goal: minimize
+  name: eval/loss
+parameters:
+  id:
+    value: "ft-filtered-solns"
+  mode:
+    value: finetune
+  model-name:
+    values:
+      - codellama/CodeLlama-7b-Python-hf
+  dataset:
+    values:
+      - /home/djl328/prob-repl/datasets/wiz/filtered-n100-v2/NSCA
+      - /home/djl328/prob-repl/datasets/wiz/filtered-n100-v2/NSE
+      - /home/djl328/prob-repl/datasets/wiz/filtered-n100-v2/CA
+      - /home/djl328/prob-repl/datasets/wiz/filtered-n100-v2/WW
+      - /home/djl328/prob-repl/datasets/wiz/filtered-n100-v2/WD
+  batch-size:
+    value: 1
+  max-seq-length:
+    value: 512
+  epochs:
+    value: 10
+  lr-init:
+    value: 5e-5                 # hf default
+  lr-scheduler-type:
+    values:
+      - linear
+  kbit:
+    values:
+      # - 4
+      - 8

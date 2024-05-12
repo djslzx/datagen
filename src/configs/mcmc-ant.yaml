@@ -8,30 +8,32 @@ parameters:
   featurizer:
     values: [ end, trail ]
   environment:
-    values: [ 2d-unoriented, 2d-oriented ]
+    values: [ 2d-oriented ]
   maze_name:
-    values: [ users-guide, lehman-ecj-11-hard ]
+    values: [ users-guide, lehman-ecj-11-hard, empty-10x10 ]
   random_seed:
     value: 0
   popn_size:
     value: 150
   n_epochs:
-    value: 30
+    value: 100
   sim_steps:
     value: 1000
   fit_policy:
     values: [ single, all ]
   accept_policy:
-    values: [ energy, moment ]
+    values: [ energy ]
   distance_metric:
-    values: [ euclidean, cosine ]
+    values: [ euclidean ]
   archive_beta:
     values: [ 0, 1, 5 ]
   archive_size:
     value: 25
   program_depth:
-    values: [ 4, 10 ]
+    values: [ 6 ]
   length_cap:
     value: 10000
   step_length:
-    value: 1
+    value: 0.5
+  debug:
+    value: true
