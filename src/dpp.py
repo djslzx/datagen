@@ -3,6 +3,7 @@ import os
 import sys
 from typing import List, Iterator, Tuple, Iterable, Optional, Set, Union, Generator, Any, Callable
 import numpy as np
+import scipy.linalg as linalg
 import pandas as pd
 import yaml
 from sklearn.neighbors import NearestNeighbors
@@ -91,8 +92,8 @@ def mcmc_lang_rr(
         distance_metric: str,
         archive_size: int,
         archive_beta: float,
+        debug: bool,
         length_cap=50,
-        debug=False
 ) -> Iterator[dict]:
     """
     MCMC with target distribution f(x) and proposal distribution q(x'|x),
@@ -119,6 +120,9 @@ def mcmc_lang_rr(
     if fit_policy == "first":
         lang.fit(x_init, alpha=1.0)
 
+    # debug vectors with close to zero norm
+    debug_table = wandb.Table(columns=["program", "output", "features", "norm"], data=[])
+
     for t in range(n_epochs):
         samples = []
         samples_feat = []
@@ -130,11 +134,7 @@ def mcmc_lang_rr(
         sum_log_euclid_energy = 0
         sum_log_cosine_energy = 0
 
-        round_robin_range = range(popn_size)
-        if debug:
-            round_robin_range = tqdm(round_robin_range, desc="Round robin-ing")
-
-        for i in round_robin_range:
+        for i in range(popn_size):
             if fit_policy == "all":
                 lang.fit(x, alpha=1.0)
             elif fit_policy == "single":
@@ -151,6 +151,15 @@ def mcmc_lang_rr(
 
             up_feat = x_feat.copy()
             up_feat[i] = s_feat
+
+            # add small-norm vectors to debug table
+            if debug and (s_norm := linalg.norm(s_feat)) < 1e-8:
+                debug_table.add_data(
+                    lang.to_str(s),
+                    s_out,
+                    s_feat,
+                    s_norm,
+                )
 
             # save samples
             samples.append(s)
@@ -226,6 +235,7 @@ def mcmc_lang_rr(
             "log f(x')/f(x)": sum_log_f / popn_size,
             "log q(x|x')/q(x'|x)": sum_log_q / popn_size,
             "log A(x',x)": sum_log_accept / popn_size,
+            "debug": debug_table,
         }
 
     print(archive.log, file=sys.stderr)
@@ -263,26 +273,27 @@ def knn_dist_sum(queries: np.ndarray, data: np.ndarray, n_neighbors=5) -> np.nda
 
 
 def slow_energy_update_euclid(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
-    log_p_up = -np.sum(np.exp(-np.linalg.norm(up_feat[:, None] - up_feat[None], axis=-1)))
-    log_p_x = -np.sum(np.exp(-np.linalg.norm(x_feat[:, None] - x_feat[None], axis=-1)))
+    log_p_up = -np.sum(np.exp(-linalg.norm(up_feat[:, None] - up_feat[None], axis=-1)))
+    log_p_x = -np.sum(np.exp(-linalg.norm(x_feat[:, None] - x_feat[None], axis=-1)))
     return log_p_up - log_p_x
 
 
 def fast_energy_update_euclid(x_feat: np.ndarray, up_feat: np.ndarray, k: int) -> float:
     # log f(x') - log f(x) =
     #   2 * sum_i { -exp -d(x_i', x_k') + exp -d(x_i, x_k) }
-    return 2 * np.sum(-np.exp(-np.linalg.norm(up_feat - up_feat[k], axis=-1))
-                      + np.exp(-np.linalg.norm(x_feat - x_feat[k], axis=-1)))
+    return 2 * np.sum(-np.exp(-linalg.norm(up_feat - up_feat[k], axis=-1))
+                      + np.exp(-linalg.norm(x_feat - x_feat[k], axis=-1)))
 
 
-def cos_distances(x: np.ndarray, v: np.ndarray) -> np.ndarray:
+def cos_distances(x: np.ndarray, v: np.ndarray, eps=10**-8) -> np.ndarray:
     """Compute cosine distances between v and rows of x"""
-    return x @ v / np.linalg.norm(x, axis=-1) / np.linalg.norm(v)
+    norms = linalg.norm(x, axis=-1) * linalg.norm(v)
+    return x @ v / (norms + eps)
 
 
 def test_cos_distances():
     def slow_cos_dist(a, b):
-        return np.dot(a, b) / np.linalg.norm(a) / np.linalg.norm(b)
+        return np.dot(a, b) / (linalg.norm(a) * linalg.norm(b) + eps)
 
     for _ in range(100):
         xs = np.random.rand(10, 5)
@@ -296,8 +307,8 @@ def test_cos_distances():
 
 def fast_energy_update_cosine(x_feat: np.ndarray, up_feat: np.ndarray, k: int) -> float:
     # log f(x') - log f(x) = 2 * sum_i { -exp -d(x_i', x_k') + exp -d(x_i, x_k) }
-    return 2 * np.sum(-np.exp(cos_distances(up_feat, up_feat[k]))
-                      + np.exp(cos_distances(x_feat, x_feat[k])))
+    return 2 * np.sum(-np.exp(-cos_distances(up_feat, up_feat[k]))
+                      + np.exp(-cos_distances(x_feat, x_feat[k])))
 
 
 def archive_correction_update(x_feat: np.ndarray, up_feat: np.ndarray, archive_feat: np.ndarray, k: int) -> float:
@@ -305,21 +316,21 @@ def archive_correction_update(x_feat: np.ndarray, up_feat: np.ndarray, archive_f
     #   = sum_{x in X'} min_{a in A} d(x, a)
     #     - sum_{x in X} min_{a in A} d(x, a)
     #   = min_{a in A} d(x_i', a) - min_{a in A} d(x_i, a)
-    return (np.min(np.linalg.norm(archive_feat - up_feat[k], axis=-1))
-            - np.min(np.linalg.norm(archive_feat - x_feat[k], axis=-1)))
+    return (np.min(linalg.norm(archive_feat - up_feat[k], axis=-1))
+            - np.min(linalg.norm(archive_feat - x_feat[k], axis=-1)))
 
 
 def dpp_rbf_update(x_feat: np.ndarray, up_feat: np.ndarray, gamma: float) -> float:
-    L_x = np.exp(-gamma * np.linalg.norm(x_feat[:, None] - x_feat[None], axis=-1) ** 2)
-    L_up = np.exp(-gamma * np.linalg.norm(up_feat[:, None] - up_feat[None], axis=-1) ** 2)
+    L_x = np.exp(-gamma * linalg.norm(x_feat[:, None] - x_feat[None], axis=-1) ** 2)
+    L_up = np.exp(-gamma * linalg.norm(up_feat[:, None] - up_feat[None], axis=-1) ** 2)
     return logdet(L_up) - logdet(L_x)
 
 
 def slow_moment_update_euclid(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
     # update using first order moment:
     # log f(x) = sum_i d(x_i, mean(x))
-    return np.sum(np.linalg.norm(up_feat - np.mean(up_feat, axis=0), axis=-1)) \
-        - np.sum(np.linalg.norm(x_feat - np.mean(x_feat, axis=0), axis=-1))
+    return np.sum(linalg.norm(up_feat - np.mean(up_feat, axis=0), axis=-1)) \
+        - np.sum(linalg.norm(x_feat - np.mean(x_feat, axis=0), axis=-1))
 
 
 def slow_moment_update_cosine(x_feat: np.ndarray, up_feat: np.ndarray) -> float:
@@ -349,7 +360,7 @@ def analyzer_iter(d: dict, threshold: float) -> dict:
     d["epsilon overlap"] = 1 / popn_size * np.sum(np.all(np.isclose(x_feat, x_feat[:, None], atol=1e-5), axis=-1))
 
     # embedding distances
-    dists = np.linalg.norm(x_feat[:, None] - x_feat, axis=-1)
+    dists = linalg.norm(x_feat[:, None] - x_feat, axis=-1)
     d["mean dist"] = np.mean(dists)
     d["std dist"] = np.std(dists)
     d["max dist"] = np.max(dists)
@@ -768,6 +779,7 @@ def run_lsys_search(config):
         archive_size=config.search["archive_size"],
         archive_beta=config.search["archive_beta"],
         length_cap=config.search["length_cap"],
+        debug=config.search["debug"],
     )
 
     # make run directory
@@ -785,6 +797,7 @@ def run_lsys_search(config):
 
     prev_feat = None
     for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
+        debug_table = d.pop("debug", None)
         np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
         analysis_data = analyzer_iter(d, threshold=1e-10)
         coords = reduce_dim(d["x_feat"], srp)
@@ -802,6 +815,7 @@ def run_lsys_search(config):
             "renders": render_program_batch_as_wandb_image(lang, d["x"]),
             "archive": render_program_batch_as_wandb_image(lang, d["archive"]),
             "scatter": wandb.Image(coord_image),
+            "debug": debug_table,
         }
         log = {k: v for k, v in log.items()
                if (k not in {"x", "x'"} and
@@ -829,6 +843,7 @@ def run_ant_search_from_conf(conf):
         "program_depth",
         "length_cap",
         "step_length",
+        "debug",
     }
     assert all(k in conf for k in expected_keys), \
         f"Missing expected keys {expected_keys - set(conf.keys())}"
@@ -938,6 +953,7 @@ def run_ant_search(
 
     # process data
     for i, d in enumerate(tqdm(generator, total=n_epochs, desc="Generating data")):
+        debug_table = d.pop("debug", None)
         np.save(f"{save_dir}/data/part-{i:06d}.npy", d, allow_pickle=True)
         analysis_data = analyzer_iter(d, threshold=1e-10)
 
@@ -961,6 +977,7 @@ def run_ant_search(
             "step": i,
             "trail": wandb.Image(trail_fig),
             "endpoints": wandb.Image(endpoint_fig),
+            "debug": debug_table,
         }
         log = {k: v for k, v in log.items()
                if (k not in {"x", "x'"} and
