@@ -8,9 +8,10 @@ Synthesize novel and diverse datasets for low-resource program synthesis domains
 - Mujoco/2D ant walker programs
 - Python programming puzzles
 
-## Sample outputs
-- Lindenmayer systems: ![L-system outputs!](http://url/to/lsys.png)
-- Ant walker paths: ![Ant outputs!](http://url/to/ant.png)
+## Samples
+- Lindenmayer systems: 
+  - ![L-system outputs!](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/lsys/ns/sample1.png)
+- Ant walker paths: ![Ant outputs!](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/ant/oriented-trails.png)
 - Programming problems: see `examples/puzzles`
 
 ## Framework
