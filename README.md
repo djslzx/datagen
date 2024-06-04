@@ -1,18 +1,29 @@
 # datagen
 David J. Lee, 2022-2024
 
+![L-systems](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/lsys/ns/sample1.png)
+
+
 Synthesize novel and diverse datasets for low-resource program synthesis domains.
 
 ## Domains
 - Lindenmayer systems
 - Mujoco/2D ant walker programs
 - Python programming puzzles
+- Regular expressions
 
 ## Samples
-- Lindenmayer systems: 
-  - ![L-system outputs!](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/lsys/ns/sample1.png)
-- Ant walker paths: ![Ant outputs!](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/ant/oriented-trails.png)
-- Programming problems: see `examples/puzzles`
+### Lindenmayer systems
+![Sample 1](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/lsys/ns/sample2.png)
+![Sample 2](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/lsys/ns/sample3.png)
+![Sample 3](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/lsys/ns/sample4.png)
+![Sample 4](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/lsys/ns/sample5.png)
+
+### Ant walker paths
+![Ant outputs!](https://github.com/djslzx/datagen/blob/5902000661da4cf74e12a4acc147040608632ce5/examples/ant/oriented-trails.png)
+
+### Programming problems
+See `examples/puzzles`
 
 ## Framework
 Treat dataset generation as Markov chain Monte Carlo search over sets of candidate programs, with the following proposal distributions:
